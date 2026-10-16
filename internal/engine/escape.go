@@ -1,6 +1,9 @@
 package engine
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 const (
 	ESCAPE      = "\x1b["
@@ -8,7 +11,7 @@ const (
 )
 
 type SequenceBuilder struct {
-	sequence string
+	sequence strings.Builder
 }
 
 func NewSequenceBuilder() *SequenceBuilder {
@@ -16,53 +19,53 @@ func NewSequenceBuilder() *SequenceBuilder {
 }
 
 func (sb *SequenceBuilder) Execute() {
-	fmt.Print(sb.sequence)
+	fmt.Print(sb.sequence.String())
 }
 
 func (sb *SequenceBuilder) String() string {
-	return fmt.Sprintf("%q\n", sb.sequence)
+	return sb.sequence.String()
 }
 
 func (sb *SequenceBuilder) Print(s string) {
-	sb.sequence += s
+	sb.sequence.WriteString(s)
 }
 
 func (sb *SequenceBuilder) Up(n int) {
-	sb.sequence += ESCAPE + fmt.Sprintf("%dA", n)
+	fmt.Fprintf(&sb.sequence, ESCAPE+"%dA", n)
 }
 
 func (sb *SequenceBuilder) Down(n int) {
-	sb.sequence += ESCAPE + fmt.Sprintf("%dB", n)
+	fmt.Fprintf(&sb.sequence, ESCAPE+"%dB", n)
 }
 
 func (sb *SequenceBuilder) Forward(n int) {
-	sb.sequence += ESCAPE + fmt.Sprintf("%dC", n)
+	fmt.Fprintf(&sb.sequence, ESCAPE+"%dC", n)
 }
 
 func (sb *SequenceBuilder) Back(n int) {
-	sb.sequence += ESCAPE + fmt.Sprintf("%dD", n)
+	fmt.Fprintf(&sb.sequence, ESCAPE+"%dD", n)
 }
 
 func (sb *SequenceBuilder) NextLine(n int) {
-	sb.sequence += ESCAPE + fmt.Sprintf("%dE", n)
+	fmt.Fprintf(&sb.sequence, ESCAPE+"%dE", n)
 }
 
 func (sb *SequenceBuilder) PreviousLine(n int) {
-	sb.sequence += ESCAPE + fmt.Sprintf("%dF", n)
+	fmt.Fprintf(&sb.sequence, ESCAPE+"%dF", n)
 }
 
 func (sb *SequenceBuilder) MoveToColumn(n int) {
-	sb.sequence += ESCAPE + fmt.Sprintf("%dG", n)
+	fmt.Fprintf(&sb.sequence, ESCAPE+"%dG", n)
 }
 
 func (sb *SequenceBuilder) MoveTo(n, m int) {
-	sb.sequence += ESCAPE + fmt.Sprintf("%d;%dH", n, m)
+	fmt.Fprintf(&sb.sequence, ESCAPE+"%d;%dH", n, m)
 }
 
 func (sb *SequenceBuilder) EraseInDisplay(n int) {
-	sb.sequence += ESCAPE + fmt.Sprintf("%dJ", n)
+	fmt.Fprintf(&sb.sequence, ESCAPE+"%dJ", n)
 }
 
 func (sb *SequenceBuilder) EraseInLine(n int) {
-	sb.sequence += ESCAPE + fmt.Sprintf("%dK", n)
+	fmt.Fprintf(&sb.sequence, ESCAPE+"%dK", n)
 }
