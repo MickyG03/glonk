@@ -6,8 +6,11 @@ import (
 )
 
 const (
-	ESCAPE      = "\x1b["
-	HIDE_CURSOR = "\x1b[?25l"
+	ESCAPE_SEQ           = "\x1b["
+	HIDE_CURSOR_SEQ      = "\x1b[?25l"
+	SHOW_CURSOR_SEQ      = "\x1b[?25h"
+	ALTERNATE_SCREEN_SEQ = "\x1b[?1049h"
+	MAIN_SCREEN_SEQ      = "\x1b[?1049l"
 )
 
 type SequenceBuilder struct {
@@ -31,41 +34,57 @@ func (sb *SequenceBuilder) Print(s string) {
 }
 
 func (sb *SequenceBuilder) Up(n int) {
-	fmt.Fprintf(&sb.sequence, ESCAPE+"%dA", n)
+	fmt.Fprintf(&sb.sequence, ESCAPE_SEQ+"%dA", n)
 }
 
 func (sb *SequenceBuilder) Down(n int) {
-	fmt.Fprintf(&sb.sequence, ESCAPE+"%dB", n)
+	fmt.Fprintf(&sb.sequence, ESCAPE_SEQ+"%dB", n)
 }
 
 func (sb *SequenceBuilder) Forward(n int) {
-	fmt.Fprintf(&sb.sequence, ESCAPE+"%dC", n)
+	fmt.Fprintf(&sb.sequence, ESCAPE_SEQ+"%dC", n)
 }
 
 func (sb *SequenceBuilder) Back(n int) {
-	fmt.Fprintf(&sb.sequence, ESCAPE+"%dD", n)
+	fmt.Fprintf(&sb.sequence, ESCAPE_SEQ+"%dD", n)
 }
 
 func (sb *SequenceBuilder) NextLine(n int) {
-	fmt.Fprintf(&sb.sequence, ESCAPE+"%dE", n)
+	fmt.Fprintf(&sb.sequence, ESCAPE_SEQ+"%dE", n)
 }
 
 func (sb *SequenceBuilder) PreviousLine(n int) {
-	fmt.Fprintf(&sb.sequence, ESCAPE+"%dF", n)
+	fmt.Fprintf(&sb.sequence, ESCAPE_SEQ+"%dF", n)
 }
 
 func (sb *SequenceBuilder) MoveToColumn(n int) {
-	fmt.Fprintf(&sb.sequence, ESCAPE+"%dG", n)
+	fmt.Fprintf(&sb.sequence, ESCAPE_SEQ+"%dG", n)
 }
 
 func (sb *SequenceBuilder) MoveTo(n, m int) {
-	fmt.Fprintf(&sb.sequence, ESCAPE+"%d;%dH", n, m)
+	fmt.Fprintf(&sb.sequence, ESCAPE_SEQ+"%d;%dH", n, m)
 }
 
 func (sb *SequenceBuilder) EraseInDisplay(n int) {
-	fmt.Fprintf(&sb.sequence, ESCAPE+"%dJ", n)
+	fmt.Fprintf(&sb.sequence, ESCAPE_SEQ+"%dJ", n)
 }
 
 func (sb *SequenceBuilder) EraseInLine(n int) {
-	fmt.Fprintf(&sb.sequence, ESCAPE+"%dK", n)
+	fmt.Fprintf(&sb.sequence, ESCAPE_SEQ+"%dK", n)
+}
+
+func (sb *SequenceBuilder) SwitchToAlternateScreen() {
+	sb.Print(ALTERNATE_SCREEN_SEQ)
+}
+
+func (sb *SequenceBuilder) SwitchToMainScreen() {
+	sb.Print(MAIN_SCREEN_SEQ)
+}
+
+func (sb *SequenceBuilder) HideCursor() {
+	sb.Print(HIDE_CURSOR_SEQ)
+}
+
+func (sb *SequenceBuilder) ShowCursor() {
+	sb.Print(SHOW_CURSOR_SEQ)
 }

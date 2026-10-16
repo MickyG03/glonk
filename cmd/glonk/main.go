@@ -7,12 +7,6 @@ import (
 	"github.com/kyrokohan/glonk/internal/engine"
 )
 
-func clearScreen() {
-	sb := engine.NewSequenceBuilder()
-	sb.EraseInDisplay(2)
-	sb.Execute()
-}
-
 func main() {
 	scene, err := engine.NewScene(64, 24)
 	if err != nil {
@@ -20,9 +14,11 @@ func main() {
 		return
 	}
 
-	clearScreen()
+	terminal := engine.NewTerminal()
+	terminal.Setup()
+	defer terminal.Teardown()
+
 	scene.DrawBoundary()
-	scene.HideCursor()
 
 	ball := engine.NewSceneObject(10, 10, 'O')
 	scene.AddObject(ball)

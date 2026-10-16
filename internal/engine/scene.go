@@ -21,12 +21,6 @@ func NewScene(w, h int) (*Scene, error) {
 	return &Scene{frameBuffer: fb}, nil
 }
 
-func (_ *Scene) HideCursor() {
-	sb := NewSequenceBuilder()
-	sb.Print(HIDE_CURSOR)
-	sb.Execute()
-}
-
 func (s *Scene) Animate(fps int) {
 	for {
 		s.frameBuffer.Clear()
