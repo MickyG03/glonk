@@ -1,26 +1,24 @@
 package engine
 
 import (
-	"errors"
 	"strings"
 	"time"
 )
 
+const DrawOffset int = 2
+
 type Scene struct {
-	Width   int
-	Height  int
-	objects []*SceneObject
+	objects     []*SceneObject
+	frameBuffer *FrameBuffer
 }
 
 func NewScene(w, h int) (*Scene, error) {
-	if w <= 0 || h <= 0 {
-		return nil, errors.New("Width and Height must be positive integers")
+	fb, err := NewFrameBuffer(w, h)
+	if err != nil {
+		return nil, err
 	}
 
-	return &Scene{
-		Width:  w,
-		Height: h,
-	}, nil
+	return &Scene{frameBuffer: fb}, nil
 }
 
 func (_ *Scene) HideCursor() {
@@ -31,33 +29,33 @@ func (_ *Scene) HideCursor() {
 
 func (s *Scene) Animate(fps int) {
 	for {
-		s.DrawBoundary()
+		s.frameBuffer.Clear()
 		s.DrawObjects()
-		s.HideCursor()
+		s.Render()
 		time.Sleep(time.Second / time.Duration(fps))
 	}
 }
 
 func (s *Scene) DrawBoundary() {
-	sb := NewSequenceBuilder()
+	width := s.frameBuffer.width
+	height := s.frameBuffer.height
 
-	sb.EraseInDisplay(2)
-	sb.EraseInDisplay(3)
+	sb := NewSequenceBuilder()
 	sb.MoveTo(1, 1)
 	sb.Print("┌")
-	sb.Print(strings.Repeat("─", s.Width))
+	sb.Print(strings.Repeat("─", width))
 	sb.Print("┐")
 
-	for i := range s.Height {
-		sb.MoveTo(i+2, 1)
+	for i := range height {
+		sb.MoveTo(i+DrawOffset, 1)
 		sb.Print("│")
-		sb.MoveTo(i+2, s.Width+2)
+		sb.MoveTo(i+DrawOffset, width+DrawOffset)
 		sb.Print("│")
 	}
-	sb.NextLine(1)
+	sb.MoveTo(height+DrawOffset, 1)
 
 	sb.Print("└")
-	sb.Print(strings.Repeat("─", s.Width))
+	sb.Print(strings.Repeat("─", width))
 	sb.Print("┘")
 
 	sb.Execute()
@@ -65,19 +63,26 @@ func (s *Scene) DrawBoundary() {
 
 func (s *Scene) DrawObjects() {
 	for _, obj := range s.objects {
-		if obj.X >= s.Width || obj.X < 0 || obj.Y >= s.Height || obj.Y < 0 {
-			continue
-		}
-
-		sb := NewSequenceBuilder()
-
-		sb.MoveTo(obj.Y+2, obj.X+2)
-		sb.Print(string(obj.Value))
-
-		sb.Execute()
+		s.frameBuffer.Set(obj.X, obj.Y, Cell{Character: obj.Value})
 	}
 }
 
 func (s *Scene) AddObject(obj *SceneObject) {
 	s.objects = append(s.objects, obj)
+}
+
+func (s *Scene) Render() {
+	width := s.frameBuffer.width
+	height := s.frameBuffer.height
+
+	sb := NewSequenceBuilder()
+
+	for y := range height {
+		sb.MoveTo(y+DrawOffset, DrawOffset)
+		for x := range width {
+			sb.Print(string(s.frameBuffer.frame[y*width+x].Character))
+		}
+	}
+
+	sb.Execute()
 }
