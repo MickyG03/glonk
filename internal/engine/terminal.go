@@ -1,5 +1,7 @@
 package engine
 
+import "fmt"
+
 type Terminal struct{}
 
 func NewTerminal() *Terminal {
@@ -19,4 +21,6 @@ func (t *Terminal) Teardown() {
 	sb.ShowCursor()
 	sb.SwitchToMainScreen()
 	sb.Execute()
+
+	fmt.Println("\nGOODBYE!\n")
 }
