@@ -12,10 +12,10 @@ import (
 )
 
 func main() {
-	scene, err := engine.NewScene(64, 24)
+	scene, err := engine.NewScene(64, 24, 30)
 	if err != nil {
-		fmt.Println(fmt.Errorf("%s", err.Error()))
-		return
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
 	}
 
 	ctx, ctxCancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -38,5 +38,5 @@ func main() {
 		}
 	}()
 
-	scene.Animate(ctx, 30)
+	scene.Animate(ctx)
 }

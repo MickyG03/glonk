@@ -2,6 +2,7 @@ package engine
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"time"
 )
@@ -11,19 +12,24 @@ const DrawOffset int = 2
 type Scene struct {
 	objects     []*SceneObject
 	frameBuffer *FrameBuffer
+	fps         uint
 }
 
-func NewScene(w, h int) (*Scene, error) {
+func NewScene(w, h int, fps uint) (*Scene, error) {
 	fb, err := NewFrameBuffer(w, h)
 	if err != nil {
 		return nil, err
 	}
 
-	return &Scene{frameBuffer: fb}, nil
+	if fps == 0 {
+		return nil, errors.New("fps cannot be 0")
+	}
+
+	return &Scene{frameBuffer: fb, fps: fps}, nil
 }
 
-func (s *Scene) Animate(ctx context.Context, fps uint) {
-	ticker := time.NewTicker(time.Second / time.Duration(fps))
+func (s *Scene) Animate(ctx context.Context) {
+	ticker := time.NewTicker(time.Second / time.Duration(s.fps))
 	defer ticker.Stop()
 	for {
 		select {

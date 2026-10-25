@@ -22,5 +22,7 @@ func (t *Terminal) Teardown() {
 	sb.SwitchToMainScreen()
 	sb.Execute()
 
-	fmt.Println("\nGOODBYE!\n")
+	fmt.Println()
+	fmt.Println("GOODBYE!")
+	fmt.Println()
 }
