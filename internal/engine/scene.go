@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"context"
 	"strings"
 	"time"
 )
@@ -21,12 +22,18 @@ func NewScene(w, h int) (*Scene, error) {
 	return &Scene{frameBuffer: fb}, nil
 }
 
-func (s *Scene) Animate(fps int) {
+func (s *Scene) Animate(ctx context.Context, fps uint) {
+	ticker := time.NewTicker(time.Second / time.Duration(fps))
+	defer ticker.Stop()
 	for {
-		s.frameBuffer.Clear()
-		s.DrawObjects()
-		s.Render()
-		time.Sleep(time.Second / time.Duration(fps))
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			s.frameBuffer.Clear()
+			s.DrawObjects()
+			s.Render()
+		}
 	}
 }
 

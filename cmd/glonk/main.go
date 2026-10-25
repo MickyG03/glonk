@@ -1,7 +1,11 @@
 package main
 
 import (
+	"context"
 	"fmt"
+	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/kyrokohan/glonk/internal/engine"
@@ -13,6 +17,9 @@ func main() {
 		fmt.Println(fmt.Errorf("%s", err.Error()))
 		return
 	}
+
+	ctx, ctxCancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer ctxCancel()
 
 	terminal := engine.NewTerminal()
 	terminal.Setup()
@@ -31,5 +38,5 @@ func main() {
 		}
 	}()
 
-	scene.Animate(30)
+	scene.Animate(ctx, 30)
 }
