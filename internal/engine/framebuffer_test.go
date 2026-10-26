@@ -5,6 +5,23 @@ import (
 	"testing"
 )
 
+func getIndex(x, y, w int) int {
+	return y*w + x
+}
+
+func assertFrameEquals(t *testing.T, assertion map[int]Cell, fb *FrameBuffer) {
+	t.Helper()
+	for i, cell := range fb.frame {
+		if val, ok := assertion[i]; ok {
+			if cell != val {
+				t.Fatalf("wanted cell[%d]=%v, got %v", i, val, cell)
+			}
+		} else if cell != BlankCell {
+			t.Fatalf("wanted nfb.frame[%d]=BlankCell, got %v", i, cell)
+		}
+	}
+}
+
 func TestNewFrameBufferRejectsBadSizes(t *testing.T) {
 	var tests = []struct {
 		w, h  int
@@ -108,15 +125,14 @@ func TestSetBounds(t *testing.T) {
 
 			nfb.Set(tt.x, tt.y, tempCell)
 
-			for i, cell := range nfb.frame {
-				if tt.inBounds && i == tt.y*nfb.width+tt.x {
-					if cell != tempCell {
-						t.Fatalf("wanted cell=%v, got %v", tempCell, cell)
-					}
-				} else if cell != BlankCell {
-					t.Fatalf("wanted nfb.frame[*]=BlankCell, got %v", cell)
-				}
+			idx := getIndex(tt.x, tt.y, nfb.width)
+			idxCellMap := map[int]Cell{}
+
+			if tt.inBounds {
+				idxCellMap[idx] = tempCell
 			}
+
+			assertFrameEquals(t, idxCellMap, nfb)
 
 		})
 	}
@@ -134,15 +150,20 @@ func TestClear(t *testing.T) {
 		Character: 'X',
 	}
 
+	tempCellsMap := map[int]Cell{}
+
 	nfb.Set(10, 10, tempCell)
+	tempCellsMap[getIndex(10, 10, fixedWidth)] = tempCell
+
 	nfb.Set(0, 0, tempCell)
+	tempCellsMap[getIndex(0, 0, fixedWidth)] = tempCell
+
 	nfb.Set(fixedWidth-1, fixedHeight-1, tempCell)
+	tempCellsMap[getIndex(fixedWidth-1, fixedHeight-1, fixedWidth)] = tempCell
+
+	assertFrameEquals(t, tempCellsMap, nfb)
 
 	nfb.Clear()
 
-	for _, cell := range nfb.frame {
-		if cell != BlankCell {
-			t.Fatalf("wanted nfb.frame[*]=BlankCell, got %v", cell)
-		}
-	}
+	assertFrameEquals(t, map[int]Cell{}, nfb)
 }
