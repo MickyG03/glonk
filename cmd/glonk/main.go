@@ -6,7 +6,6 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
-	"time"
 
 	"github.com/kyrokohan/glonk/internal/engine"
 )
@@ -30,13 +29,8 @@ func main() {
 	ball := engine.NewSceneObject(10, 10, 'O')
 	scene.AddObject(ball)
 
-	// Spin this off into a background thread
-	go func() {
-		for range 50 {
-			time.Sleep(100 * time.Millisecond) // Move every 100ms
-			ball.X += 1
-		}
-	}()
-
-	scene.Animate(ctx)
+	speed := 10.0
+	scene.Animate(ctx, func(dt float64) {
+		ball.X += speed * dt
+	})
 }

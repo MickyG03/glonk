@@ -3,6 +3,7 @@ package engine
 import (
 	"context"
 	"errors"
+	"math"
 	"strings"
 	"time"
 )
@@ -28,14 +29,20 @@ func NewScene(w, h int, fps uint) (*Scene, error) {
 	return &Scene{frameBuffer: fb, fps: fps}, nil
 }
 
-func (s *Scene) Animate(ctx context.Context) {
+func (s *Scene) Animate(ctx context.Context, update func(dt float64)) {
 	ticker := time.NewTicker(time.Second / time.Duration(s.fps))
 	defer ticker.Stop()
+
+	last := time.Now()
+
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case <-ticker.C:
+		case now := <-ticker.C:
+			dt := now.Sub(last).Seconds()
+			last = now
+			update(dt)
 			s.frameBuffer.Clear()
 			s.DrawObjects()
 			s.Render()
@@ -70,7 +77,7 @@ func (s *Scene) DrawBoundary() {
 
 func (s *Scene) DrawObjects() {
 	for _, obj := range s.objects {
-		s.frameBuffer.Set(obj.X, obj.Y, Cell{Character: obj.Value})
+		s.frameBuffer.Set(int(math.Floor(obj.X)), int(math.Floor(obj.Y)), Cell{Character: obj.Value})
 	}
 }
 

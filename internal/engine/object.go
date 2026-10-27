@@ -1,11 +1,11 @@
 package engine
 
 type SceneObject struct {
-	X     int
-	Y     int
+	X     float64
+	Y     float64
 	Value rune
 }
 
-func NewSceneObject(x, y int, r rune) *SceneObject {
+func NewSceneObject(x, y float64, r rune) *SceneObject {
 	return &SceneObject{X: x, Y: y, Value: r}
 }
