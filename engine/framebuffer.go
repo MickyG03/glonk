@@ -35,3 +35,27 @@ func (fb *FrameBuffer) Set(x, y int, cell Cell) {
 
 	fb.frame[y*fb.width+x] = cell
 }
+
+func (fb *FrameBuffer) Width() int {
+	return fb.width
+}
+
+func (fb *FrameBuffer) Height() int {
+	return fb.height
+}
+
+func (fb *FrameBuffer) present() {
+	width := fb.width
+	height := fb.height
+
+	sb := NewSequenceBuilder()
+
+	for y := range height {
+		sb.MoveTo(y+1, 1)
+		for x := range width {
+			sb.Print(string(fb.frame[y*width+x].Character))
+		}
+	}
+
+	sb.Execute()
+}
