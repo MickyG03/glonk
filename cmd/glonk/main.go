@@ -7,7 +7,7 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/kyrokohan/glonk/internal/engine"
+	"github.com/kyrokohan/glonk/engine"
 )
 
 func main() {
