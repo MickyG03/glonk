@@ -6,11 +6,11 @@ import (
 )
 
 const (
-	ESCAPE_SEQ           = "\x1b["
-	HIDE_CURSOR_SEQ      = "\x1b[?25l"
-	SHOW_CURSOR_SEQ      = "\x1b[?25h"
-	ALTERNATE_SCREEN_SEQ = "\x1b[?1049h"
-	MAIN_SCREEN_SEQ      = "\x1b[?1049l"
+	escapeSeq          = "\x1b["
+	hideCursorSeq      = "\x1b[?25l"
+	showCursorSeq      = "\x1b[?25h"
+	alternateScreenSeq = "\x1b[?1049h"
+	mainScreenSeq      = "\x1b[?1049l"
 )
 
 type SequenceBuilder struct {
@@ -34,57 +34,57 @@ func (sb *SequenceBuilder) Print(s string) {
 }
 
 func (sb *SequenceBuilder) Up(n int) {
-	fmt.Fprintf(&sb.sequence, ESCAPE_SEQ+"%dA", n)
+	fmt.Fprintf(&sb.sequence, escapeSeq+"%dA", n)
 }
 
 func (sb *SequenceBuilder) Down(n int) {
-	fmt.Fprintf(&sb.sequence, ESCAPE_SEQ+"%dB", n)
+	fmt.Fprintf(&sb.sequence, escapeSeq+"%dB", n)
 }
 
 func (sb *SequenceBuilder) Forward(n int) {
-	fmt.Fprintf(&sb.sequence, ESCAPE_SEQ+"%dC", n)
+	fmt.Fprintf(&sb.sequence, escapeSeq+"%dC", n)
 }
 
 func (sb *SequenceBuilder) Back(n int) {
-	fmt.Fprintf(&sb.sequence, ESCAPE_SEQ+"%dD", n)
+	fmt.Fprintf(&sb.sequence, escapeSeq+"%dD", n)
 }
 
 func (sb *SequenceBuilder) NextLine(n int) {
-	fmt.Fprintf(&sb.sequence, ESCAPE_SEQ+"%dE", n)
+	fmt.Fprintf(&sb.sequence, escapeSeq+"%dE", n)
 }
 
 func (sb *SequenceBuilder) PreviousLine(n int) {
-	fmt.Fprintf(&sb.sequence, ESCAPE_SEQ+"%dF", n)
+	fmt.Fprintf(&sb.sequence, escapeSeq+"%dF", n)
 }
 
 func (sb *SequenceBuilder) MoveToColumn(n int) {
-	fmt.Fprintf(&sb.sequence, ESCAPE_SEQ+"%dG", n)
+	fmt.Fprintf(&sb.sequence, escapeSeq+"%dG", n)
 }
 
 func (sb *SequenceBuilder) MoveTo(n, m int) {
-	fmt.Fprintf(&sb.sequence, ESCAPE_SEQ+"%d;%dH", n, m)
+	fmt.Fprintf(&sb.sequence, escapeSeq+"%d;%dH", n, m)
 }
 
 func (sb *SequenceBuilder) EraseInDisplay(n int) {
-	fmt.Fprintf(&sb.sequence, ESCAPE_SEQ+"%dJ", n)
+	fmt.Fprintf(&sb.sequence, escapeSeq+"%dJ", n)
 }
 
 func (sb *SequenceBuilder) EraseInLine(n int) {
-	fmt.Fprintf(&sb.sequence, ESCAPE_SEQ+"%dK", n)
+	fmt.Fprintf(&sb.sequence, escapeSeq+"%dK", n)
 }
 
 func (sb *SequenceBuilder) SwitchToAlternateScreen() {
-	sb.Print(ALTERNATE_SCREEN_SEQ)
+	sb.Print(alternateScreenSeq)
 }
 
 func (sb *SequenceBuilder) SwitchToMainScreen() {
-	sb.Print(MAIN_SCREEN_SEQ)
+	sb.Print(mainScreenSeq)
 }
 
 func (sb *SequenceBuilder) HideCursor() {
-	sb.Print(HIDE_CURSOR_SEQ)
+	sb.Print(hideCursorSeq)
 }
 
 func (sb *SequenceBuilder) ShowCursor() {
-	sb.Print(SHOW_CURSOR_SEQ)
+	sb.Print(showCursorSeq)
 }

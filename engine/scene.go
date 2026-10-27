@@ -4,11 +4,8 @@ import (
 	"context"
 	"errors"
 	"math"
-	"strings"
 	"time"
 )
-
-const DrawOffset int = 2
 
 type Scene struct {
 	objects     []*SceneObject
@@ -50,31 +47,6 @@ func (s *Scene) Animate(ctx context.Context, update func(dt float64)) {
 	}
 }
 
-func (s *Scene) DrawBoundary() {
-	width := s.frameBuffer.width
-	height := s.frameBuffer.height
-
-	sb := NewSequenceBuilder()
-	sb.MoveTo(1, 1)
-	sb.Print("┌")
-	sb.Print(strings.Repeat("─", width))
-	sb.Print("┐")
-
-	for i := range height {
-		sb.MoveTo(i+DrawOffset, 1)
-		sb.Print("│")
-		sb.MoveTo(i+DrawOffset, width+DrawOffset)
-		sb.Print("│")
-	}
-	sb.MoveTo(height+DrawOffset, 1)
-
-	sb.Print("└")
-	sb.Print(strings.Repeat("─", width))
-	sb.Print("┘")
-
-	sb.Execute()
-}
-
 func (s *Scene) DrawObjects() {
 	for _, obj := range s.objects {
 		s.frameBuffer.Set(int(math.Floor(obj.X)), int(math.Floor(obj.Y)), Cell{Character: obj.Value})
@@ -92,7 +64,7 @@ func (s *Scene) Render() {
 	sb := NewSequenceBuilder()
 
 	for y := range height {
-		sb.MoveTo(y+DrawOffset, DrawOffset)
+		sb.MoveTo(y+1, 1)
 		for x := range width {
 			sb.Print(string(s.frameBuffer.frame[y*width+x].Character))
 		}

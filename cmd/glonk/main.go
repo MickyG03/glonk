@@ -24,8 +24,6 @@ func main() {
 	terminal.Setup()
 	defer terminal.Teardown()
 
-	scene.DrawBoundary()
-
 	ball := engine.NewSceneObject(10, 10, 'O')
 	scene.AddObject(ball)
 
