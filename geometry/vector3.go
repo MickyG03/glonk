@@ -57,3 +57,17 @@ func (v Vector3) Cross(v2 Vector3) Vector3 {
 
 	return Vector3{X: xp, Y: yp, Z: zp}
 }
+
+func (v Vector3) RotateX(angle float64) Vector3 {
+	xp := v.X
+	yp := v.Y*math.Cos(angle) - v.Z*math.Sin(angle)
+	zp := v.Y*math.Sin(angle) + v.Z*math.Cos(angle)
+	return Vector3{X: xp, Y: yp, Z: zp}
+}
+
+func (v Vector3) RotateY(angle float64) Vector3 {
+	xp := v.X*math.Cos(angle) + v.Z*math.Sin(angle)
+	yp := v.Y
+	zp := -v.X*math.Sin(angle) + v.Z*math.Cos(angle)
+	return Vector3{X: xp, Y: yp, Z: zp}
+}

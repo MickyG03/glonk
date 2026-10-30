@@ -1,6 +1,9 @@
 package geometry
 
-import "testing"
+import (
+	"math"
+	"testing"
+)
 
 func assertVector3Equals(t *testing.T, want, got Vector3) {
 	t.Helper()
@@ -56,4 +59,21 @@ func TestVector3Normalize(t *testing.T) {
 	if !floatEquals(norm.Length(), 1.00) {
 		t.Errorf("wanted 1, got %v", norm.Length())
 	}
+}
+
+func TestVector3Rotate(t *testing.T) {
+	a := Vector3{1, 0, 0}
+	b := Vector3{0, 1, 0}
+	d := Vector3{0, 0, 1}
+	wantA := Vector3{0, 0, -1}
+	wantB := Vector3{0, 0, 1}
+	wantC := Vector3{0, 1, 0}
+	wantD := Vector3{1, 0, 0}
+	wantE := Vector3{0, -1, 0}
+
+	assertVector3Equals(t, wantA, a.RotateY(math.Pi/2))
+	assertVector3Equals(t, wantB, b.RotateX(math.Pi/2))
+	assertVector3Equals(t, wantC, b.RotateY(math.Pi/3))
+	assertVector3Equals(t, wantD, d.RotateY(math.Pi/2))
+	assertVector3Equals(t, wantE, d.RotateX(math.Pi/2))
 }

@@ -27,17 +27,15 @@ const cellAspect = 2
 func (c Camera) Project(p geometry.Vector3, w, h int) (x, y float64, ok bool) {
 	rel := p.Sub(c.Position)
 
-	cx := rel.X*math.Cos(c.Yaw) - rel.Z*math.Sin(c.Yaw)
-	cy := rel.Y
-	cz := rel.X*math.Sin(c.Yaw) + rel.Z*math.Cos(c.Yaw)
+	view := rel.RotateY(-c.Yaw)
 
-	if cz < c.Near {
+	if view.Z < c.Near {
 		return 0, 0, false
 	}
 
 	f := 1 / math.Tan(c.FOV/2)
-	ndcX := f * cx / cz
-	ndcY := f * cy / cz
+	ndcX := f * view.X / view.Z
+	ndcY := f * view.Y / view.Z
 
 	sx := float64(w)/2 + ndcX*float64(h)/2*cellAspect
 	sy := float64(h)/2 - ndcY*float64(h)/2
