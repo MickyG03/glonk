@@ -167,3 +167,34 @@ func TestClear(t *testing.T) {
 
 	assertFrameEquals(t, map[int]Cell{}, nfb)
 }
+
+func TestAt(t *testing.T) {
+	fixedWidth := 40
+	fixedHeight := 20
+	nfb, err := NewFrameBuffer(fixedWidth, fixedHeight)
+	if err != nil {
+		t.Fatalf("wanted err=nil, got %v", err)
+	}
+
+	tempCell := Cell{
+		Character: 'X',
+	}
+
+	nfb.Set(10, 10, tempCell)
+	nfb.Set(0, 1, tempCell)
+
+	cell := nfb.At(10, 10)
+	if cell != tempCell {
+		t.Errorf("wanted cell=%v, got %v", tempCell, cell)
+	}
+
+	cell = nfb.At(fixedWidth, 0)
+	if cell != BlankCell {
+		t.Errorf("wanted cell=%v, got %v", BlankCell, cell)
+	}
+
+	cell = nfb.At(-1, 0)
+	if cell != BlankCell {
+		t.Errorf("wanted cell=%v, got %v", BlankCell, cell)
+	}
+}
