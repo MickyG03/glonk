@@ -6,7 +6,7 @@ help:
 	@echo "  fmt     - Format Go code"
 	@echo "  test    - Run tests"
 	@echo "  vet     - Vetting..."
-	@echo "  run     - Run the application"
+	@echo "  run     - Run an example"
 	@echo "  build   - Build the application"
 	@echo "  check   - Run all checks"
 
@@ -22,13 +22,14 @@ vet:
 	@echo "Vetting..."
 	go vet ./...
 
+EXAMPLE ?= ./examples/bounce2d
 run:
 	@echo "Running..."
-	go run ./cmd/glonk
+	go run $(EXAMPLE)
 
 build:
 	@echo "Building..."
-	go build -o bin/glonk ./cmd/glonk
+	go build ./...
 
 check: test vet
 	@echo "All checks passed!"
