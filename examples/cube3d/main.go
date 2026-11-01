@@ -30,9 +30,7 @@ func (g *cubeGame) Update(dt float64, in *engine.Input) error {
 }
 
 func (g *cubeGame) Draw(fb *engine.FrameBuffer) {
-	w := fb.Width() - 1
-	h := fb.Height() - 1
-	fb.DrawBox(0, 0, w, h, 0)
+	fb.DrawBox(0, 0, fb.Width(), fb.Height(), 0)
 
 	g.cube.Draw(fb, g.cam, engine.Cell{Character: '#', Color: 208})
 	fb.DrawText(1, 1, fmt.Sprintf("%.0f fps", g.fps), 0)

@@ -48,9 +48,7 @@ func (bg *bounceGame) Update(dt float64, in *engine.Input) error {
 }
 
 func (bg *bounceGame) Draw(fb *engine.FrameBuffer) {
-	w := fb.Width() - 1
-	h := fb.Height() - 1
-	fb.DrawBox(0, 0, w, h, 0)
+	fb.DrawBox(0, 0, fb.Width(), fb.Height(), 0)
 
 	bg.layer.Draw(fb)
 }
