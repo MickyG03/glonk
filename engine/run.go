@@ -20,9 +20,9 @@ func Run(ctx context.Context, game Game, cfg Config) error {
 		return err
 	}
 
-	terminal := NewTerminal()
-	terminal.Setup()
-	defer terminal.Teardown()
+	tty := newTerminal()
+	tty.Setup()
+	defer tty.Teardown()
 
 	ticker := time.NewTicker(time.Second / time.Duration(cfg.FPS))
 	defer ticker.Stop()

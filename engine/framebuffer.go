@@ -62,7 +62,7 @@ func (fb *FrameBuffer) present() {
 	width := fb.width
 	height := fb.height
 
-	sb := NewSequenceBuilder()
+	sb := newSequenceBuilder()
 
 	for y := range height {
 		sb.MoveTo(y+1, 1)

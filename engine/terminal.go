@@ -1,21 +1,21 @@
 package engine
 
-type Terminal struct{}
+type terminal struct{}
 
-func NewTerminal() *Terminal {
-	return &Terminal{}
+func newTerminal() *terminal {
+	return &terminal{}
 }
 
-func (t *Terminal) Setup() {
-	sb := NewSequenceBuilder()
+func (t *terminal) Setup() {
+	sb := newSequenceBuilder()
 	sb.SwitchToAlternateScreen()
 	sb.EraseInDisplay(2)
 	sb.HideCursor()
 	sb.Execute()
 }
 
-func (t *Terminal) Teardown() {
-	sb := NewSequenceBuilder()
+func (t *terminal) Teardown() {
+	sb := newSequenceBuilder()
 	sb.ShowCursor()
 	sb.SwitchToMainScreen()
 	sb.Execute()
