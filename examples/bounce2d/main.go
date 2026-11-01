@@ -19,7 +19,10 @@ type bounceGame struct {
 	layer         *sprite.Layer
 }
 
-func (bg *bounceGame) Update(dt float64) {
+func (bg *bounceGame) Update(dt float64, in *engine.Input) error {
+	if in.Pressed('q') {
+		return engine.ErrQuit
+	}
 	bg.ball.X += bg.vx * dt
 	bg.ball.Y += bg.vy * dt
 
@@ -40,6 +43,8 @@ func (bg *bounceGame) Update(dt float64) {
 		bg.vy = math.Abs(bg.vy)
 		bg.ball.Y = 1
 	}
+
+	return nil
 }
 
 func (bg *bounceGame) Draw(fb *engine.FrameBuffer) {

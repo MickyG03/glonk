@@ -19,10 +19,14 @@ type cubeGame struct {
 	fps  float64
 }
 
-func (g *cubeGame) Update(dt float64) {
+func (g *cubeGame) Update(dt float64, in *engine.Input) error {
+	if in.Pressed('q') {
+		return engine.ErrQuit
+	}
 	g.cube.Yaw += 1.0 * dt
 	g.cube.Pitch += 0.6 * dt
 	g.fps = 0.9*g.fps + 0.1*(1/dt)
+	return nil
 }
 
 func (g *cubeGame) Draw(fb *engine.FrameBuffer) {

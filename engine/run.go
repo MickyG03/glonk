@@ -34,6 +34,8 @@ func Run(ctx context.Context, game Game, cfg Config) error {
 
 	last := time.Now()
 
+	in := newInput()
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -41,7 +43,14 @@ func Run(ctx context.Context, game Game, cfg Config) error {
 		case now := <-ticker.C:
 			dt := now.Sub(last).Seconds()
 			last = now
-			game.Update(dt)
+			in.beginFrame(now)
+			if err := game.Update(dt, in); err != nil {
+				if errors.Is(err, ErrQuit) {
+					return nil
+				}
+				return err
+			}
+			in.endFrame()
 			nfb.Clear()
 			game.Draw(nfb)
 			if err := nfb.present(tty.out); err != nil {
@@ -56,6 +65,7 @@ func Run(ctx context.Context, game Game, cfg Config) error {
 				if k == KeyCtrlC {
 					return nil
 				}
+				in.press(k, time.Now())
 			}
 		}
 	}
