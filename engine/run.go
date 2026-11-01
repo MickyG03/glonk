@@ -1,10 +1,17 @@
 package engine
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"os"
 	"time"
+)
+
+const (
+	// raw mode turns off the terminal's signal handling,
+	// so Ctrl + C arrives as this byte instead of SIGINT
+	ctrlC = 0x03
 )
 
 type Config struct {
@@ -21,12 +28,13 @@ func Run(ctx context.Context, game Game, cfg Config) error {
 		return err
 	}
 
-	tty := newTerminal(os.Stdout)
+	tty := newTerminal(os.Stdin, os.Stdout)
 	err = tty.Setup()
 	if err != nil {
 		return err
 	}
 	defer tty.Teardown()
+	input := readInput(os.Stdin)
 
 	ticker := time.NewTicker(time.Second / time.Duration(cfg.FPS))
 	defer ticker.Stop()
@@ -45,6 +53,14 @@ func Run(ctx context.Context, game Game, cfg Config) error {
 			game.Draw(nfb)
 			if err := nfb.present(tty.out); err != nil {
 				return err
+			}
+		case b, ok := <-input:
+			if !ok {
+				input = nil
+				continue
+			}
+			if bytes.IndexByte(b, ctrlC) >= 0 {
+				return nil
 			}
 		}
 	}
