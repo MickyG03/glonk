@@ -37,7 +37,7 @@ func (g *cubeGame) Draw(fb *engine.FrameBuffer) {
 	fb.Set(0, h, engine.Cell{Character: '└'})
 	fb.Set(w, h, engine.Cell{Character: '┘'})
 
-	g.cube.Draw(fb, g.cam, engine.Cell{Character: '#'})
+	g.cube.Draw(fb, g.cam, engine.Cell{Character: '#', Color: 208})
 	fb.DrawText(1, 1, fmt.Sprintf("%.0f fps", g.fps), 0)
 }
 
