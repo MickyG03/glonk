@@ -1,17 +1,10 @@
 package engine
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"os"
 	"time"
-)
-
-const (
-	// raw mode turns off the terminal's signal handling,
-	// so Ctrl + C arrives as this byte instead of SIGINT
-	ctrlC = 0x03
 )
 
 type Config struct {
@@ -59,8 +52,10 @@ func Run(ctx context.Context, game Game, cfg Config) error {
 				input = nil
 				continue
 			}
-			if bytes.IndexByte(b, ctrlC) >= 0 {
-				return nil
+			for _, k := range parseKeys(b) {
+				if k == KeyCtrlC {
+					return nil
+				}
 			}
 		}
 	}
