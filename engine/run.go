@@ -3,6 +3,7 @@ package engine
 import (
 	"context"
 	"errors"
+	"os"
 	"time"
 )
 
@@ -20,8 +21,11 @@ func Run(ctx context.Context, game Game, cfg Config) error {
 		return err
 	}
 
-	tty := newTerminal()
-	tty.Setup()
+	tty := newTerminal(os.Stdout)
+	err = tty.Setup()
+	if err != nil {
+		return err
+	}
 	defer tty.Teardown()
 
 	ticker := time.NewTicker(time.Second / time.Duration(cfg.FPS))
@@ -39,7 +43,9 @@ func Run(ctx context.Context, game Game, cfg Config) error {
 			game.Update(dt)
 			nfb.Clear()
 			game.Draw(nfb)
-			nfb.present()
+			if err := nfb.present(tty.out); err != nil {
+				return err
+			}
 		}
 	}
 }

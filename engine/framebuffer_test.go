@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"bytes"
 	"fmt"
 	"testing"
 )
@@ -196,5 +197,27 @@ func TestAt(t *testing.T) {
 	cell = nfb.At(-1, 0)
 	if cell != BlankCell {
 		t.Errorf("wanted cell=%v, got %v", BlankCell, cell)
+	}
+}
+
+func TestPresent(t *testing.T) {
+	fb, err := NewFrameBuffer(3, 2)
+	if err != nil {
+		t.Fatalf("unable to initialize frame buffer: %v", err)
+	}
+
+	fb.Set(0, 0, Cell{Character: 'a'})
+	fb.Set(2, 1, Cell{Character: 'b'})
+
+	buf := bytes.Buffer{}
+	err = fb.present(&buf)
+	if err != nil {
+		t.Fatalf("could not present: %v", err)
+	}
+
+	want := "\x1b[1;1Ha  \x1b[2;1H  b"
+
+	if buf.String() != want {
+		t.Errorf("wanted %q, got %q", want, buf.String())
 	}
 }

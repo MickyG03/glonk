@@ -1,6 +1,9 @@
 package engine
 
-import "errors"
+import (
+	"errors"
+	"io"
+)
 
 type FrameBuffer struct {
 	width, height int
@@ -58,7 +61,7 @@ func (fb *FrameBuffer) Height() int {
 	return fb.height
 }
 
-func (fb *FrameBuffer) present() {
+func (fb *FrameBuffer) present(w io.Writer) error {
 	width := fb.width
 	height := fb.height
 
@@ -71,5 +74,5 @@ func (fb *FrameBuffer) present() {
 		}
 	}
 
-	sb.Execute()
+	return sb.Flush(w)
 }

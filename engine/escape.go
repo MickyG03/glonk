@@ -2,6 +2,7 @@ package engine
 
 import (
 	"fmt"
+	"io"
 	"strings"
 )
 
@@ -21,8 +22,9 @@ func newSequenceBuilder() *sequenceBuilder {
 	return &sequenceBuilder{}
 }
 
-func (sb *sequenceBuilder) Execute() {
-	fmt.Print(sb.sequence.String())
+func (sb *sequenceBuilder) Flush(w io.Writer) error {
+	_, err := io.WriteString(w, sb.sequence.String())
+	return err
 }
 
 func (sb *sequenceBuilder) Print(s string) {

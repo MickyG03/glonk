@@ -1,22 +1,28 @@
 package engine
 
-type terminal struct{}
+import "io"
 
-func newTerminal() *terminal {
-	return &terminal{}
+type terminal struct {
+	out io.Writer
 }
 
-func (t *terminal) Setup() {
+func newTerminal(out io.Writer) *terminal {
+	return &terminal{
+		out: out,
+	}
+}
+
+func (t *terminal) Setup() error {
 	sb := newSequenceBuilder()
 	sb.SwitchToAlternateScreen()
 	sb.EraseInDisplay(2)
 	sb.HideCursor()
-	sb.Execute()
+	return sb.Flush(t.out)
 }
 
-func (t *terminal) Teardown() {
+func (t *terminal) Teardown() error {
 	sb := newSequenceBuilder()
 	sb.ShowCursor()
 	sb.SwitchToMainScreen()
-	sb.Execute()
+	return sb.Flush(t.out)
 }
