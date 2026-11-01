@@ -42,3 +42,14 @@ func (c Camera) Project(p geometry.Vector3, w, h int) (x, y float64, ok bool) {
 
 	return sx, sy, true
 }
+
+// Forward returns the unit vector the camera faces, flat on the xz plane.
+// It is view-space +z rotated by Yaw, the inverse of Project's RotateY(-Yaw).
+func (c Camera) Forward() geometry.Vector3 {
+	return geometry.Vector3{X: 0, Y: 0, Z: 1}.RotateY(c.Yaw)
+}
+
+// Right returns the unit vector to the camera's right, flat on the xz plane.
+func (c Camera) Right() geometry.Vector3 {
+	return geometry.Vector3{X: 1, Y: 0, Z: 0}.RotateY(c.Yaw)
+}

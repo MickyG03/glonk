@@ -58,3 +58,57 @@ func TestCameraProject(t *testing.T) {
 		})
 	}
 }
+
+func vecEquals(a, b geometry.Vector3) bool {
+	return floatEquals(a.X, b.X) && floatEquals(a.Y, b.Y) && floatEquals(a.Z, b.Z)
+}
+
+func TestCameraForwardRight(t *testing.T) {
+	tests := []struct {
+		name           string
+		yaw            float64
+		forward, right geometry.Vector3
+	}{
+		{"yaw 0", 0, geometry.Vector3{Z: 1}, geometry.Vector3{X: 1}},
+		{"yaw quarter turn", math.Pi / 2, geometry.Vector3{X: 1}, geometry.Vector3{Z: -1}},
+		{"yaw half turn", math.Pi, geometry.Vector3{Z: -1}, geometry.Vector3{X: -1}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cam := Camera{Yaw: tt.yaw}
+
+			if got := cam.Forward(); !vecEquals(got, tt.forward) {
+				t.Errorf("wanted Forward()=%v, got %v", tt.forward, got)
+			}
+			if got := cam.Right(); !vecEquals(got, tt.right) {
+				t.Errorf("wanted Right()=%v, got %v", tt.right, got)
+			}
+		})
+	}
+}
+
+// Forward and Right must agree with Project, or WASD moves the wrong way.
+func TestCameraForwardRightMatchProject(t *testing.T) {
+	const w, h = 80, 24
+
+	for _, yaw := range []float64{0, 0.7, math.Pi / 2, 2.5, -1.2} {
+		cam := Camera{
+			Position: geometry.Vector3{X: 3, Y: 1, Z: -2},
+			Yaw:      yaw,
+			FOV:      math.Pi / 2,
+			Near:     0.1,
+		}
+		ahead := cam.Position.Add(cam.Forward().Scale(5))
+
+		x, y, ok := cam.Project(ahead, w, h)
+		if !ok || !floatEquals(x, w/2) || !floatEquals(y, h/2) {
+			t.Errorf("yaw %v: wanted point ahead at center (%v,%v,true), got (%v,%v,%v)", yaw, w/2, h/2, x, y, ok)
+		}
+
+		x, _, ok = cam.Project(ahead.Add(cam.Right()), w, h)
+		if !ok || x <= w/2 {
+			t.Errorf("yaw %v: wanted point to the right at x>%v, got x=%v ok=%v", yaw, w/2, x, ok)
+		}
+	}
+}
