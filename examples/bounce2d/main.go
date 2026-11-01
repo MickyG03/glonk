@@ -45,14 +45,7 @@ func (bg *bounceGame) Update(dt float64) {
 func (bg *bounceGame) Draw(fb *engine.FrameBuffer) {
 	w := fb.Width() - 1
 	h := fb.Height() - 1
-	fb.DrawLine(0, 0, w, 0, engine.Cell{Character: '─'})
-	fb.DrawLine(0, h, w, h, engine.Cell{Character: '─'})
-	fb.DrawLine(0, 0, 0, h, engine.Cell{Character: '│'})
-	fb.DrawLine(w, 0, w, h, engine.Cell{Character: '│'})
-	fb.Set(0, 0, engine.Cell{Character: '┌'})
-	fb.Set(w, 0, engine.Cell{Character: '┐'})
-	fb.Set(0, h, engine.Cell{Character: '└'})
-	fb.Set(w, h, engine.Cell{Character: '┘'})
+	fb.DrawBox(0, 0, w, h, 0)
 
 	bg.layer.Draw(fb)
 }

@@ -134,3 +134,80 @@ func TestDrawText(t *testing.T) {
 		})
 	}
 }
+
+func assertRows(t *testing.T, fb *FrameBuffer, rows []string, color uint8) {
+	t.Helper()
+
+	if len(rows) != fb.Height() {
+		t.Fatalf("wanted len(rows)=%v, got %v", fb.Height(), len(rows))
+	}
+
+	for y := range len(rows) {
+		runes := []rune(rows[y])
+
+		if len(runes) != fb.Width() {
+			t.Fatalf("wanted len(runes)=%v, got %v", fb.Width(), len(runes))
+		}
+
+		for x := range runes {
+			r := runes[x]
+			got := fb.At(x, y)
+			if r == ' ' && got != BlankCell {
+				t.Errorf("wanted %v at (%d,%d), got %v", BlankCell, x, y, got)
+			}
+			if r != ' ' {
+				if r != got.Character {
+					t.Errorf("wanted %v at (%d,%d), got %v", r, x, y, got.Character)
+				}
+
+				if color != got.Color {
+					t.Errorf("wanted %v at (%d,%d), got %v", color, x, y, got.Color)
+				}
+			}
+		}
+	}
+}
+
+func TestDrawBox(t *testing.T) {
+	var tests = []struct {
+		name       string
+		color      uint8
+		bw, bh     int
+		x, y, w, h int
+		want       []string
+	}{
+		{
+			"fills buffer", 0, 4, 3, 0, 0, 4, 3,
+			[]string{"┌──┐", "│  │", "└──┘"},
+		},
+		{
+			"offset, not square", 5, 6, 5, 1, 1, 4, 3,
+			[]string{"      ", " ┌──┐ ", " │  │ ", " └──┘ ", "      "},
+		},
+		{
+			"too small", 0, 3, 3, 0, 0, 1, 3,
+			[]string{"   ", "   ", "   "},
+		},
+		{
+			"clipped", 0, 3, 3, -1, -1, 3, 3,
+			[]string{" │ ", "─┘ ", "   "},
+		},
+		{
+			"too short", 0, 3, 3, 0, 0, 3, 1,
+			[]string{"   ", "   ", "   "},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			nfb, err := NewFrameBuffer(tt.bw, tt.bh)
+			if err != nil {
+				t.Fatalf("failed to initialize framebuffer: %v", err)
+			}
+
+			nfb.DrawBox(tt.x, tt.y, tt.w, tt.h, tt.color)
+
+			assertRows(t, nfb, tt.want, tt.color)
+		})
+	}
+}

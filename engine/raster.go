@@ -55,3 +55,22 @@ func (fb *FrameBuffer) DrawText(x, y int, text string, color uint8) {
 		col++
 	}
 }
+
+// DrawBox draws a w x h border at (x, y);
+// boxes smaller than 2x2 draw nothing
+func (fb *FrameBuffer) DrawBox(x, y, w, h int, color uint8) {
+	if w < 2 || h < 2 {
+		return
+	}
+	x1 := x + w - 1
+	y1 := y + h - 1
+
+	fb.DrawLine(x, y, x1, y, Cell{Character: '─', Color: color})
+	fb.DrawLine(x, y1, x1, y1, Cell{Character: '─', Color: color})
+	fb.DrawLine(x, y, x, y1, Cell{Character: '│', Color: color})
+	fb.DrawLine(x1, y, x1, y1, Cell{Character: '│', Color: color})
+	fb.Set(x, y, Cell{Character: '┌', Color: color})
+	fb.Set(x1, y, Cell{Character: '┐', Color: color})
+	fb.Set(x, y1, Cell{Character: '└', Color: color})
+	fb.Set(x1, y1, Cell{Character: '┘', Color: color})
+}

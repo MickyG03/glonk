@@ -28,14 +28,7 @@ func (g *cubeGame) Update(dt float64) {
 func (g *cubeGame) Draw(fb *engine.FrameBuffer) {
 	w := fb.Width() - 1
 	h := fb.Height() - 1
-	fb.DrawLine(0, 0, w, 0, engine.Cell{Character: '─'})
-	fb.DrawLine(0, h, w, h, engine.Cell{Character: '─'})
-	fb.DrawLine(0, 0, 0, h, engine.Cell{Character: '│'})
-	fb.DrawLine(w, 0, w, h, engine.Cell{Character: '│'})
-	fb.Set(0, 0, engine.Cell{Character: '┌'})
-	fb.Set(w, 0, engine.Cell{Character: '┐'})
-	fb.Set(0, h, engine.Cell{Character: '└'})
-	fb.Set(w, h, engine.Cell{Character: '┘'})
+	fb.DrawBox(0, 0, w, h, 0)
 
 	g.cube.Draw(fb, g.cam, engine.Cell{Character: '#', Color: 208})
 	fb.DrawText(1, 1, fmt.Sprintf("%.0f fps", g.fps), 0)
