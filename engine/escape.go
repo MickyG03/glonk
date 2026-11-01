@@ -12,6 +12,7 @@ const (
 	showCursorSeq      = "\x1b[?25h"
 	alternateScreenSeq = "\x1b[?1049h"
 	mainScreenSeq      = "\x1b[?1049l"
+	resetSeq           = "\x1b[0m"
 )
 
 type sequenceBuilder struct {
@@ -53,4 +54,12 @@ func (sb *sequenceBuilder) HideCursor() {
 
 func (sb *sequenceBuilder) ShowCursor() {
 	sb.Print(showCursorSeq)
+}
+
+func (sb *sequenceBuilder) SetForeground(n uint8) {
+	fmt.Fprintf(&sb.sequence, escapeSeq+"38;5;%dm", n)
+}
+
+func (sb *sequenceBuilder) ResetStyle() {
+	sb.Print(resetSeq)
 }

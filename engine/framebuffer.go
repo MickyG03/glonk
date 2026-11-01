@@ -69,8 +69,24 @@ func (fb *FrameBuffer) present(w io.Writer) error {
 
 	for y := range height {
 		sb.MoveTo(y+1, 1)
+		cur := uint8(0)
 		for x := range width {
-			sb.Print(string(fb.frame[y*width+x].Character))
+			cell := fb.frame[y*width+x]
+
+			if cell.Color != cur {
+				if cell.Color == 0 {
+					sb.ResetStyle()
+				} else {
+					sb.SetForeground(cell.Color)
+				}
+				cur = cell.Color
+			}
+
+			sb.Print(string(cell.Character))
+		}
+
+		if cur != 0 {
+			sb.ResetStyle()
 		}
 	}
 

@@ -2,7 +2,11 @@ package engine
 
 type Cell struct {
 	Character rune
-	Color     uint8
+
+	// 0 means terminal default
+	// 1-255 are the palette indices.
+	// Use 16 for black.
+	Color uint8
 }
 
 var BlankCell = Cell{

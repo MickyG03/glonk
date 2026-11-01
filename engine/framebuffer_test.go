@@ -221,3 +221,52 @@ func TestPresent(t *testing.T) {
 		t.Errorf("wanted %q, got %q", want, buf.String())
 	}
 }
+
+func TestPresentColor(t *testing.T) {
+	tests := []struct {
+		name string
+		rows [][]Cell
+		want string
+	}{
+		{
+			"same color across",
+			[][]Cell{{{Character: 'a', Color: 1}, {Character: 'b', Color: 1}, {Character: 'c', Color: 0}}},
+			"\x1b[1;1H\x1b[38;5;1mab\x1b[0mc",
+		},
+		{
+			"color changes",
+			[][]Cell{{{Character: 'a', Color: 1}, {Character: 'b', Color: 2}}},
+			"\x1b[1;1H\x1b[38;5;1ma\x1b[38;5;2mb\x1b[0m",
+		},
+		{
+			"row ends colored",
+			[][]Cell{{{Character: 'a', Color: 2}}, {{Character: 'b', Color: 2}}},
+			"\x1b[1;1H\x1b[38;5;2ma\x1b[0m\x1b[2;1H\x1b[38;5;2mb\x1b[0m",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fb, err := NewFrameBuffer(len(tt.rows[0]), len(tt.rows))
+			if err != nil {
+				t.Fatalf("unable to initialize frame buffer: %v", err)
+			}
+
+			for y := range len(tt.rows) {
+				for x := range len(tt.rows[0]) {
+					fb.Set(x, y, tt.rows[y][x])
+				}
+			}
+
+			buf := bytes.Buffer{}
+			err = fb.present(&buf)
+			if err != nil {
+				t.Fatalf("could not present: %v", err)
+			}
+
+			if buf.String() != tt.want {
+				t.Errorf("wanted %q, got %q", tt.want, buf.String())
+			}
+		})
+	}
+}
