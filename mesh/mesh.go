@@ -25,6 +25,17 @@ func corner(i, bit int, size float64) float64 {
 	return size / 2
 }
 
+// clipNear returns where the segment from out to in crosses z = near.
+// out must be behind the plane (Z < near) and in on or in front of it,
+// so the divisor is never zero.
+func clipNear(out, in geometry.Vector3, near float64) geometry.Vector3 {
+	t := (near - out.Z) / (in.Z - out.Z)
+	p := out.Lerp(in, t)
+	// Lerp rounding can leave Z a hair under near, which projectView does not tolerate.
+	p.Z = near
+	return p
+}
+
 // Cube returns a cube with edges of length
 // size, centered on the origin.
 func Cube(size float64) Mesh {
@@ -51,29 +62,36 @@ func Cube(size float64) Mesh {
 	return Mesh{Vertices: vertices, Edges: edges}
 }
 
-type projection struct {
-	x, y float64
-	ok   bool
-}
-
 // Draw renders the mesh's edges as lines.
-// Edges with an endpoint behind the camera
-// or inside the near plane are skipped.
+// Edges crossing the near plane are cut where they cross it;
+// edges entirely behind it are skipped.
+//
+// shortcut: a cut endpoint can project far off screen and DrawLine still steps
+// every cell to it, so a tiny Near gets slow; clip lines to the screen in DrawLine to upgrade.
 func (m Mesh) Draw(fb *engine.FrameBuffer, cam Camera, cell engine.Cell) {
-	projected := make([]projection, len(m.Vertices))
-
+	view := make([]geometry.Vector3, len(m.Vertices))
 	for i, v := range m.Vertices {
 		world := v.RotateX(m.Pitch).RotateY(m.Yaw).Add(m.Position)
-		x, y, ok := cam.Project(world, fb.Width(), fb.Height())
-		projected[i] = projection{x, y, ok}
+		view[i] = cam.toView(world)
 	}
 
 	for _, e := range m.Edges {
-		a := projected[e[0]]
-		b := projected[e[1]]
-		if !a.ok || !b.ok {
+		a, b := view[e[0]], view[e[1]]
+		aIn := a.Z >= cam.Near
+		bIn := b.Z >= cam.Near
+
+		if !aIn && !bIn {
 			continue
 		}
-		fb.DrawLine(int(math.Floor(a.x)), int(math.Floor(a.y)), int(math.Floor(b.x)), int(math.Floor(b.y)), cell)
+		if !aIn {
+			a = clipNear(a, b, cam.Near)
+		}
+		if !bIn {
+			b = clipNear(b, a, cam.Near)
+		}
+
+		ax, ay := cam.projectView(a, fb.Width(), fb.Height())
+		bx, by := cam.projectView(b, fb.Width(), fb.Height())
+		fb.DrawLine(int(math.Floor(ax)), int(math.Floor(ay)), int(math.Floor(bx)), int(math.Floor(by)), cell)
 	}
 }
