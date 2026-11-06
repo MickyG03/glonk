@@ -75,9 +75,7 @@ func main() {
 	}
 
 	err := engine.Run(ctx, game, engine.Config{
-		Width:  80,
-		Height: 24,
-		FPS:    30,
+		FPS: 30,
 	})
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
