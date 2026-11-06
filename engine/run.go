@@ -29,6 +29,10 @@ func resolveSize(cfgW, cfgH, termW, termH int) (int, int) {
 	return resW, resH
 }
 
+// Run takes over the terminal and calls game.Update and game.Draw cfg.FPS times
+// a second. It returns nil when ctx is cancelled, Update returns ErrQuit, or the
+// user presses Ctrl-C; any other Update error is returned. The terminal is
+// restored on return, including when game code panics.
 func Run(ctx context.Context, game Game, cfg Config) error {
 	if cfg.FPS <= 0 {
 		return errors.New("invalid fps value given")

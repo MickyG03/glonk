@@ -5,6 +5,8 @@ import (
 	"io"
 )
 
+// FrameBuffer is a width x height grid of Cells that a game draws into each
+// frame; Run presents it to the terminal.
 type FrameBuffer struct {
 	width, height int
 	frame         []Cell
@@ -14,6 +16,7 @@ func (fb *FrameBuffer) inBounds(x, y int) bool {
 	return x >= 0 && x < fb.width && y >= 0 && y < fb.height
 }
 
+// NewFrameBuffer returns a blank FrameBuffer of w x h cells. Both must be positive.
 func NewFrameBuffer(w, h int) (*FrameBuffer, error) {
 	if w <= 0 || h <= 0 {
 		return nil, errors.New("width and height must be positive integers")
@@ -29,12 +32,14 @@ func NewFrameBuffer(w, h int) (*FrameBuffer, error) {
 	return fb, nil
 }
 
+// Clear resets every cell to BlankCell.
 func (fb *FrameBuffer) Clear() {
 	for i := range fb.frame {
 		fb.frame[i] = BlankCell
 	}
 }
 
+// Set stores cell at (x, y). Writes outside the buffer are ignored.
 func (fb *FrameBuffer) Set(x, y int, cell Cell) {
 	if !fb.inBounds(x, y) {
 		return
@@ -53,10 +58,12 @@ func (fb *FrameBuffer) At(x, y int) Cell {
 	return fb.frame[y*fb.width+x]
 }
 
+// Width returns the number of columns.
 func (fb *FrameBuffer) Width() int {
 	return fb.width
 }
 
+// Height returns the number of rows.
 func (fb *FrameBuffer) Height() int {
 	return fb.height
 }
