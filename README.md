@@ -24,7 +24,7 @@ Requires Go 1.27.2 or newer (see `go.mod`).
 
 ```
 make run                              # bounce2d: a ball in a box (q quits)
-make run EXAMPLE=./examples/cube3d    # cube3d: walk around a spinning cube
+make run EXAMPLE=./examples/cube3d    # cube3d: walk around a floor with six cubes
 ```
 
 cube3d controls:

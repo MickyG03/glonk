@@ -13,10 +13,29 @@ import (
 	"github.com/kyrokohan/glonk/mesh"
 )
 
+const (
+	gridSize      = 40
+	gridDivisions = 20 // 2x2 floor cells, so a size-2 cube fills one
+	floorY        = -1.5
+)
+
+type object struct {
+	mesh  mesh.Mesh
+	color uint8
+}
+
 type cubeGame struct {
-	cam  mesh.Camera
-	cube mesh.Mesh
-	fps  float64
+	cam   mesh.Camera
+	floor mesh.Mesh
+	cubes []object
+	fps   float64
+}
+
+// newCube returns a cube of the given size resting on the floor at (x, z).
+func newCube(size, x, z float64, color uint8) object {
+	m := mesh.Cube(size)
+	m.Position = geometry.Vector3{X: x, Y: floorY + size/2, Z: z}
+	return object{mesh: m, color: color}
 }
 
 func (g *cubeGame) Update(dt float64, in *engine.Input) error {
@@ -50,28 +69,42 @@ func (g *cubeGame) Update(dt float64, in *engine.Input) error {
 		g.cam.Yaw -= turnSpeed * dt
 	}
 
-	g.cube.Yaw += 1.0 * dt
-	g.cube.Pitch += 0.6 * dt
 	g.fps = 0.9*g.fps + 0.1*(1/dt)
 	return nil
 }
 
 func (g *cubeGame) Draw(fb *engine.FrameBuffer) {
-	g.cube.Draw(fb, g.cam, engine.Cell{Character: '#', Color: 208})
+	// No depth buffer yet, so the last thing drawn wins a cell: floor first, then cubes.
+	g.floor.Draw(fb, g.cam, engine.Cell{Character: '.', Color: 240})
+	for _, o := range g.cubes {
+		o.mesh.Draw(fb, g.cam, engine.Cell{Character: '#', Color: o.color})
+	}
 
 	// HUD after the 3D pass so the scene never draws over it.
 	fb.DrawBox(0, 0, fb.Width(), fb.Height(), 0)
 	fb.DrawText(1, 1, fmt.Sprintf("%.0f fps", g.fps), 0)
+	fb.DrawText(1, fb.Height()-2, "WASD move  QE turn  Esc quit", 0)
 }
 
 func main() {
 	ctx, ctxCancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer ctxCancel()
 
+	floor := mesh.Grid(gridSize, gridDivisions)
+	floor.Position.Y = floorY
+
 	game := &cubeGame{
-		cam:  mesh.Camera{Position: geometry.Vector3{Z: -4}, FOV: math.Pi / 2, Near: 0.1},
-		cube: mesh.Cube(2),
-		fps:  30,
+		cam:   mesh.Camera{Position: geometry.Vector3{Z: -4}, FOV: math.Pi / 2, Near: 0.1},
+		floor: floor,
+		cubes: []object{
+			newCube(2, 0, 6, 208),
+			newCube(1, -4, 4, 39),
+			newCube(3, 6, 10, 118),
+			newCube(1.5, -8, 12, 201),
+			newCube(2, 10, -4, 39),
+			newCube(1, -6, -8, 118),
+		},
+		fps: 30,
 	}
 
 	err := engine.Run(ctx, game, engine.Config{
