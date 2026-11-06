@@ -5,10 +5,10 @@ help:
 	@echo "Available targets:"
 	@echo "  fmt     - Format Go code"
 	@echo "  test    - Run tests"
-	@echo "  vet     - Vetting..."
-	@echo "  run     - Run an example"
-	@echo "  build   - Build the application"
-	@echo "  check   - Run all checks"
+	@echo "  vet     - Check for suspicious code with go vet"
+	@echo "  run     - Run an example (default bounce2d; EXAMPLE=./examples/cube3d)"
+	@echo "  build   - Compile every package"
+	@echo "  check   - Run tests and vet"
 
 fmt:
 	@echo "Formatting..."
