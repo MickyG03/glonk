@@ -1,0 +1,15 @@
+# macOS
+.DS_Store
+
+# example binaries from `go build` in the repo root; anchored so
+# examples/cube3d and examples/bounce2d stay tracked
+/bounce2d
+/cube3d
+
+# test and coverage output
+*.test
+*.out
+
+# editors
+.idea/
+.vscode/
