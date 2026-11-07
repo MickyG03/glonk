@@ -7,9 +7,9 @@ import (
 	"time"
 )
 
-// maxDT caps the time step Update sees, in seconds. After a suspend (Ctrl-Z)
-// or a long stall the real gap can be huge, and one giant step would fling
-// everything across the world.
+// maxDT caps the time step Update sees, in seconds. After a stall (the machine
+// sleeping, or the process stopped from another shell) the real gap can be
+// huge, and one giant step would fling everything across the world.
 const maxDT = 0.25
 
 // Config sets up Run. A Width or Height of 0 fills the terminal on that axis
