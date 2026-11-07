@@ -115,6 +115,34 @@ func (m Mesh) Draw(fb *engine.FrameBuffer, cam Camera, cell engine.Cell) {
 
 		ax, ay := cam.projectView(a, fb.Width(), fb.Height())
 		bx, by := cam.projectView(b, fb.Width(), fb.Height())
-		fb.DrawLine(int(math.Floor(ax)), int(math.Floor(ay)), int(math.Floor(bx)), int(math.Floor(by)), cell)
+		drawEdge(fb, ax, ay, bx, by, cell)
 	}
+}
+
+// farEdge is how far from the origin, in cells, a projected point can be before
+// drawEdge trims the edge to the screen. It is well inside the range DrawLine
+// handles exactly.
+const farEdge = 1e8
+
+// drawEdge draws the line between two projected points. A point almost on the
+// camera's plane projects absurdly far away, or to infinity; such an edge is cut
+// back to the screen first so that it keeps its direction instead of being bent by
+// DrawLine's coordinate limit. An edge with a non-finite end cannot be drawn.
+func drawEdge(fb *engine.FrameBuffer, ax, ay, bx, by float64, cell engine.Cell) {
+	for _, v := range [...]float64{ax, ay, bx, by} {
+		if math.IsNaN(v) || math.IsInf(v, 0) {
+			return
+		}
+	}
+
+	if math.Abs(ax) > farEdge || math.Abs(ay) > farEdge || math.Abs(bx) > farEdge || math.Abs(by) > farEdge {
+		var ok bool
+		// A cell of margin keeps the cut ends outside the visible area.
+		ax, ay, bx, by, ok = clipSegment(ax, ay, bx, by, -1, -1, float64(fb.Width()), float64(fb.Height()))
+		if !ok {
+			return
+		}
+	}
+
+	fb.DrawLine(int(math.Floor(ax)), int(math.Floor(ay)), int(math.Floor(bx)), int(math.Floor(by)), cell)
 }
