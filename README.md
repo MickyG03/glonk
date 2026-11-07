@@ -9,7 +9,7 @@ A terminal rendering engine for Go. Draw 2D, 3D, or both in the same frame, usin
 - **2D:** cells with 256-color, lines, boxes, text, and sprites.
 - **3D:** wireframe meshes through a perspective camera, with near-plane clipping.
 - **Mixed:** draw a 3D scene first, then a 2D HUD on top, into the same frame.
-- **Input:** held keys and one-shot presses, including arrows.
+- **Input:** held keys and one-shot presses, including arrows. Terminals with the [kitty keyboard protocol](https://sw.kovidgoyal.net/kitty/keyboard-protocol/) (Ghostty, kitty, WezTerm, foot, iTerm2, Alacritty) report real key releases, so you can hold several keys at once.
 - **Resizing:** the frame follows the terminal window.
 
 ## Install
@@ -95,7 +95,8 @@ func main() {
 
 Built to work in most terminals: it uses only the alternate screen, cursor movement, and 256-color escape codes. It is developed on macOS and tested mainly in Ghostty.
 
-- **Held keys are a timing guess.** Terminals report presses and repeats but never releases, so a key counts as held until about 150 ms pass without a repeat. Expect a short pause when you first hold a key.
+- **Without key releases, held keys are a timing guess.** Most terminals report presses and repeats but never releases, so a key counts as held until about 150 ms pass without a repeat, with a short pause when you first hold one. glonk detects the kitty keyboard protocol at startup and uses it where it exists; everywhere else this is what you get.
+- **Without key releases, only one key stays held at a time.** The OS repeats just the most recently pressed key, so holding W and then pressing E stops W and you cannot walk and turn together (Terminal.app, for one). Set `Config.LegacyKeys` to force this behavior if a terminal misbehaves with the protocol.
 - **Color is 256-color only.** `Cell.Color` 0 is the terminal default and 1 to 255 are palette indices.
 - **Box drawing needs a Unicode font.** `DrawBox` uses `┌─┐│└┘`.
 - **A fixed-size frame larger than the terminal garbles.** Leave `Width` and `Height` at 0 to fill the terminal.
@@ -104,7 +105,7 @@ Built to work in most terminals: it uses only the alternate screen, cursor movem
 
 ## Planned
 
-Ideas, not promises: filled and shaded 3D surfaces, loading OBJ models, finer-than-a-cell rendering with half blocks, and real key-release events on terminals that support them.
+Ideas, not promises: filled and shaded 3D surfaces, loading OBJ models and finer-than-a-cell rendering with half blocks.
 
 ## License
 
