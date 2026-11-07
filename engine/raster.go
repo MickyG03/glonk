@@ -87,6 +87,15 @@ const triangleEps = 1e-9
 // each cell is drawn with SetDepth, so nearer surfaces win. Either winding works.
 // A triangle with no area, or with a non-positive or NaN corner depth, draws nothing.
 func (fb *FrameBuffer) FillTriangle(x0, y0, z0, x1, y1, z1, x2, y2, z2 float64, cell Cell) {
+	scanTriangle(fb.width, fb.height, x0, y0, z0, x1, y1, z1, x2, y2, z2, func(x, y int, z float64) {
+		fb.SetDepth(x, y, z, cell)
+	})
+}
+
+// scanTriangle walks the w x h grid and calls plot for every cell whose centre
+// lies inside the triangle, with the interpolated depth there. It does the
+// geometry for every kind of target; the caller decides what a cell holds.
+func scanTriangle(w, h int, x0, y0, z0, x1, y1, z1, x2, y2, z2 float64, plot func(x, y int, z float64)) {
 	if !(z0 > 0 && z1 > 0 && z2 > 0) {
 		return
 	}
@@ -100,7 +109,7 @@ func (fb *FrameBuffer) FillTriangle(x0, y0, z0, x1, y1, z1, x2, y2, z2 float64, 
 
 	// Clamp as floats before converting: corners can be astronomically far off
 	// screen, and a float that big has no valid int.
-	fw, fh := float64(fb.width), float64(fb.height)
+	fw, fh := float64(w), float64(h)
 	left := int(max(0, min(math.Floor(min(x0, x1, x2)), fw)))
 	right := int(max(-1, min(math.Ceil(max(x0, x1, x2)), fw-1)))
 	top := int(max(0, min(math.Floor(min(y0, y1, y2)), fh)))
@@ -120,7 +129,7 @@ func (fb *FrameBuffer) FillTriangle(x0, y0, z0, x1, y1, z1, x2, y2, z2 float64, 
 			// 1/z is the quantity that varies linearly across the screen, so
 			// interpolate it and invert; interpolating z itself would skew depth.
 			invZ := w0/z0 + w1/z1 + w2/z2
-			fb.SetDepth(x, y, 1/invZ, cell)
+			plot(x, y, 1/invZ)
 		}
 	}
 }
