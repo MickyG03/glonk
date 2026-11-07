@@ -7,7 +7,7 @@ help:
 	@echo "  test    - Run tests with the race detector (RACE= to turn it off)"
 	@echo "  vet     - Check for suspicious code with go vet"
 	@echo "  fuzz    - Fuzz every fuzz test for FUZZTIME each (default 10s)"
-	@echo "  run     - Run an example (default bounce2d; EXAMPLE=./examples/cube3d)"
+	@echo "  run     - Run an example (default bounce2d; EXAMPLE=./examples/cube3d; ARGS= passes arguments)"
 	@echo "  build   - Compile every package"
 	@echo "  check   - Run tests and vet"
 
@@ -37,9 +37,10 @@ fuzz:
 	done
 
 EXAMPLE ?= ./examples/bounce2d
+ARGS ?=
 run:
 	@echo "Running..."
-	go run $(EXAMPLE)
+	go run $(EXAMPLE) $(ARGS)
 
 build:
 	@echo "Building..."

@@ -8,6 +8,7 @@ A terminal rendering engine for Go. Draw 2D, 3D, or both in the same frame, usin
 
 - **2D:** cells with 256-color, lines, boxes, text, and sprites.
 - **3D:** wireframe or solid meshes through a perspective camera, with near-plane clipping. Solid meshes are flat-shaded by a directional light into an ASCII brightness ramp, hide each other by depth, and skip faces turned away.
+- **Models:** load OBJ files from any `io.Reader` (a file, `//go:embed`, a download), center and scale them, and draw them wireframe or shaded.
 - **Half blocks:** a pixel `Canvas` with two square-ish pixels per cell, drawn with `▀` and a background color, for twice the vertical detail and shading by color instead of by character.
 - **Mixed:** draw a 3D scene first, then a 2D HUD on top, into the same frame.
 - **Input:** held keys and one-shot presses, including arrows. Terminals with the [kitty keyboard protocol](https://sw.kovidgoyal.net/kitty/keyboard-protocol/) (Ghostty, kitty, WezTerm, foot, iTerm2, Alacritty) report real key releases, so you can hold several keys at once.
@@ -24,8 +25,10 @@ Requires Go 1.27.2 or newer (see `go.mod`).
 ## Run the examples
 
 ```
-make run                              # bounce2d: a ball in a box (Esc quits)
-make run EXAMPLE=./examples/cube3d    # cube3d: walk around a floor with six shaded cubes
+make run                                      # bounce2d: a ball in a box (Esc quits)
+make run EXAMPLE=./examples/cube3d            # cube3d: walk around a floor with six shaded cubes
+make run EXAMPLE=./examples/viewer            # viewer: look at the bundled OBJ models
+make run EXAMPLE=./examples/viewer ARGS=my.obj  # viewer: look at your own model
 ```
 
 cube3d controls:
@@ -40,7 +43,45 @@ cube3d controls:
 | B | in half-block mode, switch between exact and solid edges |
 | Esc | quit |
 
+viewer controls:
+
+| Keys | Action |
+|---|---|
+| Arrows | orbit the model |
+| + / - or W / S | zoom |
+| R | spin on and off |
+| N | next model |
+| V | wireframe or solid |
+| M, B | character shading or half-block pixels; exact or solid pixel edges |
+| D | draw both sides of every face (for models that look inside out) |
+| C | change color |
+| Esc | quit |
+
 Ctrl-C quits any program built on glonk.
+
+## Loading models
+
+```go
+//go:embed ship.obj
+var shipOBJ []byte
+
+ship, err := mesh.LoadOBJ(bytes.NewReader(shipOBJ))
+if err != nil {
+	log.Fatal(err) // names the line that went wrong, e.g. "obj line 12: bad number"
+}
+ship = ship.Fit(2) // centered on the origin, longest side 2
+ship.Position = geometry.Vector3{Z: 6}
+
+ship.DrawShaded(fb, cam, light, 208) // or ship.Draw for a wireframe
+```
+
+`LoadOBJ` reads any `io.Reader`, so a file, an embedded asset or a download all work.
+
+- **Understood:** vertices (`v`), faces (`f`, with or without texture and normal indices, any number of corners, negative indices) and lines (`l`). Faces with more than three corners are split into triangles for shading, and the wireframe shows the original polygons.
+- **Skipped:** materials and colors, texture coordinates, normals, groups and curves. Everything in the file becomes one mesh, flat shaded, in the color you pass to `DrawShaded`.
+- **Orientation:** OBJ files are right-handed and look down -Z; glonk looks down +Z. `LoadOBJ` flips Z and reverses each face so a model keeps its outside and is not mirrored left to right. Its front faces a camera placed on the -Z side.
+- **Inside out or invisible?** Some exporters wind faces the other way. Set `Mesh.DoubleSided = true` to draw both sides.
+- **Untrusted files are fine:** malformed input returns an error, never a panic or a hang.
 
 ## Quickstart
 
@@ -92,7 +133,7 @@ func main() {
 |---|---|
 | `engine` | The loop, `FrameBuffer`, pixel `Canvas`, drawing helpers, keyboard `Input` |
 | `geometry` | 2D and 3D vector math |
-| `mesh` | 3D meshes (wireframe and shaded), lights, and the perspective `Camera` |
+| `mesh` | 3D meshes (wireframe and shaded), OBJ loading, lights, and the perspective `Camera` |
 | `sprite` | Single-cell sprites drawn in layers |
 
 ## Compatibility and limits
@@ -110,7 +151,7 @@ Built to work in most terminals: it uses only the alternate screen, cursor movem
 
 ## Planned
 
-Ideas, not promises: loading OBJ models.
+Ideas, not promises: colors from model material files, smooth shading from model normals, drawing images on the canvas.
 
 ## Development
 

@@ -1,0 +1,246 @@
+// Command viewer shows OBJ models in the terminal.
+//
+//	go run ./examples/viewer                 browse the bundled samples
+//	go run ./examples/viewer model.obj ...   view your own models
+package main
+
+import (
+	"context"
+	"embed"
+	"fmt"
+	"io/fs"
+	"os"
+	"os/signal"
+	"path"
+	"path/filepath"
+	"syscall"
+
+	"github.com/kyrokohan/glonk/engine"
+	"github.com/kyrokohan/glonk/geometry"
+	"github.com/kyrokohan/glonk/mesh"
+)
+
+//go:embed models/*.obj
+var samples embed.FS
+
+// modelSize is the length of a model's longest side after Fit.
+const modelSize = 2
+
+// palette is the colors C cycles through.
+var palette = []uint8{208, 39, 118, 201, 226, 255}
+
+// sun lights the model from above, to one side and slightly ahead.
+var sun = mesh.Light{Direction: geometry.Vector3{X: 0.4, Y: -1, Z: 0.6}, Ambient: 0.2}
+
+type model struct {
+	name  string
+	mesh  mesh.Mesh
+	verts int
+	faces int
+}
+
+// loadModel reads one OBJ file from fsys and fits it to modelSize.
+func loadModel(fsys fs.FS, name string) (model, error) {
+	f, err := fsys.Open(name)
+	if err != nil {
+		return model{}, err
+	}
+	defer f.Close()
+
+	m, err := mesh.LoadOBJ(f)
+	if err != nil {
+		return model{}, err
+	}
+	return model{name: path.Base(name), mesh: m.Fit(modelSize), verts: len(m.Vertices), faces: len(m.Faces)}, nil
+}
+
+// loadModels loads the files named in args, or the bundled samples if there are none.
+func loadModels(args []string) ([]model, error) {
+	var models []model
+
+	if len(args) == 0 {
+		entries, err := fs.ReadDir(samples, "models")
+		if err != nil {
+			return nil, err
+		}
+		for _, e := range entries {
+			m, err := loadModel(samples, path.Join("models", e.Name()))
+			if err != nil {
+				return nil, fmt.Errorf("%s: %w", e.Name(), err)
+			}
+			models = append(models, m)
+		}
+		return models, nil
+	}
+
+	for _, arg := range args {
+		abs, err := filepath.Abs(arg)
+		if err != nil {
+			return nil, fmt.Errorf("%s: %w", arg, err)
+		}
+		m, err := loadModel(os.DirFS(filepath.Dir(abs)), filepath.Base(abs))
+		if err != nil {
+			return nil, fmt.Errorf("%s: %w", arg, err)
+		}
+		models = append(models, m)
+	}
+	return models, nil
+}
+
+type viewer struct {
+	models  []model
+	current int
+
+	// The camera orbits the origin, where the model sits: yaw turns it around,
+	// pitch raises it (positive pitch looks up, so it is negative to look down on
+	// the model), and dist is how far back it stays.
+	yaw, pitch, dist float64
+
+	spin        bool
+	wire        bool
+	halfBlocks  bool
+	doubleSided bool
+	color       int
+	fps         float64
+
+	// B flips the edge style of half-block pixels; see cube3d for the details.
+	edgesPending bool
+	edgesChosen  bool
+	edgesSolid   bool
+}
+
+func newViewer(models []model) *viewer {
+	return &viewer{models: models, pitch: -0.5, dist: 5, spin: true, fps: 30}
+}
+
+func (v *viewer) Update(dt float64, in *engine.Input) error {
+	if in.Pressed(engine.KeyEscape) {
+		return engine.ErrQuit
+	}
+
+	// Shift changes the letter in terminals that cannot report keys exactly.
+	pressed := func(lower, upper rune) bool { return in.Pressed(engine.Key(lower)) || in.Pressed(engine.Key(upper)) }
+	if pressed('n', 'N') {
+		v.current = (v.current + 1) % len(v.models)
+	}
+	if pressed('r', 'R') {
+		v.spin = !v.spin
+	}
+	if pressed('v', 'V') {
+		v.wire = !v.wire
+	}
+	if pressed('m', 'M') {
+		v.halfBlocks = !v.halfBlocks
+	}
+	if pressed('d', 'D') {
+		v.doubleSided = !v.doubleSided
+	}
+	if pressed('c', 'C') {
+		v.color = (v.color + 1) % len(palette)
+	}
+	if v.halfBlocks && !v.wire && pressed('b', 'B') {
+		v.edgesPending = true
+	}
+
+	const (
+		turnSpeed = 1.5
+		spinSpeed = 0.6
+		zoomSpeed = 3.0
+		maxPitch  = 1.4
+	)
+
+	if in.IsDown(engine.KeyLeft) {
+		v.yaw -= turnSpeed * dt
+	}
+	if in.IsDown(engine.KeyRight) {
+		v.yaw += turnSpeed * dt
+	}
+	// Up lifts the camera over the model, which means looking down: negative pitch.
+	if in.IsDown(engine.KeyUp) {
+		v.pitch -= turnSpeed * dt
+	}
+	if in.IsDown(engine.KeyDown) {
+		v.pitch += turnSpeed * dt
+	}
+	v.pitch = max(-maxPitch, min(maxPitch, v.pitch))
+	if v.spin {
+		v.yaw += spinSpeed * dt
+	}
+
+	if in.IsDown('+') || in.IsDown('=') || in.IsDown('w') || in.IsDown('W') {
+		v.dist -= zoomSpeed * dt
+	}
+	if in.IsDown('-') || in.IsDown('_') || in.IsDown('s') || in.IsDown('S') {
+		v.dist += zoomSpeed * dt
+	}
+	v.dist = max(2.2, min(14, v.dist))
+
+	v.fps = 0.9*v.fps + 0.1*(1/dt)
+	return nil
+}
+
+// camera returns the camera for the current orbit: it looks at the origin from dist away.
+func (v *viewer) camera() mesh.Camera {
+	cam := mesh.Camera{Yaw: v.yaw, Pitch: v.pitch, FOV: 1.2, Near: 0.1}
+	cam.Position = cam.Look().Scale(-v.dist)
+	return cam
+}
+
+func (v *viewer) Draw(fb *engine.FrameBuffer) {
+	cam := v.camera()
+	m := v.models[v.current].mesh
+	m.DoubleSided = v.doubleSided
+	color := palette[v.color]
+
+	mode := "characters"
+	switch {
+	case v.wire:
+		mode = "wireframe"
+		m.Draw(fb, cam, engine.Cell{Character: '#', Color: color})
+	case v.halfBlocks:
+		canvas := fb.Canvas()
+		switch {
+		case v.edgesPending:
+			canvas.Seamless = !canvas.Seamless
+			v.edgesSolid, v.edgesChosen, v.edgesPending = canvas.Seamless, true, false
+		case v.edgesChosen:
+			canvas.Seamless = v.edgesSolid
+		}
+		mode = "half-blocks, exact edges"
+		if canvas.Seamless {
+			mode = "half-blocks, solid edges"
+		}
+		m.DrawShadedPixels(canvas, cam, sun, color)
+		canvas.Compose()
+	default:
+		m.DrawShaded(fb, cam, sun, color)
+	}
+
+	if v.doubleSided {
+		mode += ", two-sided"
+	}
+
+	cur := v.models[v.current]
+	fb.DrawBox(0, 0, fb.Width(), fb.Height(), 0)
+	fb.DrawText(1, 1, fmt.Sprintf("%s (%d/%d)  %d vertices, %d faces", cur.name, v.current+1, len(v.models), cur.verts, cur.faces), 0)
+	fb.DrawText(1, 2, fmt.Sprintf("%.0f fps  %s", v.fps, mode), 0)
+	fb.DrawText(1, fb.Height()-3, "arrows orbit  +/- zoom  R spin  N next model  Esc quit", 0)
+	fb.DrawText(1, fb.Height()-2, "V wire/solid  M blocks  B edges  D two-sided  C color", 0)
+}
+
+func main() {
+	models, err := loadModels(os.Args[1:])
+	if err != nil {
+		// Report before the terminal is touched, so the message stays readable.
+		fmt.Fprintln(os.Stderr, "viewer:", err)
+		os.Exit(1)
+	}
+
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer cancel()
+
+	if err := engine.Run(ctx, newViewer(models), engine.Config{FPS: 30}); err != nil {
+		fmt.Fprintln(os.Stderr, "viewer:", err)
+		os.Exit(1)
+	}
+}
