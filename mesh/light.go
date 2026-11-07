@@ -67,13 +67,17 @@ func (m Mesh) eachShadedTriangle(cam Camera, light Light, w, h int, fn func(corn
 	for _, f := range m.Faces {
 		v0, v1, v2 := view[f[0]], view[f[1]], view[f[2]]
 
-		if !frontFacing(v1.Sub(v0).Cross(v2.Sub(v0)), v0) {
+		front := frontFacing(v1.Sub(v0).Cross(v2.Sub(v0)), v0)
+		if !front && !m.DoubleSided {
 			continue
 		}
 
 		// Lighting needs the normal in world space, where the light lives.
 		w0 := world[f[0]]
 		normal := world[f[1]].Sub(w0).Cross(world[f[2]].Sub(w0)).Normalize()
+		if !front {
+			normal = normal.Neg() // light the side the camera is looking at
+		}
 		intensity := light.intensity(normal)
 
 		for _, t := range clipTriangleNear(v0, v1, v2, cam.Near) {
@@ -89,8 +93,9 @@ func (m Mesh) eachShadedTriangle(cam Camera, light Light, w, h int, fn func(corn
 
 // DrawShaded renders the mesh's faces as solid triangles, flat shaded by light
 // and drawn in color. Nearer surfaces hide farther ones, faces turned away from
-// the camera are skipped, and faces crossing the near plane are cut where they
-// cross it. A mesh without Faces draws nothing; use Draw for wireframes.
+// the camera are skipped (unless the mesh is DoubleSided), and faces crossing the
+// near plane are cut where they cross it. A mesh without Faces draws nothing; use
+// Draw for wireframes.
 //
 // Brightness is shown by the character: a ramp from dim to bright.
 func (m Mesh) DrawShaded(fb *engine.FrameBuffer, cam Camera, light Light, color uint8) {

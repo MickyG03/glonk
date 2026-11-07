@@ -21,6 +21,12 @@ type Mesh struct {
 	Position geometry.Vector3
 	Yaw      float64
 	Pitch    float64
+
+	// DoubleSided draws faces from behind as well as from the front, lit as the
+	// side the camera sees. Use it for models wound the wrong way round (they
+	// look inside out or vanish), and for open surfaces such as a flat leaf.
+	// It only affects shaded drawing, not wireframes.
+	DoubleSided bool
 }
 
 func corner(i, bit int, size float64) float64 {

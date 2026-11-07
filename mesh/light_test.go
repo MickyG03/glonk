@@ -771,3 +771,175 @@ func TestDrawWithPitchedCamera(t *testing.T) {
 		}
 	}
 }
+
+// ---- double sided ----
+
+// insideOut returns the cube with every face wound the other way round.
+func insideOut(m Mesh) Mesh {
+	out := m
+	out.Faces = make([][3]int, len(m.Faces))
+	for i, f := range m.Faces {
+		out.Faces[i] = [3]int{f[0], f[2], f[1]}
+	}
+	return out
+}
+
+func sameFrame(a, b *engine.FrameBuffer) bool {
+	for y := range a.Height() {
+		for x := range a.Width() {
+			if a.At(x, y) != b.At(x, y) {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+func samePixels(a, b *engine.Canvas) bool {
+	for y := range a.Height() {
+		for x := range a.Width() {
+			if a.At(x, y) != b.At(x, y) {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+func posedCube(doubleSided bool) Mesh {
+	cube := Cube(2)
+	cube.Position = geometry.Vector3{X: 0.3, Y: 0.2, Z: 5}
+	cube.Yaw, cube.Pitch = 0.6, 0.4
+	cube.DoubleSided = doubleSided
+	return cube
+}
+
+var doubleSidedLight = Light{Direction: geometry.Vector3{X: 0.3, Y: -1, Z: 0.5}, Ambient: 0.1}
+
+// Without DoubleSided an inside-out solid shows the wrong faces: the near ones are
+// culled and the far ones, whose back is now their front, show through. Its outline
+// is the same but the shading is not, so it must not look like the plain solid.
+func TestInsideOutMeshLooksWrongUnlessDoubleSided(t *testing.T) {
+	plain := newShadeBuffer(t)
+	posedCube(false).DrawShaded(plain, shadeCam(), doubleSidedLight, 1)
+
+	flipped := newShadeBuffer(t)
+	insideOut(posedCube(false)).DrawShaded(flipped, shadeCam(), doubleSidedLight, 1)
+	if sameFrame(flipped, plain) {
+		t.Errorf("wanted an inside-out mesh to look different from the plain one without DoubleSided")
+	}
+
+	_, plainPixels := newShadeCanvas(t)
+	posedCube(false).DrawShadedPixels(plainPixels, shadeCam(), doubleSidedLight, 1)
+	_, flippedPixels := newShadeCanvas(t)
+	insideOut(posedCube(false)).DrawShadedPixels(flippedPixels, shadeCam(), doubleSidedLight, 1)
+	if samePixels(flippedPixels, plainPixels) {
+		t.Errorf("wanted an inside-out mesh to look different in pixels too")
+	}
+}
+
+// Seen from outside, an inside-out solid with both sides drawn looks exactly like the
+// right way round: its near faces are lit as the camera sees them, and the far ones
+// are hidden behind them.
+func TestDoubleSidedInsideOutLooksLikeTheOriginal(t *testing.T) {
+	want := newShadeBuffer(t)
+	posedCube(false).DrawShaded(want, shadeCam(), doubleSidedLight, 1)
+	if len(drawn(want)) == 0 {
+		t.Fatalf("test setup: wanted the plain cube drawn")
+	}
+
+	got := newShadeBuffer(t)
+	insideOut(posedCube(true)).DrawShaded(got, shadeCam(), doubleSidedLight, 1)
+	if !sameFrame(got, want) {
+		t.Errorf("wanted the double-sided inside-out cube to match the plain one")
+	}
+
+	_, wantPixels := newShadeCanvas(t)
+	posedCube(false).DrawShadedPixels(wantPixels, shadeCam(), doubleSidedLight, 1)
+	_, gotPixels := newShadeCanvas(t)
+	insideOut(posedCube(true)).DrawShadedPixels(gotPixels, shadeCam(), doubleSidedLight, 1)
+	if !samePixels(gotPixels, wantPixels) {
+		t.Errorf("wanted the double-sided inside-out cube to match the plain one in pixels")
+	}
+}
+
+// Turning DoubleSided on for a mesh that is already right must change nothing.
+func TestDoubleSidedChangesNothingForAClosedOutwardMesh(t *testing.T) {
+	plain, both := newShadeBuffer(t), newShadeBuffer(t)
+	posedCube(false).DrawShaded(plain, shadeCam(), doubleSidedLight, 1)
+	posedCube(true).DrawShaded(both, shadeCam(), doubleSidedLight, 1)
+	if !sameFrame(plain, both) {
+		t.Errorf("wanted DoubleSided to leave a closed outward mesh unchanged")
+	}
+
+	_, plainPixels := newShadeCanvas(t)
+	_, bothPixels := newShadeCanvas(t)
+	posedCube(false).DrawShadedPixels(plainPixels, shadeCam(), doubleSidedLight, 1)
+	posedCube(true).DrawShadedPixels(bothPixels, shadeCam(), doubleSidedLight, 1)
+	if !samePixels(plainPixels, bothPixels) {
+		t.Errorf("wanted DoubleSided to leave a closed outward mesh unchanged in pixels")
+	}
+}
+
+// A single sheet: seen from either side it is lit as the side being looked at.
+func TestDoubleSidedSheetIsLitFromTheSideYouSee(t *testing.T) {
+	verts := []geometry.Vector3{{X: -1, Y: -1, Z: 5}, {X: 1, Y: -1, Z: 5}, {X: 0, Y: 1, Z: 5}}
+	// The sheet faces the camera at the origin when wound 0,2,1, and faces away when wound 0,1,2.
+	towards := Mesh{Vertices: verts, Faces: [][3]int{{0, 2, 1}}}
+	away := Mesh{Vertices: verts, Faces: [][3]int{{0, 1, 2}}, DoubleSided: true}
+	awayCulled := Mesh{Vertices: verts, Faces: [][3]int{{0, 1, 2}}}
+
+	// The light travels along +z: it hits the side facing the camera at full strength.
+	light := Light{Direction: geometry.Vector3{Z: 1}}
+
+	front := newShadeBuffer(t)
+	towards.DrawShaded(front, shadeCam(), light, 1)
+	back := newShadeBuffer(t)
+	away.DrawShaded(back, shadeCam(), light, 1)
+	culled := newShadeBuffer(t)
+	awayCulled.DrawShaded(culled, shadeCam(), light, 1)
+
+	if len(drawn(front)) == 0 {
+		t.Fatalf("test setup: wanted the sheet drawn from the front")
+	}
+	if !sameFrame(front, back) {
+		t.Errorf("wanted the back of the sheet lit like the front")
+	}
+	if len(drawn(culled)) != 0 {
+		t.Errorf("wanted the back culled without DoubleSided")
+	}
+
+	// And with the light on the far side, the near side is dark (ambient only).
+	dark := Light{Direction: geometry.Vector3{Z: -1}, Ambient: 0.2}
+	lit := newShadeBuffer(t)
+	away.DrawShaded(lit, shadeCam(), dark, 1)
+	cells := drawn(lit)
+	if len(cells) == 0 {
+		t.Fatalf("wanted the sheet drawn")
+	}
+	if got, want := lit.At(cells[0][0], cells[0][1]).Character, shadeChar(0.2); got != want {
+		t.Errorf("wanted the unlit side drawn with ambient shade %q, got %q", want, got)
+	}
+}
+
+func TestDoubleSidedDoesNotAffectWireframes(t *testing.T) {
+	plain, both := newShadeBuffer(t), newShadeBuffer(t)
+	posedCube(false).Draw(plain, shadeCam(), engine.Cell{Character: '#'})
+	posedCube(true).Draw(both, shadeCam(), engine.Cell{Character: '#'})
+
+	if len(drawn(plain)) == 0 {
+		t.Fatalf("test setup: wanted a wireframe drawn")
+	}
+	if !sameFrame(plain, both) {
+		t.Errorf("wanted wireframes unchanged by DoubleSided")
+	}
+}
+
+func TestDoubleSidedSurvivesFit(t *testing.T) {
+	m := Cube(3)
+	m.DoubleSided = true
+
+	if !m.Fit(2).DoubleSided {
+		t.Errorf("wanted Fit to keep DoubleSided")
+	}
+}
