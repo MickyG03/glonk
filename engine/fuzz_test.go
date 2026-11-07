@@ -1,0 +1,232 @@
+package engine
+
+import (
+	"math"
+	"strings"
+	"testing"
+	"unicode/utf8"
+)
+
+// seedInputs are real terminal inputs, legacy and kitty, to start the fuzzer from.
+var seedInputs = []string{
+	"", "w", "wa", "\x1b", "\x1b[", "\x1b[A", "\x1b[D", "\x1bOB", "\x1bO", "\x1b[1;5C",
+	"\x1b[15~x", "\x1bx", "\x03\r\x7f\t", "\x08", "é", "\xff", "\x01",
+	"\x1b[119u", "\x1b[119;1:2u", "\x1b[119;1:3u", "\x1b[119;2u", "\x1b[27u", "\x1b[13;1:3u",
+	"\x1b[99;5u", "\x1b[99;69u", "\x1b[119;5u", "\x1b[1;1:3A", "\x1b[1;2:2D", "\x1b[57441;1u",
+	"\x1b[?0u", "\x1b[?11u\x1b[?62;4c", "\x1b[I", "\x1b[O", "\x1b[119u\x1b[O\x1b[119;1:3u",
+	"\x1b[;5u", "\x1b[1;u", "\x1b[99999999999999999999u", "\x1b[-5u", "\x1b[119;:3u",
+}
+
+func FuzzParseEvents(f *testing.F) {
+	for _, s := range seedInputs {
+		f.Add([]byte(s))
+	}
+
+	special := map[Key]bool{
+		KeyUnknown: true, KeyUp: true, KeyDown: true, KeyLeft: true, KeyRight: true,
+		KeyEscape: true, KeyEnter: true, KeyBackspace: true, KeyTab: true, KeyCtrlC: true,
+	}
+
+	f.Fuzz(func(t *testing.T, b []byte) {
+		events := parseEvents(b)
+
+		if len(events) > len(b) {
+			t.Fatalf("wanted at most one event per input byte, got %d events for %d bytes", len(events), len(b))
+		}
+
+		for _, e := range events {
+			switch e.kind {
+			case kindPress, kindRepeat, kindRelease:
+				if special[e.key] {
+					if e.key == KeyUnknown {
+						// Only an arrow-shaped sequence can yield an unknown key, and arrow() never does.
+						t.Fatalf("wanted no KeyUnknown on a key event, got %+v from %q", e, b)
+					}
+				} else if e.key < 32 && e.key != 0 || !utf8.ValidRune(rune(e.key)) {
+					t.Fatalf("wanted a printable rune or a special key, got %+v from %q", e, b)
+				}
+			case kindFocusGained, kindFocusLost:
+				if e.key != KeyUnknown {
+					t.Fatalf("wanted focus events to carry no key, got %+v from %q", e, b)
+				}
+			default:
+				t.Fatalf("wanted a known event kind, got %+v from %q", e, b)
+			}
+
+			if e.kind == kindRepeat || e.kind == kindRelease {
+				// Plain bytes only ever press; repeats and releases need a CSI sequence.
+				if !strings.Contains(string(b), "\x1b[") {
+					t.Fatalf("wanted repeat/release only from a CSI sequence, got %+v from %q", e, b)
+				}
+			}
+		}
+
+		// Parsing must not depend on anything but the bytes.
+		again := parseEvents(b)
+		if len(again) != len(events) {
+			t.Fatalf("wanted parsing to be deterministic, got %d then %d events", len(events), len(again))
+		}
+		for i := range events {
+			if events[i] != again[i] {
+				t.Fatalf("wanted parsing to be deterministic, got %+v then %+v", events[i], again[i])
+			}
+		}
+	})
+}
+
+func FuzzParseProbeReply(f *testing.F) {
+	for _, s := range seedInputs {
+		f.Add([]byte(s))
+	}
+	f.Add([]byte("\x1b[?0u\x1b[?62;4c"))
+	f.Add([]byte("\x1b[?62;4c"))
+	f.Add([]byte("\x1b[?"))
+
+	f.Fuzz(func(t *testing.T, b []byte) {
+		kitty, done := parseProbeReply(b)
+
+		if kitty && !strings.Contains(string(b), "\x1b[?") {
+			t.Fatalf("wanted a protocol reply only where ESC [ ? appears, got kitty for %q", b)
+		}
+		if kitty && !strings.Contains(string(b), "u") {
+			t.Fatalf("wanted a protocol reply to end in u, got kitty for %q", b)
+		}
+		if done && !strings.Contains(string(b), "c") {
+			t.Fatalf("wanted an attributes reply to end in c, got done for %q", b)
+		}
+
+		// Whatever came before, a complete pair of replies at the end must be seen.
+		k2, d2 := parseProbeReply(append(append([]byte{}, b...), "\x1b[?0u\x1b[?62;4c"...))
+		if !d2 && !k2 && !done && !kitty {
+			// An unterminated sequence in b can swallow the appended replies; that is allowed.
+			// What is not allowed is losing a reply that was already complete.
+			return
+		}
+		if kitty && !k2 {
+			t.Fatalf("wanted appending data to keep a reply already found, lost kitty for %q", b)
+		}
+		if done && !d2 {
+			t.Fatalf("wanted appending data to keep a reply already found, lost done for %q", b)
+		}
+	})
+}
+
+func FuzzCSIParams(f *testing.F) {
+	for _, s := range []string{"", "1", "1;5", "119;1:3", ";", "::", ";;;", "99999999999999999999", "-5", "1;a;3", "1:2:3:4"} {
+		f.Add([]byte(s))
+	}
+
+	f.Fuzz(func(t *testing.T, p []byte) {
+		fields := csiParams(p)
+
+		if want := strings.Count(string(p), ";") + 1; len(fields) != want {
+			t.Fatalf("wanted %d fields for %q, got %d", want, p, len(fields))
+		}
+		for i, field := range fields {
+			if len(field) == 0 {
+				t.Fatalf("wanted every field to have a value, field %d of %q is empty", i, p)
+			}
+			for _, v := range field {
+				if v < 0 {
+					t.Fatalf("wanted no negative values, got %d in %q", v, p)
+				}
+			}
+		}
+
+		// param must be safe for any index, in or out of range.
+		for f := -1; f < len(fields)+2; f++ {
+			for s := -1; s < 4; s++ {
+				if f >= 0 && s >= 0 {
+					_ = param(fields, f, s)
+				}
+			}
+		}
+	})
+}
+
+func finite(vs ...float64) bool {
+	for _, v := range vs {
+		if math.IsNaN(v) || math.IsInf(v, 0) {
+			return false
+		}
+	}
+	return true
+}
+
+func FuzzFillTriangle(f *testing.F) {
+	nan, inf := math.NaN(), math.Inf(1)
+	f.Add(0.0, 0.0, 1.0, 4.0, 0.0, 1.0, 0.0, 4.0, 1.0)
+	f.Add(-100.0, -100.0, 1.0, 300.0, -100.0, 2.0, -100.0, 300.0, 3.0)
+	f.Add(-1e12, -1e12, 1.0, 3e12, -1e12, 1.0, -1e12, 3e12, 1.0)
+	f.Add(0.0, 0.0, 1.0, nan, 0.0, 1.0, 0.0, 4.0, 1.0)
+	f.Add(0.0, 0.0, 1.0, inf, 0.0, 1.0, 0.0, 4.0, 1.0)
+	f.Add(0.0, 0.0, 0.0, 4.0, 0.0, 1.0, 0.0, 4.0, 1.0)
+	f.Add(0.0, 0.0, 1.0, 2.0, 2.0, 1.0, 4.0, 4.0, 1.0)
+	f.Add(1e300, 1e300, 1e-300, -1e300, 1e300, 1e300, 0.0, -1e300, 1.0)
+
+	f.Fuzz(func(t *testing.T, x0, y0, z0, x1, y1, z1, x2, y2, z2 float64) {
+		const w, h = 7, 5
+		mark := Cell{Character: '#'}
+
+		fb, err := NewFrameBuffer(w, h)
+		if err != nil {
+			t.Fatalf("unable to initialize frame buffer: %v", err)
+		}
+		fb.FillTriangle(x0, y0, z0, x1, y1, z1, x2, y2, z2, mark)
+
+		_, c := fb.Canvas().Width(), fb.Canvas()
+		c.FillTriangle(x0, y0, z0, x1, y1, z1, x2, y2, z2, 7)
+
+		// Bad depths must draw nothing at all.
+		if !(z0 > 0 && z1 > 0 && z2 > 0) {
+			for y := range h {
+				for x := range w {
+					if fb.At(x, y) != BlankCell {
+						t.Fatalf("wanted a bad depth to draw nothing, got a cell at (%d,%d)", x, y)
+					}
+				}
+			}
+			for y := range c.Height() {
+				for x := range w {
+					if c.At(x, y) != 0 {
+						t.Fatalf("wanted a bad depth to draw nothing on the canvas, got a pixel at (%d,%d)", x, y)
+					}
+				}
+			}
+		}
+
+		// With sane inputs, only cells inside the triangle's bounding box may be drawn.
+		if finite(x0, y0, x1, y1, x2, y2) && z0 > 0 && z1 > 0 && z2 > 0 {
+			minX, maxX := math.Min(x0, math.Min(x1, x2)), math.Max(x0, math.Max(x1, x2))
+			minY, maxY := math.Min(y0, math.Min(y1, y2)), math.Max(y0, math.Max(y1, y2))
+			for y := range h {
+				for x := range w {
+					if fb.At(x, y) == mark && (float64(x) > maxX || float64(x+1) < minX || float64(y) > maxY || float64(y+1) < minY) {
+						t.Fatalf("wanted drawn cells inside the bounding box, got (%d,%d) outside x[%v,%v] y[%v,%v]", x, y, minX, maxX, minY, maxY)
+					}
+				}
+			}
+		}
+	})
+}
+
+func FuzzShade(f *testing.F) {
+	f.Add(uint8(208), 0.5)
+	f.Add(uint8(0), 0.0)
+	f.Add(uint8(255), 1.0)
+	f.Add(uint8(16), math.NaN())
+	f.Add(uint8(231), math.Inf(1))
+	f.Add(uint8(1), math.Inf(-1))
+	f.Add(uint8(9), -1e300)
+
+	f.Fuzz(func(t *testing.T, color uint8, intensity float64) {
+		got := Shade(color, intensity)
+
+		if got < 16 {
+			t.Fatalf("wanted a color in 16..255, got %d for color %d at %v", got, color, intensity)
+		}
+		if again := Shade(color, intensity); again != got {
+			t.Fatalf("wanted Shade to be deterministic, got %d then %d", got, again)
+		}
+	})
+}
