@@ -8,6 +8,7 @@ A terminal rendering engine for Go. Draw 2D, 3D, or both in the same frame, usin
 
 - **2D:** cells with 256-color, lines, boxes, text, and sprites.
 - **3D:** wireframe or solid meshes through a perspective camera, with near-plane clipping. Solid meshes are flat-shaded by a directional light into an ASCII brightness ramp, hide each other by depth, and skip faces turned away.
+- **Half blocks:** a pixel `Canvas` with two square-ish pixels per cell, drawn with `▀` and a background color, for twice the vertical detail and shading by color instead of by character.
 - **Mixed:** draw a 3D scene first, then a 2D HUD on top, into the same frame.
 - **Input:** held keys and one-shot presses, including arrows. Terminals with the [kitty keyboard protocol](https://sw.kovidgoyal.net/kitty/keyboard-protocol/) (Ghostty, kitty, WezTerm, foot, iTerm2, Alacritty) report real key releases, so you can hold several keys at once.
 - **Resizing:** the frame follows the terminal window.
@@ -34,6 +35,7 @@ cube3d controls:
 | W / S, Up / Down | move forward / back |
 | A / D | strafe left / right |
 | Q / E, Left / Right | turn left / right |
+| M | switch between character shading and half-block pixels |
 | Esc | quit |
 
 Ctrl-C quits any program built on glonk.
@@ -86,7 +88,7 @@ func main() {
 
 | Package | Purpose |
 |---|---|
-| `engine` | The loop, `FrameBuffer`, drawing helpers, keyboard `Input` |
+| `engine` | The loop, `FrameBuffer`, pixel `Canvas`, drawing helpers, keyboard `Input` |
 | `geometry` | 2D and 3D vector math |
 | `mesh` | 3D meshes (wireframe and shaded), lights, and the perspective `Camera` |
 | `sprite` | Single-cell sprites drawn in layers |
@@ -98,14 +100,14 @@ Built to work in most terminals: it uses only the alternate screen, cursor movem
 - **Without key releases, held keys are a timing guess.** Most terminals report presses and repeats but never releases, so a key counts as held until about 150 ms pass without a repeat, with a short pause when you first hold one. glonk detects the kitty keyboard protocol at startup and uses it where it exists; everywhere else this is what you get.
 - **Without key releases, only one key stays held at a time.** The OS repeats just the most recently pressed key, so holding W and then pressing E stops W and you cannot walk and turn together (Terminal.app, for one). Set `Config.LegacyKeys` to force this behavior if a terminal misbehaves with the protocol.
 - **Color is 256-color only.** `Cell.Color` 0 is the terminal default and 1 to 255 are palette indices.
-- **Box drawing needs a Unicode font.** `DrawBox` uses `┌─┐│└┘`.
+- **Box drawing and half blocks need a Unicode font.** `DrawBox` uses `┌─┐│└┘` and the pixel canvas uses `▀▄`; nearly every monospace font has them. Some terminals show faint seams between rows of pixels. Character shading (`DrawShaded`) needs only ASCII and stays the default in the examples.
 - **A fixed-size frame larger than the terminal garbles.** Leave `Width` and `Height` at 0 to fill the terminal.
 - **Resizing can flicker for one frame.**
 - **Windows is untested.**
 
 ## Planned
 
-Ideas, not promises: loading OBJ models and finer-than-a-cell rendering with half blocks.
+Ideas, not promises: loading OBJ models.
 
 ## License
 

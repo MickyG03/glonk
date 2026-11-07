@@ -33,6 +33,10 @@ type cubeGame struct {
 	floor mesh.Mesh
 	cubes []object
 	fps   float64
+
+	// halfBlocks draws the cubes as pixels, two per cell, shaded by color. Off, they
+	// are drawn one per cell, shaded by character. M toggles it.
+	halfBlocks bool
 }
 
 // newCube returns a cube of the given size resting on the floor at (x, z).
@@ -45,6 +49,10 @@ func newCube(size, x, z float64, color uint8) object {
 func (g *cubeGame) Update(dt float64, in *engine.Input) error {
 	if in.Pressed(engine.KeyEscape) {
 		return engine.ErrQuit
+	}
+	// Without release events shift+m arrives as 'M'.
+	if in.Pressed('m') || in.Pressed('M') {
+		g.halfBlocks = !g.halfBlocks
 	}
 
 	const moveSpeed = 3.0
@@ -80,17 +88,28 @@ func (g *cubeGame) Update(dt float64, in *engine.Input) error {
 }
 
 func (g *cubeGame) Draw(fb *engine.FrameBuffer) {
-	// The floor is wireframe and ignores depth, so draw it first; the shaded cubes
-	// then cover it where they stand, and hide each other by depth.
+	// The floor is wireframe and ignores depth, so draw it first; the cubes then
+	// cover it where they stand, and hide each other by depth.
 	g.floor.Draw(fb, g.cam, engine.Cell{Character: '.', Color: 240})
-	for _, o := range g.cubes {
-		o.mesh.DrawShaded(fb, g.cam, sun, o.color)
+
+	mode := "glyphs"
+	if g.halfBlocks {
+		mode = "half-blocks"
+		canvas := fb.Canvas()
+		for _, o := range g.cubes {
+			o.mesh.DrawShadedPixels(canvas, g.cam, sun, o.color)
+		}
+		// Compose before the HUD so the HUD lands on top of the pixels.
+		canvas.Compose()
+	} else {
+		for _, o := range g.cubes {
+			o.mesh.DrawShaded(fb, g.cam, sun, o.color)
+		}
 	}
 
-	// HUD after the 3D pass so the scene never draws over it.
 	fb.DrawBox(0, 0, fb.Width(), fb.Height(), 0)
-	fb.DrawText(1, 1, fmt.Sprintf("%.0f fps", g.fps), 0)
-	fb.DrawText(1, fb.Height()-2, "WASD move  QE turn  Esc quit", 0)
+	fb.DrawText(1, 1, fmt.Sprintf("%.0f fps  %s", g.fps, mode), 0)
+	fb.DrawText(1, fb.Height()-2, "WASD move  QE turn  M mode  Esc quit", 0)
 }
 
 func main() {
