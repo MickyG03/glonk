@@ -17,6 +17,8 @@ func TestKeyboardSequences(t *testing.T) {
 		{"push flags", func(sb *sequenceBuilder) { sb.PushKeyboardFlags(11) }, "\x1b[>11u"},
 		{"push other flags", func(sb *sequenceBuilder) { sb.PushKeyboardFlags(1) }, "\x1b[>1u"},
 		{"pop flags", func(sb *sequenceBuilder) { sb.PopKeyboardFlags() }, "\x1b[<u"},
+		{"enable focus reporting", func(sb *sequenceBuilder) { sb.EnableFocusReporting() }, "\x1b[?1004h"},
+		{"disable focus reporting", func(sb *sequenceBuilder) { sb.DisableFocusReporting() }, "\x1b[?1004l"},
 	}
 
 	for _, tt := range tests {
@@ -39,7 +41,7 @@ func TestEnableKeyboardProtocol(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if want := "\x1b[>11u"; out.String() != want {
+	if want := "\x1b[>11u\x1b[?1004h"; out.String() != want {
 		t.Errorf("wanted %q, got %q", want, out.String())
 	}
 	if !tty.keyboard {
@@ -67,7 +69,7 @@ func TestExitSequence(t *testing.T) {
 	}{
 		{"without the protocol", false, "\x1b[?25h\x1b[?1049l"},
 		// Popped before leaving the alternate screen, where the flags were pushed.
-		{"with the protocol", true, "\x1b[<u\x1b[?25h\x1b[?1049l"},
+		{"with the protocol", true, "\x1b[<u\x1b[?1004l\x1b[?25h\x1b[?1049l"},
 	}
 
 	for _, tt := range tests {

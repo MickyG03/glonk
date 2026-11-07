@@ -20,6 +20,11 @@ const (
 	queryKeyboardSeq   = "\x1b[?u"
 	queryAttributesSeq = "\x1b[c"
 	popKeyboardSeq     = "\x1b[<u"
+
+	// Focus reporting: the terminal sends ESC [ I when the window gains focus and
+	// ESC [ O when it loses it.
+	enableFocusSeq  = "\x1b[?1004h"
+	disableFocusSeq = "\x1b[?1004l"
 )
 
 type sequenceBuilder struct {
@@ -102,4 +107,14 @@ func (sb *sequenceBuilder) PushKeyboardFlags(flags int) {
 // PopKeyboardFlags restores the keyboard mode that was active before the last push.
 func (sb *sequenceBuilder) PopKeyboardFlags() {
 	sb.Print(popKeyboardSeq)
+}
+
+// EnableFocusReporting asks the terminal to report when its window gains or loses focus.
+func (sb *sequenceBuilder) EnableFocusReporting() {
+	sb.Print(enableFocusSeq)
+}
+
+// DisableFocusReporting turns focus reporting back off.
+func (sb *sequenceBuilder) DisableFocusReporting() {
+	sb.Print(disableFocusSeq)
 }

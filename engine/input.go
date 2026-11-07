@@ -38,13 +38,18 @@ func newInput(exact bool) *Input {
 
 // event records a key event at the given time.
 func (in *Input) event(e keyEvent, at time.Time) {
-	if e.kind == kindRelease {
+	switch e.kind {
+	case kindRelease:
 		delete(in.held, e.key)
-		return
+	case kindFocusLost:
+		in.releaseAll()
+	case kindFocusGained:
+		// Nothing to do: keys held across a focus change send fresh repeats.
+	default:
+		in.lastSeen[e.key] = at
+		in.held[e.key] = true
+		in.pressed[e.key] = true
 	}
-	in.lastSeen[e.key] = at
-	in.held[e.key] = true
-	in.pressed[e.key] = true
 }
 
 // releaseAll marks every key as released, for when the terminal loses focus

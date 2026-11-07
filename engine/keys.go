@@ -27,12 +27,16 @@ const (
 
 // keyKind says what happened to a key. Only terminals speaking the kitty
 // keyboard protocol report repeats and releases; everything else sends presses.
+// The focus kinds are not about a key: they carry KeyUnknown and tell Input the
+// window gained or lost focus, which we only ask for alongside the protocol.
 type keyKind uint8
 
 const (
 	kindPress keyKind = iota
 	kindRepeat
 	kindRelease
+	kindFocusGained
+	kindFocusLost
 )
 
 // keyEvent is one decoded key event.
@@ -152,6 +156,16 @@ func appendCSI(events []keyEvent, params []byte, final byte) []keyEvent {
 	// protocol reply, not a key.
 	if len(params) > 0 && params[0] >= '<' && params[0] <= '?' {
 		return events
+	}
+
+	// Focus reports are a bare CSI I or CSI O.
+	if len(params) == 0 {
+		switch final {
+		case 'I':
+			return append(events, keyEvent{KeyUnknown, kindFocusGained})
+		case 'O':
+			return append(events, keyEvent{KeyUnknown, kindFocusLost})
+		}
 	}
 
 	fields := csiParams(params)

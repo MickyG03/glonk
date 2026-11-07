@@ -46,14 +46,17 @@ func (t *terminal) Setup() error {
 	return nil
 }
 
-// EnableKeyboardProtocol turns on press/repeat/release reporting. Call it only
-// after a probe says the terminal supports it.
+// EnableKeyboardProtocol turns on press/repeat/release reporting, plus focus
+// reporting: a release that happens while the window is unfocused never arrives,
+// so Input needs to know when to forget every held key. Call it only after a
+// probe says the terminal supports the protocol.
 func (t *terminal) EnableKeyboardProtocol() error {
 	// Set first: if the write fails halfway, popping an unpushed flag is harmless
 	// (the protocol treats it as a reset) but leaving one pushed would not be.
 	t.keyboard = true
 	sb := newSequenceBuilder()
 	sb.PushKeyboardFlags(keyboardFlags)
+	sb.EnableFocusReporting()
 	return sb.Flush(t.out)
 }
 
@@ -63,6 +66,7 @@ func (t *terminal) exitSequence() *sequenceBuilder {
 	sb := newSequenceBuilder()
 	if t.keyboard {
 		sb.PopKeyboardFlags()
+		sb.DisableFocusReporting()
 	}
 	sb.ShowCursor()
 	sb.SwitchToMainScreen()

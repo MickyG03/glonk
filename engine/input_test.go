@@ -211,3 +211,39 @@ func TestInputLegacyIgnoresHeld(t *testing.T) {
 		t.Errorf("wanted IsDown('w')=false long after a legacy press, got true")
 	}
 }
+
+func TestInputFocusLostReleasesHeldKeys(t *testing.T) {
+	t0 := time.Unix(0, 0)
+	in := newInput(true)
+
+	in.event(keyEvent{'w', kindPress}, t0)
+	in.event(keyEvent{'e', kindPress}, t0)
+	in.beginFrame(t0)
+	in.endFrame()
+
+	in.event(keyEvent{KeyUnknown, kindFocusLost}, t0.Add(time.Second))
+	in.beginFrame(t0.Add(time.Second))
+
+	if in.IsDown('w') || in.IsDown('e') {
+		t.Errorf("wanted nothing down after focus loss, got w=%v e=%v", in.IsDown('w'), in.IsDown('e'))
+	}
+}
+
+func TestInputFocusGainedKeepsState(t *testing.T) {
+	t0 := time.Unix(0, 0)
+	in := newInput(true)
+
+	in.event(keyEvent{'w', kindPress}, t0)
+	in.beginFrame(t0)
+	in.endFrame()
+
+	in.event(keyEvent{KeyUnknown, kindFocusGained}, t0.Add(time.Second))
+	in.beginFrame(t0.Add(time.Second))
+
+	if !in.IsDown('w') {
+		t.Errorf("wanted w still down after focus gain, got false")
+	}
+	if in.Pressed(KeyUnknown) || in.IsDown(KeyUnknown) {
+		t.Errorf("wanted a focus event to leave no key state, got pressed=%v down=%v", in.Pressed(KeyUnknown), in.IsDown(KeyUnknown))
+	}
+}

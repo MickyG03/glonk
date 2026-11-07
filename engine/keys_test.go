@@ -104,6 +104,10 @@ func TestParseEventsKitty(t *testing.T) {
 		{"unknown event type is press", "\x1b[119;1:9u", presses('w')},
 		{"event type without modifiers value", "\x1b[119;:3u", []keyEvent{{'w', kindRelease}}},
 		{"unknown final dropped", "\x1b[119;1:3z", nil},
+		{"focus gained", "\x1b[I", []keyEvent{{KeyUnknown, kindFocusGained}}},
+		{"focus lost", "\x1b[O", []keyEvent{{KeyUnknown, kindFocusLost}}},
+		{"focus lost between keys", "\x1b[119u\x1b[O\x1b[119;1:3u", []keyEvent{{'w', kindPress}, {KeyUnknown, kindFocusLost}, {'w', kindRelease}}},
+		{"focus with parameters dropped", "\x1b[1I", nil},
 		{"junk then key", "\x1b[?11u\x1b[119u", presses('w')},
 		{"key then truncated", "\x1b[119u\x1b[11", presses('w')},
 	}
