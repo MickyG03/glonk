@@ -107,23 +107,38 @@ func (fb *FrameBuffer) present(w io.Writer) error {
 
 	for y := range height {
 		sb.MoveTo(y+1, 1)
-		cur := uint8(0)
+		var fg, bg uint8
 		for x := range width {
 			cell := fb.frame[y*width+x]
 
-			if cell.Color != cur {
-				if cell.Color == 0 {
+			if cell.Color != fg || cell.Background != bg {
+				if cell.Color == 0 && cell.Background == 0 {
+					// One short reset beats two separate "back to default" codes.
 					sb.ResetStyle()
 				} else {
-					sb.SetForeground(cell.Color)
+					if cell.Color != fg {
+						if cell.Color == 0 {
+							sb.DefaultForeground()
+						} else {
+							sb.SetForeground(cell.Color)
+						}
+					}
+					if cell.Background != bg {
+						if cell.Background == 0 {
+							sb.DefaultBackground()
+						} else {
+							sb.SetBackground(cell.Background)
+						}
+					}
 				}
-				cur = cell.Color
+				fg, bg = cell.Color, cell.Background
 			}
 
 			sb.PrintRune(cell.Character)
 		}
 
-		if cur != 0 {
+		// Leave nothing set at the end of a row, so a later row or the shell starts clean.
+		if fg != 0 || bg != 0 {
 			sb.ResetStyle()
 		}
 	}

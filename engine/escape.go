@@ -13,6 +13,8 @@ const (
 	alternateScreenSeq = "\x1b[?1049h"
 	mainScreenSeq      = "\x1b[?1049l"
 	resetSeq           = "\x1b[0m"
+	defaultForeSeq     = "\x1b[39m"
+	defaultBackSeq     = "\x1b[49m"
 
 	// Kitty keyboard protocol: ask for the current flags (a supporting terminal
 	// answers ESC [ ? flags u), ask for device attributes (every terminal answers),
@@ -76,6 +78,21 @@ func (sb *sequenceBuilder) ShowCursor() {
 
 func (sb *sequenceBuilder) SetForeground(n uint8) {
 	fmt.Fprintf(&sb.sequence, escapeSeq+"38;5;%dm", n)
+}
+
+// SetBackground sets the background to palette color n.
+func (sb *sequenceBuilder) SetBackground(n uint8) {
+	fmt.Fprintf(&sb.sequence, escapeSeq+"48;5;%dm", n)
+}
+
+// DefaultForeground returns the foreground to the terminal default and leaves the background alone.
+func (sb *sequenceBuilder) DefaultForeground() {
+	sb.Print(defaultForeSeq)
+}
+
+// DefaultBackground returns the background to the terminal default and leaves the foreground alone.
+func (sb *sequenceBuilder) DefaultBackground() {
+	sb.Print(defaultBackSeq)
 }
 
 func (sb *sequenceBuilder) ResetStyle() {

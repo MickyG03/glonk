@@ -17,6 +17,11 @@ func TestKeyboardSequences(t *testing.T) {
 		{"push flags", func(sb *sequenceBuilder) { sb.PushKeyboardFlags(11) }, "\x1b[>11u"},
 		{"push other flags", func(sb *sequenceBuilder) { sb.PushKeyboardFlags(1) }, "\x1b[>1u"},
 		{"pop flags", func(sb *sequenceBuilder) { sb.PopKeyboardFlags() }, "\x1b[<u"},
+		{"set foreground", func(sb *sequenceBuilder) { sb.SetForeground(208) }, "\x1b[38;5;208m"},
+		{"set background", func(sb *sequenceBuilder) { sb.SetBackground(208) }, "\x1b[48;5;208m"},
+		{"default foreground", func(sb *sequenceBuilder) { sb.DefaultForeground() }, "\x1b[39m"},
+		{"default background", func(sb *sequenceBuilder) { sb.DefaultBackground() }, "\x1b[49m"},
+		{"reset style", func(sb *sequenceBuilder) { sb.ResetStyle() }, "\x1b[0m"},
 		{"enable focus reporting", func(sb *sequenceBuilder) { sb.EnableFocusReporting() }, "\x1b[?1004h"},
 		{"disable focus reporting", func(sb *sequenceBuilder) { sb.DisableFocusReporting() }, "\x1b[?1004l"},
 	}

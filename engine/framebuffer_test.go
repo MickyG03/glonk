@@ -390,6 +390,95 @@ func TestSetIgnoresDepth(t *testing.T) {
 	}
 }
 
+func TestPresentBackground(t *testing.T) {
+	c := func(r rune, fg, bg uint8) Cell { return Cell{Character: r, Color: fg, Background: bg} }
+
+	tests := []struct {
+		name string
+		rows [][]Cell
+		want string
+	}{
+		{
+			"background only",
+			[][]Cell{{c('a', 0, 4)}},
+			"\x1b[1;1H\x1b[48;5;4ma\x1b[0m",
+		},
+		{
+			"foreground then background",
+			[][]Cell{{c('a', 1, 4)}},
+			"\x1b[1;1H\x1b[38;5;1m\x1b[48;5;4ma\x1b[0m",
+		},
+		{
+			"same background run is set once",
+			[][]Cell{{c('a', 0, 4), c('b', 0, 4)}},
+			"\x1b[1;1H\x1b[48;5;4mab\x1b[0m",
+		},
+		{
+			"background changes, foreground kept",
+			[][]Cell{{c('a', 1, 4), c('b', 1, 5)}},
+			"\x1b[1;1H\x1b[38;5;1m\x1b[48;5;4ma\x1b[48;5;5mb\x1b[0m",
+		},
+		{
+			"foreground changes, background kept",
+			[][]Cell{{c('a', 1, 4), c('b', 2, 4)}},
+			"\x1b[1;1H\x1b[38;5;1m\x1b[48;5;4ma\x1b[38;5;2mb\x1b[0m",
+		},
+		{
+			"foreground back to default, background kept",
+			[][]Cell{{c('a', 1, 4), c('b', 0, 4)}},
+			"\x1b[1;1H\x1b[38;5;1m\x1b[48;5;4ma\x1b[39mb\x1b[0m",
+		},
+		{
+			"background back to default, foreground kept",
+			[][]Cell{{c('a', 1, 4), c('b', 1, 0)}},
+			"\x1b[1;1H\x1b[38;5;1m\x1b[48;5;4ma\x1b[49mb\x1b[0m",
+		},
+		{
+			"both back to default",
+			[][]Cell{{c('a', 1, 4), c('b', 0, 0)}},
+			"\x1b[1;1H\x1b[38;5;1m\x1b[48;5;4ma\x1b[0mb",
+		},
+		{
+			"colors swap sides",
+			[][]Cell{{c('a', 1, 0), c('b', 0, 2)}},
+			"\x1b[1;1H\x1b[38;5;1ma\x1b[39m\x1b[48;5;2mb\x1b[0m",
+		},
+		{
+			"style does not leak into the next row",
+			[][]Cell{{c('a', 0, 4)}, {c('b', 0, 4)}},
+			"\x1b[1;1H\x1b[48;5;4ma\x1b[0m\x1b[2;1H\x1b[48;5;4mb\x1b[0m",
+		},
+		{
+			"all default emits no style",
+			[][]Cell{{c('a', 0, 0), c('b', 0, 0)}},
+			"\x1b[1;1Hab",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fb, err := NewFrameBuffer(len(tt.rows[0]), len(tt.rows))
+			if err != nil {
+				t.Fatalf("unable to initialize frame buffer: %v", err)
+			}
+			for y, row := range tt.rows {
+				for x, cell := range row {
+					fb.Set(x, y, cell)
+				}
+			}
+
+			buf := bytes.Buffer{}
+			if err := fb.present(&buf); err != nil {
+				t.Fatalf("could not present: %v", err)
+			}
+
+			if buf.String() != tt.want {
+				t.Errorf("wanted %q, got %q", tt.want, buf.String())
+			}
+		})
+	}
+}
+
 // Wide runes and invalid ones must come out as the bytes string(rune) would produce.
 func TestPresentRunes(t *testing.T) {
 	tests := []struct {
