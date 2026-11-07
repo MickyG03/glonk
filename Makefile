@@ -1,11 +1,12 @@
 .DEFAULT_GOAL := help
-.PHONY: help fmt test vet run build check
+.PHONY: help fmt test vet fuzz run build check
 
 help:
 	@echo "Available targets:"
 	@echo "  fmt     - Format Go code"
-	@echo "  test    - Run tests"
+	@echo "  test    - Run tests with the race detector (RACE= to turn it off)"
 	@echo "  vet     - Check for suspicious code with go vet"
+	@echo "  fuzz    - Fuzz every fuzz test for FUZZTIME each (default 10s)"
 	@echo "  run     - Run an example (default bounce2d; EXAMPLE=./examples/cube3d)"
 	@echo "  build   - Compile every package"
 	@echo "  check   - Run tests and vet"
@@ -14,13 +15,26 @@ fmt:
 	@echo "Formatting..."
 	go fmt ./...
 
+# The race detector needs cgo; run `make test RACE=` where there is no C compiler.
+RACE ?= -race
 test:
 	@echo "Testing..."
-	go test ./...
+	go test $(RACE) ./...
 
 vet:
 	@echo "Vetting..."
 	go vet ./...
+
+# Go fuzzes one target per run, so loop over every Fuzz test in every package.
+# A failing input is saved under testdata/fuzz/ and then runs with plain `make test`.
+FUZZTIME ?= 10s
+fuzz:
+	@for pkg in $$(go list ./...); do \
+		for t in $$(go test -list '^Fuzz' $$pkg | grep '^Fuzz'); do \
+			echo "Fuzzing $$pkg $$t..."; \
+			go test $$pkg -run '^$$' -fuzz "^$$t$$" -fuzztime $(FUZZTIME) || exit 1; \
+		done; \
+	done
 
 EXAMPLE ?= ./examples/bounce2d
 run:

@@ -112,6 +112,15 @@ Built to work in most terminals: it uses only the alternate screen, cursor movem
 
 Ideas, not promises: loading OBJ models.
 
+## Development
+
+```
+make check    # tests (with the race detector) and vet
+make fuzz     # fuzz the parsers, rasterizers and clipping; FUZZTIME=1m for longer
+```
+
+The race detector needs cgo. Where there is no C compiler, run `make test RACE=`.
+
 ## License
 
 MIT. See [LICENSE](LICENSE).
