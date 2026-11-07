@@ -15,6 +15,7 @@ type FrameBuffer struct {
 	width, height int
 	frame         []Cell
 	depth         []float64
+	canvas        *Canvas // created on first use by Canvas
 }
 
 func (fb *FrameBuffer) inBounds(x, y int) bool {
@@ -38,11 +39,15 @@ func NewFrameBuffer(w, h int) (*FrameBuffer, error) {
 	return fb, nil
 }
 
-// Clear resets every cell to BlankCell and every depth to infinitely far.
+// Clear resets every cell to BlankCell and every depth to infinitely far, and
+// empties the pixel Canvas if one has been used.
 func (fb *FrameBuffer) Clear() {
 	for i := range fb.frame {
 		fb.frame[i] = BlankCell
 		fb.depth[i] = math.Inf(1)
+	}
+	if fb.canvas != nil {
+		fb.canvas.Clear()
 	}
 }
 
