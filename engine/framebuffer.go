@@ -74,6 +74,10 @@ func (fb *FrameBuffer) present(w io.Writer) error {
 
 	sb := newSequenceBuilder()
 
+	// 3 bytes covers box-drawing runes; 32 per row covers the cursor move and color escapes.
+	// An undershoot is harmless, the builder just grows once.
+	sb.Grow(width*height*3 + height*32)
+
 	for y := range height {
 		sb.MoveTo(y+1, 1)
 		cur := uint8(0)
@@ -89,7 +93,7 @@ func (fb *FrameBuffer) present(w io.Writer) error {
 				cur = cell.Color
 			}
 
-			sb.Print(string(cell.Character))
+			sb.PrintRune(cell.Character)
 		}
 
 		if cur != 0 {

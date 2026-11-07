@@ -3,6 +3,7 @@ package engine
 import (
 	"bytes"
 	"fmt"
+	"io"
 	"testing"
 )
 
@@ -266,6 +267,69 @@ func TestPresentColor(t *testing.T) {
 
 			if buf.String() != tt.want {
 				t.Errorf("wanted %q, got %q", tt.want, buf.String())
+			}
+		})
+	}
+}
+
+// Wide runes and invalid ones must come out as the bytes string(rune) would produce.
+func TestPresentRunes(t *testing.T) {
+	tests := []struct {
+		name string
+		r    rune
+		want string
+	}{
+		{"ascii", 'a', "a"},
+		{"two bytes", 'é', "é"},
+		{"three bytes", '─', "─"},
+		{"four bytes", '😀', "😀"},
+		{"surrogate becomes replacement", 0xD800, "�"},
+		{"negative becomes replacement", -1, "�"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fb, err := NewFrameBuffer(1, 1)
+			if err != nil {
+				t.Fatalf("unable to initialize frame buffer: %v", err)
+			}
+			fb.Set(0, 0, Cell{Character: tt.r})
+
+			buf := bytes.Buffer{}
+			if err := fb.present(&buf); err != nil {
+				t.Fatalf("could not present: %v", err)
+			}
+
+			want := "\x1b[1;1H" + tt.want
+			if buf.String() != want {
+				t.Errorf("wanted %q, got %q", want, buf.String())
+			}
+		})
+	}
+}
+
+func BenchmarkPresent(b *testing.B) {
+	for _, size := range []struct{ w, h int }{{80, 24}, {200, 60}} {
+		b.Run(fmt.Sprintf("%dx%d", size.w, size.h), func(b *testing.B) {
+			fb, err := NewFrameBuffer(size.w, size.h)
+			if err != nil {
+				b.Fatalf("unable to initialize frame buffer: %v", err)
+			}
+			for y := range size.h {
+				for x := range size.w {
+					c := Cell{Character: rune('a' + (x+y)%26)}
+					if x%7 == 0 {
+						c.Color = uint8(1 + x%200)
+					}
+					fb.Set(x, y, c)
+				}
+			}
+
+			b.ReportAllocs()
+			for b.Loop() {
+				if err := fb.present(io.Discard); err != nil {
+					b.Fatal(err)
+				}
 			}
 		})
 	}

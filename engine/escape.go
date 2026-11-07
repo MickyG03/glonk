@@ -32,6 +32,12 @@ func (sb *sequenceBuilder) Print(s string) {
 	sb.sequence.WriteString(s)
 }
 
+// PrintRune appends r as UTF-8 without building a string first.
+// Invalid runes come out as U+FFFD, the same as string(r).
+func (sb *sequenceBuilder) PrintRune(r rune) {
+	sb.sequence.WriteRune(r)
+}
+
 func (sb *sequenceBuilder) MoveTo(n, m int) {
 	fmt.Fprintf(&sb.sequence, escapeSeq+"%d;%dH", n, m)
 }
@@ -62,4 +68,10 @@ func (sb *sequenceBuilder) SetForeground(n uint8) {
 
 func (sb *sequenceBuilder) ResetStyle() {
 	sb.Print(resetSeq)
+}
+
+// Grow reserves room for n more bytes so a frame is built in one allocation
+// instead of the builder doubling its way up.
+func (sb *sequenceBuilder) Grow(n int) {
+	sb.sequence.Grow(n)
 }
