@@ -1,6 +1,8 @@
 package engine
 
 import (
+	"strconv"
+	"strings"
 	"unicode/utf8"
 )
 
@@ -23,6 +25,38 @@ const (
 	KeyCtrlC
 )
 
+// keyKind says what happened to a key. Only terminals speaking the kitty
+// keyboard protocol report repeats and releases; everything else sends presses.
+type keyKind uint8
+
+const (
+	kindPress keyKind = iota
+	kindRepeat
+	kindRelease
+)
+
+// keyEvent is one decoded key event.
+type keyEvent struct {
+	key  Key
+	kind keyKind
+}
+
+// Kitty keyboard protocol modifier bits, after subtracting the protocol's +1 offset.
+// Shift and the lock keys are deliberately absent: they do not make a shortcut.
+const (
+	modAlt   = 1 << 1
+	modCtrl  = 1 << 2
+	modSuper = 1 << 3
+	modHyper = 1 << 4
+	modMeta  = 1 << 5
+
+	shortcutMods = modAlt | modCtrl | modSuper | modHyper | modMeta
+)
+
+// privateUseStart is where the protocol puts keys with no character, such as a
+// lone Shift or a keypad key. We have no use for them.
+const privateUseStart = 57344
+
 // arrow maps the final byte of an arrow-key escape sequence to its Key.
 func arrow(c byte) Key {
 	switch c {
@@ -39,18 +73,20 @@ func arrow(c byte) Key {
 	}
 }
 
-// parseKeys decodes one chunk of raw terminal input into keys.
+// parseEvents decodes one chunk of raw terminal input into key events.
 // An escape sequence split across two reads is misparsed; that is rare
 // locally and fixing it needs a stateful parser with timeouts.
-func parseKeys(b []byte) []Key {
-	var keys []Key
+func parseEvents(b []byte) []keyEvent {
+	var events []keyEvent
+	press := func(k Key) { events = append(events, keyEvent{k, kindPress}) }
+
 	i := 0
 	for i < len(b) {
 		c := b[i]
 		switch {
 		case c == 0x1b:
 			if i+1 >= len(b) {
-				keys = append(keys, KeyEscape)
+				press(KeyEscape)
 				i++
 				continue
 			}
@@ -60,7 +96,7 @@ func parseKeys(b []byte) []Key {
 			// Some terminals send arrows as SS3 (ESC O A) instead of CSI.
 			if next == 'O' {
 				if i+2 < len(b) && b[i+2] >= 'A' && b[i+2] <= 'D' {
-					keys = append(keys, arrow(b[i+2]))
+					press(arrow(b[i+2]))
 					i += 3
 					continue
 				}
@@ -77,36 +113,121 @@ func parseKeys(b []byte) []Key {
 					i = len(b)
 					continue
 				}
-				if b[j] >= 'A' && b[j] <= 'D' {
-					keys = append(keys, arrow(b[j]))
-				}
+				events = appendCSI(events, b[i+2:j], b[j])
 				i = j + 1
 				continue
 			}
 
-			keys = append(keys, KeyEscape)
+			press(KeyEscape)
 			i++
 		case c == 0x03:
-			keys = append(keys, KeyCtrlC)
+			press(KeyCtrlC)
 			i++
 		case c == '\r':
-			keys = append(keys, KeyEnter)
+			press(KeyEnter)
 			i++
 		case c == 0x7f || c == 0x08:
-			keys = append(keys, KeyBackspace)
+			press(KeyBackspace)
 			i++
 		case c == '\t':
-			keys = append(keys, KeyTab)
+			press(KeyTab)
 			i++
 		case c < 0x20:
 			i++
 		default:
 			r, size := utf8.DecodeRune(b[i:])
 			if !(r == utf8.RuneError && size == 1) {
-				keys = append(keys, Key(r))
+				press(Key(r))
 			}
 			i += size
 		}
 	}
-	return keys
+	return events
+}
+
+// appendCSI decodes a CSI sequence (parameter bytes plus final byte) and appends
+// its key event, if it is one we understand. Anything else is dropped.
+func appendCSI(events []keyEvent, params []byte, final byte) []keyEvent {
+	// '<' to '?' as the first parameter byte marks a private sequence, such as a
+	// protocol reply, not a key.
+	if len(params) > 0 && params[0] >= '<' && params[0] <= '?' {
+		return events
+	}
+
+	fields := csiParams(params)
+
+	switch {
+	case final >= 'A' && final <= 'D':
+		// Arrows ignore modifiers so ctrl+right still turns right.
+		return append(events, keyEvent{arrow(final), eventKind(fields)})
+	case final == 'u':
+		return appendKitty(events, fields)
+	}
+	return events
+}
+
+// appendKitty decodes a kitty keyboard protocol key event: CSI code ; mods:event u.
+func appendKitty(events []keyEvent, fields [][]int) []keyEvent {
+	code := param(fields, 0, 0)
+	// The protocol sends modifiers as 1 plus their bits; absent means none.
+	mods := max(param(fields, 1, 0), 1) - 1
+
+	var key Key
+	switch {
+	case mods&shortcutMods == modCtrl && code == 'c':
+		key = KeyCtrlC
+	case mods&shortcutMods != 0:
+		return events // a shortcut like ctrl+w is not a game key
+	case code == 27:
+		key = KeyEscape
+	case code == 13:
+		key = KeyEnter
+	case code == 9:
+		key = KeyTab
+	case code == 127:
+		key = KeyBackspace
+	case code >= 32 && code < privateUseStart && utf8.ValidRune(rune(code)):
+		key = Key(code)
+	default:
+		return events
+	}
+	return append(events, keyEvent{key, eventKind(fields)})
+}
+
+// eventKind reads the event type from the second sub-value of the modifiers field.
+func eventKind(fields [][]int) keyKind {
+	switch param(fields, 1, 1) {
+	case 2:
+		return kindRepeat
+	case 3:
+		return kindRelease
+	default:
+		return kindPress
+	}
+}
+
+// csiParams splits CSI parameter bytes such as "97;5:3" into fields of sub-values.
+// Empty or unreadable values come back as 0, which every caller treats as "not given".
+func csiParams(p []byte) [][]int {
+	var fields [][]int
+	for _, f := range strings.Split(string(p), ";") {
+		var subs []int
+		for _, s := range strings.Split(f, ":") {
+			n, err := strconv.Atoi(s)
+			if err != nil || n < 0 {
+				n = 0
+			}
+			subs = append(subs, n)
+		}
+		fields = append(fields, subs)
+	}
+	return fields
+}
+
+// param returns sub-value s of field f, or 0 if it is absent.
+func param(fields [][]int, f, s int) int {
+	if f >= len(fields) || s >= len(fields[f]) {
+		return 0
+	}
+	return fields[f][s]
 }

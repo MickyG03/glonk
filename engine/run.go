@@ -125,11 +125,15 @@ func Run(ctx context.Context, game Game, cfg Config) error {
 				input = nil
 				continue
 			}
-			for _, k := range parseKeys(b) {
-				if k == KeyCtrlC {
+			for _, e := range parseEvents(b) {
+				// Releases only matter once Input tracks them exactly.
+				if e.kind == kindRelease {
+					continue
+				}
+				if e.key == KeyCtrlC {
 					return nil
 				}
-				in.press(k, time.Now())
+				in.press(e.key, time.Now())
 			}
 		}
 	}
