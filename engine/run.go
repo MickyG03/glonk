@@ -77,7 +77,7 @@ func Run(ctx context.Context, game Game, cfg Config) error {
 
 	last := time.Now()
 
-	in := newInput()
+	in := newInput(false)
 
 	dynamic := cfg.Width == 0 || cfg.Height == 0
 	for {
@@ -126,14 +126,10 @@ func Run(ctx context.Context, game Game, cfg Config) error {
 				continue
 			}
 			for _, e := range parseEvents(b) {
-				// Releases only matter once Input tracks them exactly.
-				if e.kind == kindRelease {
-					continue
-				}
-				if e.key == KeyCtrlC {
+				if e.key == KeyCtrlC && e.kind != kindRelease {
 					return nil
 				}
-				in.press(e.key, time.Now())
+				in.event(e, time.Now())
 			}
 		}
 	}
