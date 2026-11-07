@@ -7,10 +7,24 @@ import (
 	"time"
 )
 
+// maxDT caps the time step Update sees, in seconds. After a suspend (Ctrl-Z)
+// or a long stall the real gap can be huge, and one giant step would fling
+// everything across the world.
+const maxDT = 0.25
+
 // Config sets up Run. A Width or Height of 0 fills the terminal on that axis
 // and follows resizes; a nonzero value fixes that axis. FPS must be positive.
 type Config struct {
 	Width, Height, FPS int
+}
+
+// frameDT returns the seconds between two frames, capped at maxDT.
+func frameDT(now, last time.Time) float64 {
+	dt := now.Sub(last).Seconds()
+	if dt > maxDT {
+		dt = maxDT
+	}
+	return dt
 }
 
 // resolveSize picks the frame size: a nonzero config value wins on its axis,
@@ -71,7 +85,7 @@ func Run(ctx context.Context, game Game, cfg Config) error {
 		case <-ctx.Done():
 			return nil
 		case now := <-ticker.C:
-			dt := now.Sub(last).Seconds()
+			dt := frameDT(now, last)
 			last = now
 
 			if dynamic {
