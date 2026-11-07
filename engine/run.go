@@ -12,10 +12,20 @@ import (
 // huge, and one giant step would fling everything across the world.
 const maxDT = 0.25
 
+// probeTimeout is how long Run waits for a terminal to answer the keyboard
+// protocol probe. Terminals answer in milliseconds; this only matters when one never does.
+const probeTimeout = 250 * time.Millisecond
+
 // Config sets up Run. A Width or Height of 0 fills the terminal on that axis
 // and follows resizes; a nonzero value fixes that axis. FPS must be positive.
+//
+// Where the terminal supports the kitty keyboard protocol, Run uses it so Input
+// can tell exactly which keys are down. LegacyKeys turns that off and uses the
+// timing-based handling every terminal supports, as an escape hatch for a
+// terminal that misbehaves.
 type Config struct {
 	Width, Height, FPS int
+	LegacyKeys         bool
 }
 
 // frameDT returns the seconds between two frames, capped at maxDT.
@@ -72,12 +82,26 @@ func Run(ctx context.Context, game Game, cfg Config) error {
 	defer tty.Teardown()
 	input := readInput(os.Stdin)
 
+	exact := false
+	if !cfg.LegacyKeys {
+		kitty, err := probeKitty(input, tty.out, probeTimeout)
+		if err != nil {
+			return err
+		}
+		if kitty {
+			if err := tty.EnableKeyboardProtocol(); err != nil {
+				return err
+			}
+			exact = true
+		}
+	}
+
 	ticker := time.NewTicker(time.Second / time.Duration(cfg.FPS))
 	defer ticker.Stop()
 
 	last := time.Now()
 
-	in := newInput(false)
+	in := newInput(exact)
 
 	dynamic := cfg.Width == 0 || cfg.Height == 0
 	for {

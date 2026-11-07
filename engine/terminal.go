@@ -8,10 +8,16 @@ import (
 	"golang.org/x/term"
 )
 
+// keyboardFlags is what we ask of the kitty keyboard protocol: 1 disambiguate
+// escape codes, 2 report press/repeat/release, 8 report all keys as escape codes
+// (without it letters send no release events).
+const keyboardFlags = 1 | 2 | 8
+
 type terminal struct {
-	fd    int
-	state *term.State
-	out   io.Writer
+	fd       int
+	state    *term.State
+	out      io.Writer
+	keyboard bool // whether we pushed protocol flags that Teardown must pop
 }
 
 func newTerminal(in *os.File, out io.Writer) *terminal {
@@ -40,11 +46,31 @@ func (t *terminal) Setup() error {
 	return nil
 }
 
-func (t *terminal) Teardown() error {
+// EnableKeyboardProtocol turns on press/repeat/release reporting. Call it only
+// after a probe says the terminal supports it.
+func (t *terminal) EnableKeyboardProtocol() error {
+	// Set first: if the write fails halfway, popping an unpushed flag is harmless
+	// (the protocol treats it as a reset) but leaving one pushed would not be.
+	t.keyboard = true
 	sb := newSequenceBuilder()
+	sb.PushKeyboardFlags(keyboardFlags)
+	return sb.Flush(t.out)
+}
+
+// exitSequence is what Teardown writes: flags are popped first because they were
+// pushed on the alternate screen, which has its own stack.
+func (t *terminal) exitSequence() *sequenceBuilder {
+	sb := newSequenceBuilder()
+	if t.keyboard {
+		sb.PopKeyboardFlags()
+	}
 	sb.ShowCursor()
 	sb.SwitchToMainScreen()
-	flushErr := sb.Flush(t.out)
+	return sb
+}
+
+func (t *terminal) Teardown() error {
+	flushErr := t.exitSequence().Flush(t.out)
 	restoreErr := term.Restore(t.fd, t.state)
 	return errors.Join(flushErr, restoreErr)
 }
