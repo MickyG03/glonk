@@ -81,6 +81,11 @@ func Cube(size float64) Mesh {
 	return Mesh{Vertices: vertices, Edges: edges, Faces: faces}
 }
 
+// toWorld places a model-space point in the world: rotate, then translate.
+func (m Mesh) toWorld(v geometry.Vector3) geometry.Vector3 {
+	return v.RotateX(m.Pitch).RotateY(m.Yaw).Add(m.Position)
+}
+
 // Draw renders the mesh's edges as lines.
 // Edges crossing the near plane are cut where they cross it;
 // edges entirely behind it are skipped.
@@ -90,8 +95,7 @@ func Cube(size float64) Mesh {
 func (m Mesh) Draw(fb *engine.FrameBuffer, cam Camera, cell engine.Cell) {
 	view := make([]geometry.Vector3, len(m.Vertices))
 	for i, v := range m.Vertices {
-		world := v.RotateX(m.Pitch).RotateY(m.Yaw).Add(m.Position)
-		view[i] = cam.toView(world)
+		view[i] = cam.toView(m.toWorld(v))
 	}
 
 	for _, e := range m.Edges {
