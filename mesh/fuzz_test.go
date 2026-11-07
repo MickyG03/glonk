@@ -9,15 +9,6 @@ import (
 	"github.com/kyrokohan/glonk/geometry"
 )
 
-func finiteAll(vs ...float64) bool {
-	for _, v := range vs {
-		if math.IsNaN(v) || math.IsInf(v, 0) {
-			return false
-		}
-	}
-	return true
-}
-
 func FuzzClipTriangleNear(f *testing.F) {
 	f.Add(0.0, 0.0, -1.0, 2.0, 0.0, 3.0, 0.0, 2.0, 3.0, 0.1)
 	f.Add(0.0, 0.0, 3.0, 2.0, 0.0, -1.0, 0.0, 2.0, -1.0, 0.1)
@@ -33,7 +24,7 @@ func FuzzClipTriangleNear(f *testing.F) {
 
 		// The geometric promises only make sense for sane numbers.
 		const huge = 1e100
-		sane := finiteAll(ax, ay, az, bx, by, bz, cx, cy, cz, near)
+		sane := finite(ax, ay, az, bx, by, bz, cx, cy, cz, near)
 		for _, v := range []float64{ax, ay, az, bx, by, bz, cx, cy, cz, near} {
 			sane = sane && math.Abs(v) < huge
 		}
@@ -51,7 +42,7 @@ func FuzzClipTriangleNear(f *testing.F) {
 		var total float64
 		for _, tri := range out {
 			for _, p := range tri {
-				if !finiteAll(p.X, p.Y, p.Z) {
+				if !finite(p.X, p.Y, p.Z) {
 					t.Fatalf("wanted finite vertices, got %v", p)
 				}
 				if p.Z < near {
@@ -143,7 +134,7 @@ func FuzzClipSegment(f *testing.F) {
 			return
 		}
 
-		sane := finiteAll(x0, y0, x1, y1, minX, minY, maxX, maxY) && minX <= maxX && minY <= maxY
+		sane := finite(x0, y0, x1, y1, minX, minY, maxX, maxY) && minX <= maxX && minY <= maxY
 		for _, v := range []float64{minX, minY, maxX, maxY} {
 			sane = sane && math.Abs(v) < 1e100
 		}
