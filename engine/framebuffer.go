@@ -3,13 +3,18 @@ package engine
 import (
 	"errors"
 	"io"
+	"math"
 )
 
 // FrameBuffer is a width x height grid of Cells that a game draws into each
 // frame; Run presents it to the terminal.
+//
+// It also keeps a depth per cell, used only by SetDepth, so solid 3D surfaces
+// can hide what is behind them. Everything else ignores depth.
 type FrameBuffer struct {
 	width, height int
 	frame         []Cell
+	depth         []float64
 }
 
 func (fb *FrameBuffer) inBounds(x, y int) bool {
@@ -26,16 +31,18 @@ func NewFrameBuffer(w, h int) (*FrameBuffer, error) {
 		width:  w,
 		height: h,
 		frame:  allocatedFrame,
+		depth:  make([]float64, w*h),
 	}
 	fb.Clear()
 
 	return fb, nil
 }
 
-// Clear resets every cell to BlankCell.
+// Clear resets every cell to BlankCell and every depth to infinitely far.
 func (fb *FrameBuffer) Clear() {
 	for i := range fb.frame {
 		fb.frame[i] = BlankCell
+		fb.depth[i] = math.Inf(1)
 	}
 }
 
@@ -46,6 +53,26 @@ func (fb *FrameBuffer) Set(x, y int, cell Cell) {
 	}
 
 	fb.frame[y*fb.width+x] = cell
+}
+
+// SetDepth stores cell at (x, y) only if z is nearer than what is already there,
+// and reports whether it did. Smaller z is nearer; a tie keeps the existing cell.
+// Writes outside the buffer, and a NaN z, are ignored. Set never reads or writes
+// depth, so 2D drawing and HUDs are unaffected.
+func (fb *FrameBuffer) SetDepth(x, y int, z float64, cell Cell) bool {
+	if !fb.inBounds(x, y) {
+		return false
+	}
+
+	i := y*fb.width + x
+	// Written as !(z < ...) so a NaN fails the test instead of slipping through.
+	if !(z < fb.depth[i]) {
+		return false
+	}
+
+	fb.depth[i] = z
+	fb.frame[i] = cell
+	return true
 }
 
 // At returns the cell at a specific location.

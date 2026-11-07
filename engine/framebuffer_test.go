@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"math"
 	"testing"
 )
 
@@ -269,6 +270,123 @@ func TestPresentColor(t *testing.T) {
 				t.Errorf("wanted %q, got %q", tt.want, buf.String())
 			}
 		})
+	}
+}
+
+func TestSetDepth(t *testing.T) {
+	near := Cell{Character: 'n'}
+	far := Cell{Character: 'f'}
+
+	tests := []struct {
+		name      string
+		first     float64
+		second    float64
+		wantWrote bool // whether the second write lands
+		want      Cell
+	}{
+		{"nearer second wins", 5, 2, true, far},
+		{"farther second loses", 2, 5, false, near},
+		{"tie keeps the first", 3, 3, false, near},
+		{"negative depths order too", -1, -2, true, far},
+		{"nearer than infinity", 1e300, 1, true, far},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fb, err := NewFrameBuffer(2, 2)
+			if err != nil {
+				t.Fatalf("unable to initialize frame buffer: %v", err)
+			}
+
+			if !fb.SetDepth(1, 1, tt.first, near) {
+				t.Fatalf("wanted the first write to an empty cell to land")
+			}
+			if got := fb.SetDepth(1, 1, tt.second, far); got != tt.wantWrote {
+				t.Errorf("wanted second write landed=%v, got %v", tt.wantWrote, got)
+			}
+			if got := fb.At(1, 1); got != tt.want {
+				t.Errorf("wanted %v, got %v", tt.want, got)
+			}
+		})
+	}
+}
+
+func TestSetDepthFirstWriteBeatsEmptyCell(t *testing.T) {
+	fb, err := NewFrameBuffer(1, 1)
+	if err != nil {
+		t.Fatalf("unable to initialize frame buffer: %v", err)
+	}
+
+	// A fresh cell is infinitely far, so even an enormous depth must land.
+	if !fb.SetDepth(0, 0, math.MaxFloat64, Cell{Character: 'x'}) {
+		t.Errorf("wanted a write into an empty cell to land, got false")
+	}
+}
+
+func TestSetDepthBounds(t *testing.T) {
+	fb, err := NewFrameBuffer(2, 2)
+	if err != nil {
+		t.Fatalf("unable to initialize frame buffer: %v", err)
+	}
+
+	for _, p := range [][2]int{{-1, 0}, {0, -1}, {2, 0}, {0, 2}, {2, 2}} {
+		if fb.SetDepth(p[0], p[1], 1, Cell{Character: 'x'}) {
+			t.Errorf("wanted a write at %v to be ignored, got landed", p)
+		}
+	}
+	assertFrameEquals(t, map[int]Cell{}, fb)
+}
+
+func TestSetDepthRejectsNaN(t *testing.T) {
+	fb, err := NewFrameBuffer(1, 1)
+	if err != nil {
+		t.Fatalf("unable to initialize frame buffer: %v", err)
+	}
+
+	if fb.SetDepth(0, 0, math.NaN(), Cell{Character: 'x'}) {
+		t.Errorf("wanted a NaN depth to be rejected, got landed")
+	}
+	if got := fb.At(0, 0); got != BlankCell {
+		t.Errorf("wanted BlankCell, got %v", got)
+	}
+}
+
+func TestClearResetsDepth(t *testing.T) {
+	fb, err := NewFrameBuffer(1, 1)
+	if err != nil {
+		t.Fatalf("unable to initialize frame buffer: %v", err)
+	}
+
+	fb.SetDepth(0, 0, 1, Cell{Character: 'a'})
+	fb.Clear()
+
+	if !fb.SetDepth(0, 0, 100, Cell{Character: 'b'}) {
+		t.Errorf("wanted a farther write to land after Clear, got rejected")
+	}
+	if got := fb.At(0, 0); got.Character != 'b' {
+		t.Errorf("wanted 'b', got %v", got)
+	}
+}
+
+// 2D drawing and HUDs use Set, which must neither read nor write depth.
+func TestSetIgnoresDepth(t *testing.T) {
+	fb, err := NewFrameBuffer(1, 1)
+	if err != nil {
+		t.Fatalf("unable to initialize frame buffer: %v", err)
+	}
+
+	fb.SetDepth(0, 0, 1, Cell{Character: 'a'})
+	fb.Set(0, 0, Cell{Character: 'h'})
+	if got := fb.At(0, 0); got.Character != 'h' {
+		t.Errorf("wanted Set to overwrite regardless of depth, got %v", got)
+	}
+
+	// Set left the depth at 1: a farther surface is still rejected, a nearer one lands.
+	if fb.SetDepth(0, 0, 2, Cell{Character: 'b'}) {
+		t.Errorf("wanted Set to leave depth at 1, but a farther write landed")
+	}
+	if !fb.SetDepth(0, 0, 0.5, Cell{Character: 'c'}) {
+		t.Errorf("wanted Set to leave depth at 1, but a nearer write was rejected")
 	}
 }
 
