@@ -17,6 +17,7 @@ const (
 	gridSize      = 40
 	gridDivisions = 20 // 2x2 floor cells, so a size-2 cube fills one
 	floorY        = -1.5
+	walkLimit     = gridSize/2 - 0.5 // invisible walls, half a unit inside the floor edge
 )
 
 type object struct {
@@ -61,6 +62,8 @@ func (g *cubeGame) Update(dt float64, in *engine.Input) error {
 	}
 	// Normalized so moving diagonally is not ~1.41x faster.
 	g.cam.Position = g.cam.Position.Add(move.Normalize().Scale(moveSpeed * dt))
+	g.cam.Position.X = max(-walkLimit, min(walkLimit, g.cam.Position.X))
+	g.cam.Position.Z = max(-walkLimit, min(walkLimit, g.cam.Position.Z))
 
 	if in.IsDown('e') || in.IsDown(engine.KeyRight) {
 		g.cam.Yaw += turnSpeed * dt
