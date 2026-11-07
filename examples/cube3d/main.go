@@ -67,12 +67,14 @@ func (g *cubeGame) Update(dt float64, in *engine.Input) error {
 
 	const moveSpeed = 3.0
 	const turnSpeed = 1.5
+	const pitchSpeed = 1.0
+	const maxPitch = 1.5 // just short of straight up or down, where the view would flip
 
 	move := geometry.Vector3{}
-	if in.IsDown('w') || in.IsDown(engine.KeyUp) {
+	if in.IsDown('w') {
 		move = move.Add(g.cam.Forward())
 	}
-	if in.IsDown('s') || in.IsDown(engine.KeyDown) {
+	if in.IsDown('s') {
 		move = move.Sub(g.cam.Forward())
 	}
 	if in.IsDown('d') {
@@ -92,6 +94,13 @@ func (g *cubeGame) Update(dt float64, in *engine.Input) error {
 	if in.IsDown('q') || in.IsDown(engine.KeyLeft) {
 		g.cam.Yaw -= turnSpeed * dt
 	}
+	if in.IsDown(engine.KeyUp) {
+		g.cam.Pitch += pitchSpeed * dt
+	}
+	if in.IsDown(engine.KeyDown) {
+		g.cam.Pitch -= pitchSpeed * dt
+	}
+	g.cam.Pitch = max(-maxPitch, min(maxPitch, g.cam.Pitch))
 
 	g.fps = 0.9*g.fps + 0.1*(1/dt)
 	return nil
@@ -129,7 +138,7 @@ func (g *cubeGame) Draw(fb *engine.FrameBuffer) {
 
 	fb.DrawBox(0, 0, fb.Width(), fb.Height(), 0)
 	fb.DrawText(1, 1, fmt.Sprintf("%.0f fps  %s", g.fps, mode), 0)
-	fb.DrawText(1, fb.Height()-2, "WASD move  QE turn  M mode  B edges  Esc quit", 0)
+	fb.DrawText(1, fb.Height()-2, "WASD move  arrows look  M mode  B edges  Esc quit", 0)
 }
 
 func main() {

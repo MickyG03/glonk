@@ -32,9 +32,10 @@ cube3d controls:
 
 | Keys | Action |
 |---|---|
-| W / S, Up / Down | move forward / back |
+| W / S | move forward / back |
 | A / D | strafe left / right |
 | Q / E, Left / Right | turn left / right |
+| Up / Down | look up / down |
 | M | switch between character shading and half-block pixels |
 | B | in half-block mode, switch between exact and solid edges |
 | Esc | quit |
