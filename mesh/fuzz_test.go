@@ -2,6 +2,8 @@ package mesh
 
 import (
 	"math"
+	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -108,6 +110,8 @@ func FuzzDraw(f *testing.F) {
 			defer close(done)
 			cube.Draw(fb, cam, engine.Cell{Character: '#'})
 			cube.DrawShaded(fb, cam, light, 1)
+			cube.DoubleSided = true
+			cube.DrawShaded(fb, cam, light, 1)
 			cube.DrawShadedPixels(fb.Canvas(), cam, light, 1)
 			fb.Canvas().Compose()
 		}()
@@ -167,5 +171,93 @@ func FuzzClipSegment(f *testing.F) {
 		if math.Abs(cross) > 1e-6*(1+math.Abs(dx)+math.Abs(dy))*(1+scale) {
 			t.Fatalf("wanted the piece on the original line, off by %v", cross)
 		}
+	})
+}
+
+func FuzzLoadOBJ(f *testing.F) {
+	for _, seed := range []string{
+		objCube,
+		"v 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\n",
+		"v 0 0 0\nv 1 0 0\nv 1 1 0\nv 0 1 0\nf 1/1/1 2//2 3/3 4\nl 1 2 3\n",
+		"v 0 0 0\nv 1 0 0\nv 0 1 0\nf -3 -2 -1\nv 1 1 1\nf -1 -2 -3\n",
+		"v 0 0 0 1.0\nv 1 0 0 0.5 0.5 0.5\nv 0 1 0 # c\nvt 0 0\nvn 0 0 1\ng a\nusemtl m\nf 1 2 3 # c\n",
+		"v 0 0 0\r\nv 1 0 0\r\nv 0 1 0\r\nf 1 2 \\\r\n 3\r\n",
+		"v 0 0 0\nv 1 0 0\nl 1 2",
+		"v 1e999 0 0\nf 1 1 1\n",
+		"v nan 0 0\nv 0 inf 0\nv 0 0 -inf\nf 1 2 3\n",
+		"f 1 2 3\n", "f 0 0 0\n", "v 0 0 0\nf 99999999999999999999 1 1\n", "f \\\n\\\n", "\x00\xff\x1b[",
+	} {
+		f.Add(seed)
+	}
+
+	f.Fuzz(func(t *testing.T, text string) {
+		var (
+			m    Mesh
+			err  error
+			done = make(chan struct{})
+		)
+		go func() {
+			defer close(done)
+			m, err = LoadOBJ(strings.NewReader(text))
+		}()
+		select {
+		case <-done:
+		case <-time.After(3 * time.Second):
+			t.Fatalf("wanted loading to finish, but it is still running for a %d byte file", len(text))
+		}
+
+		if err != nil {
+			if len(m.Vertices) != 0 || len(m.Faces) != 0 || len(m.Edges) != 0 {
+				t.Fatalf("wanted an empty mesh alongside an error, got %d vertices, %d faces, %d edges", len(m.Vertices), len(m.Faces), len(m.Edges))
+			}
+			return
+		}
+
+		if len(m.Faces) == 0 && len(m.Edges) == 0 {
+			t.Fatalf("wanted a successful load to have faces or lines")
+		}
+		for _, v := range m.Vertices {
+			if !finite(v.X, v.Y, v.Z) {
+				t.Fatalf("wanted finite vertices, got %v", v)
+			}
+		}
+		for _, face := range m.Faces {
+			for _, i := range face {
+				if i < 0 || i >= len(m.Vertices) {
+					t.Fatalf("wanted face indices in range of %d vertices, got %v", len(m.Vertices), face)
+				}
+			}
+		}
+		seen := map[[2]int]bool{}
+		for _, e := range m.Edges {
+			if e[0] < 0 || e[1] >= len(m.Vertices) || e[0] >= e[1] {
+				t.Fatalf("wanted edges as sorted distinct in-range pairs of %d vertices, got %v", len(m.Vertices), e)
+			}
+			if seen[e] {
+				t.Fatalf("wanted no duplicate edges, got %v twice", e)
+			}
+			seen[e] = true
+		}
+
+		// Loading is a pure function of the text.
+		again, err := LoadOBJ(strings.NewReader(text))
+		if err != nil || !slices.Equal(again.Vertices, m.Vertices) || !slices.Equal(again.Faces, m.Faces) || !slices.Equal(again.Edges, m.Edges) {
+			t.Fatalf("wanted loading twice to give the same mesh")
+		}
+
+		// A loaded model must be safe to fit and draw.
+		if len(m.Faces) > 2000 {
+			return
+		}
+		fitted := m.Fit(2)
+		fitted.DoubleSided = true
+		fb, ferr := engine.NewFrameBuffer(20, 8)
+		if ferr != nil {
+			t.Fatalf("unable to initialize frame buffer: %v", ferr)
+		}
+		cam := Camera{Position: geometry.Vector3{Z: -5}, FOV: math.Pi / 2, Near: 0.1}
+		fitted.Draw(fb, cam, engine.Cell{Character: '#'})
+		fitted.DrawShaded(fb, cam, Light{Direction: geometry.Vector3{Y: -1}, Ambient: 0.2}, 1)
+		fitted.DrawShadedPixels(fb.Canvas(), cam, Light{Direction: geometry.Vector3{Y: -1}, Ambient: 0.2}, 1)
 	})
 }
