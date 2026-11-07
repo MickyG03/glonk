@@ -1,6 +1,9 @@
 package engine
 
-import "math"
+import (
+	"math"
+	"os"
+)
 
 // Block characters for pixel pairs. The upper half block paints the top half of a
 // cell in the character color and the bottom half in the background color.
@@ -17,19 +20,34 @@ const (
 // Get one with FrameBuffer.Canvas. It keeps its own depth per pixel, separate from
 // the FrameBuffer's, so solids drawn on a Canvas hide each other but not the cells.
 type Canvas struct {
+	// Seamless makes Compose draw solid cells only, with no half-block characters.
+	// Some terminals draw those characters a little short of the cell and leave a
+	// visible line along every edge; Apple's Terminal does. Solid cells cannot show
+	// a line, at the price of silhouettes that are a pixel blockier. It starts out
+	// true under Apple's Terminal (TERM_PROGRAM=Apple_Terminal) and false elsewhere;
+	// set it yourself to override, for instance inside tmux, which hides that variable.
+	Seamless bool
+
 	fb            *FrameBuffer
 	width, height int
 	pixels        []uint8
 	depth         []float64
 }
 
+// terminalLeavesSeams reports whether the terminal is known to draw half-block
+// characters with visible gaps. Only Apple's Terminal is known so far.
+func terminalLeavesSeams() bool {
+	return os.Getenv("TERM_PROGRAM") == "Apple_Terminal"
+}
+
 func newCanvas(fb *FrameBuffer) *Canvas {
 	c := &Canvas{
-		fb:     fb,
-		width:  fb.width,
-		height: fb.height * 2,
-		pixels: make([]uint8, fb.width*fb.height*2),
-		depth:  make([]float64, fb.width*fb.height*2),
+		Seamless: terminalLeavesSeams(),
+		fb:       fb,
+		width:    fb.width,
+		height:   fb.height * 2,
+		pixels:   make([]uint8, fb.width*fb.height*2),
+		depth:    make([]float64, fb.width*fb.height*2),
 	}
 	c.Clear()
 	return c
@@ -111,16 +129,27 @@ func (c *Canvas) FillTriangle(x0, y0, z0, x1, y1, z1, x2, y2, z2 float64, color 
 	})
 }
 
-// Compose writes the pixels into the FrameBuffer's cells as half-block characters.
-// Cells whose two pixels are both empty are left alone; every other cell is
-// replaced. Call it at the point in drawing where the pixels should sit: anything
-// drawn into the FrameBuffer afterwards lands on top of them.
+// Compose writes the pixels into the FrameBuffer's cells as half-block characters,
+// or as solid cells if Seamless is set. Cells whose two pixels are both empty are
+// left alone; every other cell is replaced. Call it at the point in drawing where
+// the pixels should sit: anything drawn into the FrameBuffer afterwards lands on
+// top of them.
 func (c *Canvas) Compose() {
 	fb := c.fb
 	for row := range fb.height {
 		for x := range fb.width {
-			top := c.pixels[(2*row)*c.width+x]
-			bottom := c.pixels[(2*row+1)*c.width+x]
+			topIdx, bottomIdx := (2*row)*c.width+x, (2*row+1)*c.width+x
+			top, bottom := c.pixels[topIdx], c.pixels[bottomIdx]
+
+			if c.Seamless && (top != 0 || bottom != 0) {
+				// One color for the whole cell: the nearer pixel, or the only one set.
+				color := top
+				if top == 0 || (bottom != 0 && c.depth[bottomIdx] < c.depth[topIdx]) {
+					color = bottom
+				}
+				fb.frame[row*fb.width+x] = Cell{Character: ' ', Background: color}
+				continue
+			}
 
 			var cell Cell
 			switch {

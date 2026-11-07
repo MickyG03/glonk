@@ -7,6 +7,8 @@ import (
 
 func newTestCanvas(t *testing.T, cols, rows int) (*FrameBuffer, *Canvas) {
 	t.Helper()
+	// The default for Seamless depends on the terminal running the tests.
+	t.Setenv("TERM_PROGRAM", "")
 	fb, err := NewFrameBuffer(cols, rows)
 	if err != nil {
 		t.Fatalf("unable to initialize frame buffer: %v", err)
@@ -291,5 +293,148 @@ func TestCanvasFillTriangleDepth(t *testing.T) {
 				t.Errorf("wanted the nearest triangle at (%d,%d), got %d", x, y, got)
 			}
 		}
+	}
+}
+
+func TestCanvasSeamlessDefault(t *testing.T) {
+	tests := []struct {
+		name string
+		env  string
+		want bool
+	}{
+		{"apple terminal", "Apple_Terminal", true},
+		{"unset", "", false},
+		{"ghostty", "ghostty", false},
+		{"iterm", "iTerm.app", false},
+		{"tmux", "tmux", false},
+		{"different case is not apple terminal", "apple_terminal", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("TERM_PROGRAM", tt.env)
+
+			fb, err := NewFrameBuffer(2, 2)
+			if err != nil {
+				t.Fatalf("unable to initialize frame buffer: %v", err)
+			}
+
+			if got := fb.Canvas().Seamless; got != tt.want {
+				t.Errorf("wanted Seamless=%v for TERM_PROGRAM=%q, got %v", tt.want, tt.env, got)
+			}
+		})
+	}
+}
+
+func TestCanvasSeamlessOverridesDetection(t *testing.T) {
+	t.Setenv("TERM_PROGRAM", "Apple_Terminal")
+	fb, err := NewFrameBuffer(1, 1)
+	if err != nil {
+		t.Fatalf("unable to initialize frame buffer: %v", err)
+	}
+	c := fb.Canvas()
+	c.Seamless = false
+	c.Set(0, 0, 5)
+	c.Compose()
+
+	if got := fb.At(0, 0); got != (Cell{Character: '▀', Color: 5}) {
+		t.Errorf("wanted exact mode after turning Seamless off, got %+v", got)
+	}
+}
+
+func TestCanvasComposeSeamless(t *testing.T) {
+	type px struct {
+		color uint8
+		depth float64 // 0 means draw with Set, which leaves the depth at infinity
+	}
+	set := func(c *Canvas, x, y int, p px) {
+		switch {
+		case p.color == 0:
+		case p.depth == 0:
+			c.Set(x, y, p.color)
+		default:
+			c.SetDepth(x, y, p.depth, p.color)
+		}
+	}
+
+	tests := []struct {
+		name        string
+		top, bottom px
+		want        Cell
+	}{
+		{"both empty leaves the cell alone", px{}, px{}, Cell{Character: 'x', Color: 9, Background: 8}},
+		{"top only", px{5, 3}, px{}, Cell{Character: ' ', Background: 5}},
+		{"bottom only", px{}, px{6, 3}, Cell{Character: ' ', Background: 6}},
+		{"equal colors", px{5, 3}, px{5, 4}, Cell{Character: ' ', Background: 5}},
+		{"top is nearer", px{5, 2}, px{6, 3}, Cell{Character: ' ', Background: 5}},
+		{"bottom is nearer", px{5, 3}, px{6, 2}, Cell{Character: ' ', Background: 6}},
+		{"equal depth goes to the top", px{5, 3}, px{6, 3}, Cell{Character: ' ', Background: 5}},
+		{"depthless pixels go to the top", px{5, 0}, px{6, 0}, Cell{Character: ' ', Background: 5}},
+		{"a depth beats a depthless pixel below", px{5, 0}, px{6, 9}, Cell{Character: ' ', Background: 6}},
+		{"a depth beats a depthless pixel above", px{5, 9}, px{6, 0}, Cell{Character: ' ', Background: 5}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fb, c := newTestCanvas(t, 3, 2)
+			c.Seamless = true
+			sentinel := Cell{Character: 'x', Color: 9, Background: 8}
+			for y := range 2 {
+				for x := range 3 {
+					fb.Set(x, y, sentinel)
+				}
+			}
+
+			set(c, 1, 2, tt.top)
+			set(c, 1, 3, tt.bottom)
+			c.Compose()
+
+			if got := fb.At(1, 1); got != tt.want {
+				t.Errorf("wanted %+v, got %+v", tt.want, got)
+			}
+			for _, p := range [][2]int{{0, 0}, {1, 0}, {2, 0}, {0, 1}, {2, 1}} {
+				if got := fb.At(p[0], p[1]); got != sentinel {
+					t.Errorf("wanted cell %v untouched, got %+v", p, got)
+				}
+			}
+		})
+	}
+}
+
+// Seamless output has no glyphs at all, whatever the pixels are.
+func TestCanvasComposeSeamlessNeverUsesBlockCharacters(t *testing.T) {
+	fb, c := newTestCanvas(t, 6, 4)
+	c.Seamless = true
+
+	for y := range c.Height() {
+		for x := range c.Width() {
+			if (x+y)%3 != 0 {
+				c.Set(x, y, uint8(1+(x*7+y*3)%200))
+			}
+		}
+	}
+	c.Compose()
+
+	for y := range fb.Height() {
+		for x := range fb.Width() {
+			if got := fb.At(x, y); got.Character == '▀' || got.Character == '▄' || got.Color != 0 {
+				t.Fatalf("wanted only solid cells, got %+v at (%d,%d)", got, x, y)
+			}
+		}
+	}
+}
+
+// Erasing a pixel with Set(0) leaves its old depth behind; an erased pixel must not win.
+func TestCanvasComposeSeamlessIgnoresErasedPixelDepth(t *testing.T) {
+	fb, c := newTestCanvas(t, 1, 1)
+	c.Seamless = true
+
+	c.SetDepth(0, 0, 5, 3)
+	c.SetDepth(0, 1, 1, 6)
+	c.Set(0, 1, 0)
+	c.Compose()
+
+	if got, want := fb.At(0, 0), (Cell{Character: ' ', Background: 3}); got != want {
+		t.Errorf("wanted %+v, got %+v", want, got)
 	}
 }
