@@ -396,6 +396,8 @@ func BenchmarkDrawShaded(b *testing.B) {
 
 func newShadeCanvas(t *testing.T) (*engine.FrameBuffer, *engine.Canvas) {
 	t.Helper()
+	// The canvas's Seamless default depends on the terminal running the tests.
+	t.Setenv("TERM_PROGRAM", "")
 	fb := newShadeBuffer(t)
 	return fb, fb.Canvas()
 }
@@ -697,6 +699,75 @@ func TestDrawShadedPixelsDepthVariesAcrossAFace(t *testing.T) {
 		// Pixel row 36 is below the wall's base; the floor there is at about z=2.9, in front.
 		if got := c.At(shadeW/2, 36); got != floorColor {
 			t.Errorf("floorFirst=%v: wanted the floor (%d) at (40,36), got %d", floorFirst, floorColor, got)
+		}
+	}
+}
+
+func centroid(cells [][2]int) (x, y float64) {
+	for _, c := range cells {
+		x += float64(c[0])
+		y += float64(c[1])
+	}
+	n := float64(len(cells))
+	return x / n, y / n
+}
+
+// A tilted camera must still see what it points at, in every drawing mode.
+func TestDrawWithPitchedCamera(t *testing.T) {
+	light := Light{Direction: geometry.Vector3{X: 0.3, Y: -1, Z: 0.5}, Ambient: 0.2}
+
+	for _, pitch := range []float64{-0.8, 0.8} {
+		cam := Camera{Position: geometry.Vector3{Y: 1}, Pitch: pitch, FOV: math.Pi / 2, Near: 0.1}
+
+		aimed := Cube(2)
+		aimed.Position = cam.Position.Add(cam.Look().Scale(6))
+		level := Cube(2)
+		level.Position = cam.Position.Add(geometry.Vector3{Z: 6})
+
+		draws := map[string]func(m Mesh) [][2]int{
+			"wireframe": func(m Mesh) [][2]int {
+				fb := newShadeBuffer(t)
+				m.Draw(fb, cam, engine.Cell{Character: '#'})
+				return drawn(fb)
+			},
+			"glyph shaded": func(m Mesh) [][2]int {
+				fb := newShadeBuffer(t)
+				m.DrawShaded(fb, cam, light, 1)
+				return drawn(fb)
+			},
+			"pixel shaded": func(m Mesh) [][2]int {
+				_, c := newShadeCanvas(t)
+				m.DrawShadedPixels(c, cam, light, 1)
+				// Pixel rows are half cells; fold them back to cell rows for the comparison.
+				var cells [][2]int
+				for _, p := range pixelsDrawn(c) {
+					cells = append(cells, [2]int{p[0], p[1] / 2})
+				}
+				return cells
+			},
+		}
+
+		for name, draw := range draws {
+			// What the camera points at lands in the middle of the screen.
+			cells := draw(aimed)
+			if len(cells) == 0 {
+				t.Fatalf("pitch %v, %s: wanted the aimed cube drawn", pitch, name)
+			}
+			cx, cy := centroid(cells)
+			if math.Abs(cx-shadeW/2) > 2 || math.Abs(cy-shadeH/2) > 2 {
+				t.Errorf("pitch %v, %s: wanted the aimed cube near the center, got (%.1f,%.1f)", pitch, name, cx, cy)
+			}
+
+			// What is straight ahead on the level slides the opposite way: down when the
+			// camera looks up, up when it looks down.
+			cells = draw(level)
+			if len(cells) == 0 {
+				continue // pushed off screen, which is also the right direction
+			}
+			_, cy = centroid(cells)
+			if (pitch > 0) != (cy > shadeH/2) {
+				t.Errorf("pitch %v, %s: wanted the level cube to move away from the look direction, got y=%.1f", pitch, name, cy)
+			}
 		}
 	}
 }

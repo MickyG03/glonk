@@ -6,11 +6,14 @@ import (
 	"github.com/kyrokohan/glonk/geometry"
 )
 
-// Camera views the world from Position, looking down +z
-// when Yaw is 0. Yaw and FOV (vertical) are in radians.
+// Camera views the world from Position, looking down +z when Yaw and Pitch
+// are 0. Yaw turns it right (positive) or left, Pitch tilts it up (positive) or
+// down, and FOV is the vertical field of view. All three are in radians. Pitch
+// is not limited; keep it inside +-pi/2 or the view flips over.
 type Camera struct {
 	Position geometry.Vector3
 	Yaw      float64
+	Pitch    float64
 	FOV      float64
 	Near     float64
 }
@@ -36,20 +39,31 @@ func (c Camera) Project(p geometry.Vector3, w, h int) (x, y float64, ok bool) {
 	return px, py, true
 }
 
-// Forward returns the unit vector the camera faces, flat on the xz plane.
+// Forward returns the unit vector the camera faces, flat on the xz plane: Pitch
+// is ignored, so walking along it never climbs or dives. Use Look for the way
+// the camera actually points.
 // It is view-space +z rotated by Yaw, the inverse of toView's RotateY(-Yaw).
 func (c Camera) Forward() geometry.Vector3 {
 	return geometry.Vector3{X: 0, Y: 0, Z: 1}.RotateY(c.Yaw)
 }
 
 // Right returns the unit vector to the camera's right, flat on the xz plane.
+// Tilting the camera does not move it.
 func (c Camera) Right() geometry.Vector3 {
 	return geometry.Vector3{X: 1, Y: 0, Z: 0}.RotateY(c.Yaw)
 }
 
+// Look returns the unit vector the camera points along, including Pitch. A point
+// at Position plus Look times any distance lands in the middle of the screen.
+func (c Camera) Look() geometry.Vector3 {
+	return geometry.Vector3{X: 0, Y: 0, Z: 1}.RotateX(-c.Pitch).RotateY(c.Yaw)
+}
+
 // toView moves a world point into view space: camera at the origin, looking down +z.
+// It undoes the camera's turn first and then its tilt, the reverse of how the
+// camera was posed (turn about the vertical axis, then tilt about its own).
 func (c Camera) toView(p geometry.Vector3) geometry.Vector3 {
-	return p.Sub(c.Position).RotateY(-c.Yaw)
+	return p.Sub(c.Position).RotateY(-c.Yaw).RotateX(c.Pitch)
 }
 
 // projectView maps a view-space point to fractional cell coordinates.
