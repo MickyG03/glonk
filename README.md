@@ -7,7 +7,7 @@ A terminal rendering engine for Go. Draw 2D, 3D, or both in the same frame, usin
 ## What it does
 
 - **2D:** cells with 256-color, lines, boxes, text, and sprites.
-- **3D:** wireframe meshes through a perspective camera, with near-plane clipping.
+- **3D:** wireframe or solid meshes through a perspective camera, with near-plane clipping. Solid meshes are flat-shaded by a directional light into an ASCII brightness ramp, hide each other by depth, and skip faces turned away.
 - **Mixed:** draw a 3D scene first, then a 2D HUD on top, into the same frame.
 - **Input:** held keys and one-shot presses, including arrows. Terminals with the [kitty keyboard protocol](https://sw.kovidgoyal.net/kitty/keyboard-protocol/) (Ghostty, kitty, WezTerm, foot, iTerm2, Alacritty) report real key releases, so you can hold several keys at once.
 - **Resizing:** the frame follows the terminal window.
@@ -24,7 +24,7 @@ Requires Go 1.27.2 or newer (see `go.mod`).
 
 ```
 make run                              # bounce2d: a ball in a box (Esc quits)
-make run EXAMPLE=./examples/cube3d    # cube3d: walk around a floor with six cubes
+make run EXAMPLE=./examples/cube3d    # cube3d: walk around a floor with six shaded cubes
 ```
 
 cube3d controls:
@@ -88,7 +88,7 @@ func main() {
 |---|---|
 | `engine` | The loop, `FrameBuffer`, drawing helpers, keyboard `Input` |
 | `geometry` | 2D and 3D vector math |
-| `mesh` | Wireframe 3D meshes and the perspective `Camera` |
+| `mesh` | 3D meshes (wireframe and shaded), lights, and the perspective `Camera` |
 | `sprite` | Single-cell sprites drawn in layers |
 
 ## Compatibility and limits
@@ -105,7 +105,7 @@ Built to work in most terminals: it uses only the alternate screen, cursor movem
 
 ## Planned
 
-Ideas, not promises: filled and shaded 3D surfaces, loading OBJ models and finer-than-a-cell rendering with half blocks.
+Ideas, not promises: loading OBJ models and finer-than-a-cell rendering with half blocks.
 
 ## License
 

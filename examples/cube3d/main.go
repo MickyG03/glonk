@@ -20,6 +20,9 @@ const (
 	walkLimit     = gridSize/2 - 0.5 // invisible walls, half a unit inside the floor edge
 )
 
+// sun lights the cubes from above, to one side and slightly ahead of the start.
+var sun = mesh.Light{Direction: geometry.Vector3{X: 0.4, Y: -1, Z: 0.6}, Ambient: 0.2}
+
 type object struct {
 	mesh  mesh.Mesh
 	color uint8
@@ -77,10 +80,11 @@ func (g *cubeGame) Update(dt float64, in *engine.Input) error {
 }
 
 func (g *cubeGame) Draw(fb *engine.FrameBuffer) {
-	// No depth buffer yet, so the last thing drawn wins a cell: floor first, then cubes.
+	// The floor is wireframe and ignores depth, so draw it first; the shaded cubes
+	// then cover it where they stand, and hide each other by depth.
 	g.floor.Draw(fb, g.cam, engine.Cell{Character: '.', Color: 240})
 	for _, o := range g.cubes {
-		o.mesh.Draw(fb, g.cam, engine.Cell{Character: '#', Color: o.color})
+		o.mesh.DrawShaded(fb, g.cam, sun, o.color)
 	}
 
 	// HUD after the 3D pass so the scene never draws over it.

@@ -1,6 +1,7 @@
 package mesh
 
 import (
+	"fmt"
 	"math"
 	"testing"
 
@@ -358,5 +359,35 @@ func TestDrawShadedDepthVariesAcrossAFace(t *testing.T) {
 		if got := fb.At(shadeW/2, 18).Character; got != floorChar {
 			t.Errorf("floorFirst=%v: wanted the floor %q at (40,18), got %q", floorFirst, floorChar, got)
 		}
+	}
+}
+
+func BenchmarkDrawShaded(b *testing.B) {
+	for _, size := range []struct{ w, h int }{{80, 24}, {200, 60}} {
+		b.Run(fmt.Sprintf("%dx%d", size.w, size.h), func(b *testing.B) {
+			fb, err := engine.NewFrameBuffer(size.w, size.h)
+			if err != nil {
+				b.Fatalf("unable to initialize frame buffer: %v", err)
+			}
+			cam := shadeCam()
+			light := Light{Direction: geometry.Vector3{X: 0.4, Y: -1, Z: 0.6}, Ambient: 0.2}
+
+			// Six cubes at mixed distances and turns, one close enough to fill the view.
+			var cubes []Mesh
+			for i, z := range []float64{1.5, 3, 5, 7, 9, 12} {
+				c := Cube(2)
+				c.Position = geometry.Vector3{X: float64(i%3-1) * 1.5, Z: z}
+				c.Yaw, c.Pitch = float64(i)*0.5, float64(i)*0.3
+				cubes = append(cubes, c)
+			}
+
+			b.ReportAllocs()
+			for b.Loop() {
+				fb.Clear()
+				for _, c := range cubes {
+					c.DrawShaded(fb, cam, light, 1)
+				}
+			}
+		})
 	}
 }
