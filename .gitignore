@@ -5,6 +5,10 @@
 # examples/cube3d and examples/bounce2d stay tracked
 /bounce2d
 /cube3d
+/viewer
+
+# private planning notes; kept out of the history on purpose
+/ROADMAP.md
 
 # test and coverage output
 *.test
