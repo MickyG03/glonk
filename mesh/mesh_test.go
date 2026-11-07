@@ -2,6 +2,8 @@ package mesh
 
 import (
 	"math"
+	"math/bits"
+	"slices"
 	"testing"
 
 	"github.com/kyrokohan/glonk/engine"
@@ -40,6 +42,75 @@ func TestCube(t *testing.T) {
 		aDistB := a.Distance(b)
 		if !floatEquals(aDistB, size) {
 			t.Errorf("wanted edge distance=%f, got %v from edge %v", size, aDistB, e)
+		}
+	}
+}
+
+func TestCubeFaces(t *testing.T) {
+	size := 2.0
+	cube := Cube(size)
+
+	if len(cube.Faces) != 12 {
+		t.Fatalf("wanted 12 faces, got %d", len(cube.Faces))
+	}
+
+	// Each side of the cube must be covered by exactly two triangles, once.
+	areaBySide := map[geometry.Vector3]float64{}
+	trisBySide := map[geometry.Vector3][][3]int{}
+
+	for _, f := range cube.Faces {
+		for _, idx := range f {
+			if idx < 0 || idx >= len(cube.Vertices) {
+				t.Fatalf("wanted face indices in range, got %v", f)
+			}
+		}
+		if f[0] == f[1] || f[1] == f[2] || f[0] == f[2] {
+			t.Errorf("wanted three distinct corners, got %v", f)
+		}
+
+		a, b, c := cube.Vertices[f[0]], cube.Vertices[f[1]], cube.Vertices[f[2]]
+		cross := b.Sub(a).Cross(c.Sub(a))
+		normal := cross.Normalize()
+
+		// The cube is centered on the origin, so outward means pointing away from it.
+		if centroid := a.Add(b).Add(c).Scale(1.0 / 3); normal.Dot(centroid) <= 0 {
+			t.Errorf("wanted face %v to point outward, normal %v at %v", f, normal, centroid)
+		}
+
+		// A cube side is axis aligned, so the normal is a unit axis.
+		if !floatEquals(normal.Length(), 1) || !(floatEquals(math.Abs(normal.X)+math.Abs(normal.Y)+math.Abs(normal.Z), 1)) {
+			t.Errorf("wanted an axis-aligned normal, got %v", normal)
+		}
+
+		areaBySide[normal] += cross.Length() / 2
+		trisBySide[normal] = append(trisBySide[normal], f)
+	}
+
+	// Equal areas are not enough: two triangles that overlap also sum to the full
+	// side. A real split shares only the quad's diagonal, whose corners differ in
+	// two index bits (a quad edge differs in one).
+	for normal, tris := range trisBySide {
+		if len(tris) != 2 {
+			t.Errorf("wanted 2 triangles on side %v, got %d", normal, len(tris))
+			continue
+		}
+		var shared []int
+		for _, i := range tris[0] {
+			if slices.Contains(tris[1][:], i) {
+				shared = append(shared, i)
+			}
+		}
+		if len(shared) != 2 || bits.OnesCount(uint(shared[0]^shared[1])) != 2 {
+			t.Errorf("wanted side %v split along its diagonal, shared corners %v", normal, shared)
+		}
+	}
+
+	if len(areaBySide) != 6 {
+		t.Errorf("wanted 6 distinct sides, got %d", len(areaBySide))
+	}
+	for normal, area := range areaBySide {
+		if !floatEquals(area, size*size) {
+			t.Errorf("wanted side %v to cover area %v, got %v", normal, size*size, area)
 		}
 	}
 }

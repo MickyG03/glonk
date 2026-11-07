@@ -8,11 +8,16 @@ import (
 )
 
 // Mesh describes an object that holds
-// model-space vertices, edges between them
+// model-space vertices, edges between them, triangle faces
 // and its placement in the world.
+//
+// Edges drive wireframe drawing and Faces drive shaded drawing; a mesh can have
+// either or both. Faces index into Vertices and are wound so the face normal,
+// (b-a)x(c-a), points out of the surface.
 type Mesh struct {
 	Vertices []geometry.Vector3
 	Edges    [][2]int
+	Faces    [][3]int
 	Position geometry.Vector3
 	Yaw      float64
 	Pitch    float64
@@ -59,7 +64,21 @@ func Cube(size float64) Mesh {
 		}
 	}
 
-	return Mesh{Vertices: vertices, Edges: edges}
+	// Vertex i sits at +size/2 on x, y and z when bit 1, 2 and 4 of i is set.
+	// Each side is two triangles, listed by the quad's corners in outward order.
+	var faces [][3]int
+	for _, quad := range [][4]int{
+		{0, 4, 6, 2}, // -x
+		{1, 3, 7, 5}, // +x
+		{0, 1, 5, 4}, // -y
+		{2, 6, 7, 3}, // +y
+		{0, 2, 3, 1}, // -z
+		{4, 5, 7, 6}, // +z
+	} {
+		faces = append(faces, [3]int{quad[0], quad[1], quad[2]}, [3]int{quad[0], quad[2], quad[3]})
+	}
+
+	return Mesh{Vertices: vertices, Edges: edges, Faces: faces}
 }
 
 // Draw renders the mesh's edges as lines.
