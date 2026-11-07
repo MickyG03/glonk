@@ -391,3 +391,312 @@ func BenchmarkDrawShaded(b *testing.B) {
 		})
 	}
 }
+
+// ---- pixel drawing ----
+
+func newShadeCanvas(t *testing.T) (*engine.FrameBuffer, *engine.Canvas) {
+	t.Helper()
+	fb := newShadeBuffer(t)
+	return fb, fb.Canvas()
+}
+
+// pixelsDrawn lists the pixel coordinates that are not empty.
+func pixelsDrawn(c *engine.Canvas) [][2]int {
+	var out [][2]int
+	for y := range c.Height() {
+		for x := range c.Width() {
+			if c.At(x, y) != 0 {
+				out = append(out, [2]int{x, y})
+			}
+		}
+	}
+	return out
+}
+
+func distinctRows(cells [][2]int) int {
+	rows := map[int]bool{}
+	for _, c := range cells {
+		rows[c[1]] = true
+	}
+	return len(rows)
+}
+
+func TestDrawShadedPixelsHasTwiceTheRows(t *testing.T) {
+	cube := Cube(2)
+	cube.Position = geometry.Vector3{Z: 5}
+	light := Light{Direction: geometry.Vector3{Z: 1}}
+
+	fb := newShadeBuffer(t)
+	cube.DrawShaded(fb, shadeCam(), light, 1)
+	_, c := newShadeCanvas(t)
+	cube.DrawShadedPixels(c, shadeCam(), light, 1)
+
+	glyphRows, pixelRows := distinctRows(drawn(fb)), distinctRows(pixelsDrawn(c))
+	if glyphRows == 0 {
+		t.Fatalf("test setup: wanted the glyph cube drawn")
+	}
+	if pixelRows != 2*glyphRows {
+		t.Errorf("wanted %d pixel rows for %d cell rows, got %d", 2*glyphRows, glyphRows, pixelRows)
+	}
+
+	// The width is not stretched: same columns either way.
+	glyphCols, pixelCols := map[int]bool{}, map[int]bool{}
+	for _, p := range drawn(fb) {
+		glyphCols[p[0]] = true
+	}
+	for _, p := range pixelsDrawn(c) {
+		pixelCols[p[0]] = true
+	}
+	if len(glyphCols) != len(pixelCols) {
+		t.Errorf("wanted the same %d columns, got %d", len(glyphCols), len(pixelCols))
+	}
+}
+
+func TestDrawShadedPixelsColorFollowsLight(t *testing.T) {
+	cube := Cube(2)
+	cube.Position = geometry.Vector3{Z: 5}
+
+	tests := []struct {
+		name      string
+		light     Light
+		intensity float64
+	}{
+		{"light straight at the face", Light{Direction: geometry.Vector3{Z: 1}}, 1},
+		{"light at an angle", Light{Direction: geometry.Vector3{Y: -1, Z: 1}}, math.Sqrt2 / 2},
+		{"light from behind the face", Light{Direction: geometry.Vector3{Z: -1}, Ambient: 0.25}, 0.25},
+		{"ambient only", Light{Ambient: 0.4}, 0.4},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, c := newShadeCanvas(t)
+			cube.DrawShadedPixels(c, shadeCam(), tt.light, 208)
+
+			want := engine.Shade(208, tt.intensity)
+			pixels := pixelsDrawn(c)
+			if len(pixels) == 0 {
+				t.Fatalf("wanted the cube drawn")
+			}
+			for _, p := range pixels {
+				if got := c.At(p[0], p[1]); got != want {
+					t.Fatalf("wanted every pixel %d, got %d at %v", want, got, p)
+				}
+			}
+		})
+	}
+}
+
+func TestDrawShadedPixelsFacesDiffer(t *testing.T) {
+	_, c := newShadeCanvas(t)
+	cube := Cube(2)
+	cube.Position = geometry.Vector3{Z: 5}
+	cube.Yaw, cube.Pitch = 0.6, 0.4
+	light := Light{Direction: geometry.Vector3{X: 0.3, Y: -1, Z: 0.5}, Ambient: 0.1}
+
+	cube.DrawShadedPixels(c, shadeCam(), light, 208)
+
+	shades := map[uint8]bool{}
+	for _, p := range pixelsDrawn(c) {
+		shades[c.At(p[0], p[1])] = true
+	}
+	if len(shades) < 2 || len(shades) > 3 {
+		t.Errorf("wanted 2 or 3 distinct shades, got %d: %v", len(shades), shades)
+	}
+}
+
+func TestDrawShadedPixelsDepthOrder(t *testing.T) {
+	near := Cube(2)
+	near.Position = geometry.Vector3{Z: 4}
+	far := Cube(2)
+	far.Position = geometry.Vector3{Z: 10}
+	light := Light{Direction: geometry.Vector3{Z: 1}, Ambient: 0.2}
+
+	for _, nearFirst := range []bool{true, false} {
+		_, c := newShadeCanvas(t)
+		if nearFirst {
+			near.DrawShadedPixels(c, shadeCam(), light, 196)
+			far.DrawShadedPixels(c, shadeCam(), light, 46)
+		} else {
+			far.DrawShadedPixels(c, shadeCam(), light, 46)
+			near.DrawShadedPixels(c, shadeCam(), light, 196)
+		}
+
+		// The far cube sits entirely behind the near one on screen.
+		for _, p := range pixelsDrawn(c) {
+			if got := c.At(p[0], p[1]); got != engine.Shade(196, 1) {
+				t.Fatalf("nearFirst=%v: wanted only the near cube, got color %d at %v", nearFirst, got, p)
+			}
+		}
+	}
+}
+
+func TestDrawShadedPixelsCullsBackFaces(t *testing.T) {
+	verts := []geometry.Vector3{{X: -1, Y: -1, Z: 5}, {X: 1, Y: -1, Z: 5}, {X: 0, Y: 1, Z: 5}}
+	light := Light{Direction: geometry.Vector3{Z: 1}, Ambient: 0.1}
+
+	for _, tt := range []struct {
+		name string
+		face [3]int
+		want bool
+	}{
+		{"wound away from the camera", [3]int{0, 1, 2}, false},
+		{"wound toward the camera", [3]int{0, 2, 1}, true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			_, c := newShadeCanvas(t)
+			m := Mesh{Vertices: verts, Faces: [][3]int{tt.face}}
+
+			m.DrawShadedPixels(c, shadeCam(), light, 7)
+
+			if got := len(pixelsDrawn(c)) > 0; got != tt.want {
+				t.Errorf("wanted drawn=%v, got %v", tt.want, got)
+			}
+		})
+	}
+}
+
+func TestDrawShadedPixelsPlacement(t *testing.T) {
+	light := Light{Direction: geometry.Vector3{Z: 1}}
+
+	for _, tt := range []struct {
+		name  string
+		x, y  float64
+		right bool
+		below bool
+	}{
+		{"right and above", 3, 1, true, false},
+		{"left and below", -3, -1, false, true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			_, c := newShadeCanvas(t)
+			cube := Cube(1)
+			cube.Position = geometry.Vector3{X: tt.x, Y: tt.y, Z: 5}
+
+			cube.DrawShadedPixels(c, shadeCam(), light, 1)
+
+			pixels := pixelsDrawn(c)
+			if len(pixels) == 0 {
+				t.Fatalf("wanted the cube drawn")
+			}
+			for _, p := range pixels {
+				if (p[0] > shadeW/2) != tt.right {
+					t.Fatalf("wanted every pixel on the right=%v side, got %v", tt.right, p)
+				}
+				if (p[1] > shadeH) != tt.below {
+					t.Fatalf("wanted every pixel below the middle=%v, got %v", tt.below, p)
+				}
+			}
+		})
+	}
+}
+
+func TestDrawShadedPixelsBehindCamera(t *testing.T) {
+	_, c := newShadeCanvas(t)
+	cube := Cube(2)
+	cube.Position = geometry.Vector3{Z: -5}
+
+	cube.DrawShadedPixels(c, shadeCam(), Light{Direction: geometry.Vector3{Z: 1}}, 1)
+
+	if pixels := pixelsDrawn(c); len(pixels) != 0 {
+		t.Errorf("wanted an empty canvas, got %d pixels", len(pixels))
+	}
+}
+
+func TestDrawShadedPixelsFloorCrossingTheNearPlane(t *testing.T) {
+	_, c := newShadeCanvas(t)
+	floor := Mesh{
+		Vertices: []geometry.Vector3{
+			{X: -5, Y: -1.5, Z: -5}, {X: -5, Y: -1.5, Z: 10}, {X: 5, Y: -1.5, Z: 10}, {X: 5, Y: -1.5, Z: -5},
+		},
+		Faces: [][3]int{{0, 1, 2}, {0, 2, 3}},
+	}
+
+	floor.DrawShadedPixels(c, shadeCam(), Light{Direction: geometry.Vector3{Y: -1}}, 1)
+
+	// The far edge is at z=10: 1.5/10 below the horizon, which is pixel row 27.6.
+	for y := range 27 {
+		for x := range c.Width() {
+			if c.At(x, y) != 0 {
+				t.Fatalf("wanted pixel rows above the floor's far edge empty, got a pixel at (%d,%d)", x, y)
+			}
+		}
+	}
+	if c.At(shadeW/2, 28) == 0 {
+		t.Errorf("wanted the floor to fill the view just below its far edge")
+	}
+	if c.At(shadeW/2, c.Height()-1) == 0 {
+		t.Errorf("wanted the floor to reach the bottom pixel row")
+	}
+}
+
+func TestDrawShadedPixelsWithoutFaces(t *testing.T) {
+	_, c := newShadeCanvas(t)
+	grid := Grid(10, 5)
+	grid.Position = geometry.Vector3{Y: -1, Z: 5}
+
+	grid.DrawShadedPixels(c, shadeCam(), Light{Direction: geometry.Vector3{Y: -1}}, 1)
+
+	if pixels := pixelsDrawn(c); len(pixels) != 0 {
+		t.Errorf("wanted a mesh without faces to draw nothing, got %d pixels", len(pixels))
+	}
+}
+
+// End to end: pixels composed into cells give solid background cells inside the
+// face and half blocks along its top and bottom edges.
+func TestDrawShadedPixelsComposes(t *testing.T) {
+	fb, c := newShadeCanvas(t)
+	cube := Cube(2)
+	cube.Position = geometry.Vector3{Z: 5}
+	light := Light{Direction: geometry.Vector3{Z: 1}}
+
+	cube.DrawShadedPixels(c, shadeCam(), light, 208)
+	c.Compose()
+
+	shade := engine.Shade(208, 1)
+	if got, want := fb.At(shadeW/2, shadeH/2), (engine.Cell{Character: ' ', Background: shade}); got != want {
+		t.Errorf("wanted a solid cell in the middle of the face, got %+v", got)
+	}
+	if got := fb.At(2, 2); got != engine.BlankCell {
+		t.Errorf("wanted untouched cells to stay blank, got %+v", got)
+	}
+}
+
+// A floor's depth changes across the screen. Where a wall stands on it, the part of
+// the floor behind the wall must be hidden and the part in front must not be.
+func TestDrawShadedPixelsDepthVariesAcrossAFace(t *testing.T) {
+	floor := Mesh{
+		Vertices: []geometry.Vector3{
+			{X: -5, Y: -1.5, Z: -5}, {X: -5, Y: -1.5, Z: 10}, {X: 5, Y: -1.5, Z: 10}, {X: 5, Y: -1.5, Z: -5},
+		},
+		Faces: [][3]int{{0, 1, 2}, {0, 2, 3}},
+	}
+	wall := Mesh{
+		Vertices: []geometry.Vector3{
+			{X: -1, Y: -1.5, Z: 5}, {X: -1, Y: 0.5, Z: 5}, {X: 1, Y: 0.5, Z: 5}, {X: 1, Y: -1.5, Z: 5},
+		},
+		Faces: [][3]int{{0, 1, 2}, {0, 2, 3}},
+	}
+	light := Light{Direction: geometry.Vector3{Y: -1, Z: 2}}
+	wallColor := engine.Shade(196, light.intensity(geometry.Vector3{Z: -1}))
+	floorColor := engine.Shade(46, light.intensity(geometry.Vector3{Y: 1}))
+
+	for _, floorFirst := range []bool{true, false} {
+		_, c := newShadeCanvas(t)
+		if floorFirst {
+			floor.DrawShadedPixels(c, shadeCam(), light, 46)
+			wall.DrawShadedPixels(c, shadeCam(), light, 196)
+		} else {
+			wall.DrawShadedPixels(c, shadeCam(), light, 196)
+			floor.DrawShadedPixels(c, shadeCam(), light, 46)
+		}
+
+		// Pixel row 29 is on the wall's face; the floor there lies at about z=6.5, behind it.
+		if got := c.At(shadeW/2, 29); got != wallColor {
+			t.Errorf("floorFirst=%v: wanted the wall (%d) at (40,29), got %d", floorFirst, wallColor, got)
+		}
+		// Pixel row 36 is below the wall's base; the floor there is at about z=2.9, in front.
+		if got := c.At(shadeW/2, 36); got != floorColor {
+			t.Errorf("floorFirst=%v: wanted the floor (%d) at (40,36), got %d", floorFirst, floorColor, got)
+		}
+	}
+}
