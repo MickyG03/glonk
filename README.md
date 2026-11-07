@@ -36,6 +36,7 @@ cube3d controls:
 | A / D | strafe left / right |
 | Q / E, Left / Right | turn left / right |
 | M | switch between character shading and half-block pixels |
+| B | in half-block mode, switch between exact and solid edges |
 | Esc | quit |
 
 Ctrl-C quits any program built on glonk.
@@ -100,7 +101,8 @@ Built to work in most terminals: it uses only the alternate screen, cursor movem
 - **Without key releases, held keys are a timing guess.** Most terminals report presses and repeats but never releases, so a key counts as held until about 150 ms pass without a repeat, with a short pause when you first hold one. glonk detects the kitty keyboard protocol at startup and uses it where it exists; everywhere else this is what you get.
 - **Without key releases, only one key stays held at a time.** The OS repeats just the most recently pressed key, so holding W and then pressing E stops W and you cannot walk and turn together (Terminal.app, for one). Set `Config.LegacyKeys` to force this behavior if a terminal misbehaves with the protocol.
 - **Color is 256-color only.** `Cell.Color` 0 is the terminal default and 1 to 255 are palette indices.
-- **Box drawing and half blocks need a Unicode font.** `DrawBox` uses `┌─┐│└┘` and the pixel canvas uses `▀▄`; nearly every monospace font has them. Some terminals show faint seams between rows of pixels. Character shading (`DrawShaded`) needs only ASCII and stays the default in the examples.
+- **Box drawing and half blocks need a Unicode font.** `DrawBox` uses `┌─┐│└┘` and the pixel canvas uses `▀▄`; nearly every monospace font has them. Character shading (`DrawShaded`) needs only ASCII and stays the default in the examples.
+- **Apple's Terminal draws a faint line along half-block edges.** Its block characters fall a little short of the cell. glonk detects it (`TERM_PROGRAM=Apple_Terminal`) and `Canvas.Compose` then draws solid cells instead of half blocks, so there is no line but silhouettes are a pixel blockier. Set `Canvas.Seamless` yourself to override, for instance inside tmux, which hides that variable.
 - **A fixed-size frame larger than the terminal garbles.** Leave `Width` and `Height` at 0 to fill the terminal.
 - **Resizing can flicker for one frame.**
 - **Windows is untested.**

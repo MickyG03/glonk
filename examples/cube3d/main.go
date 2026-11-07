@@ -37,6 +37,13 @@ type cubeGame struct {
 	// halfBlocks draws the cubes as pixels, two per cell, shaded by color. Off, they
 	// are drawn one per cell, shaded by character. M toggles it.
 	halfBlocks bool
+
+	// B flips the edge style of the pixels. The library picks a default for the
+	// terminal; once B is pressed we keep our own choice, and reapply it when a
+	// resize gives us a fresh canvas.
+	edgesPending bool // B was pressed and the next half-block frame should flip
+	edgesChosen  bool
+	edgesSolid   bool
 }
 
 // newCube returns a cube of the given size resting on the floor at (x, z).
@@ -53,6 +60,9 @@ func (g *cubeGame) Update(dt float64, in *engine.Input) error {
 	// Without release events shift+m arrives as 'M'.
 	if in.Pressed('m') || in.Pressed('M') {
 		g.halfBlocks = !g.halfBlocks
+	}
+	if g.halfBlocks && (in.Pressed('b') || in.Pressed('B')) {
+		g.edgesPending = true
 	}
 
 	const moveSpeed = 3.0
@@ -94,8 +104,18 @@ func (g *cubeGame) Draw(fb *engine.FrameBuffer) {
 
 	mode := "glyphs"
 	if g.halfBlocks {
-		mode = "half-blocks"
 		canvas := fb.Canvas()
+		switch {
+		case g.edgesPending:
+			canvas.Seamless = !canvas.Seamless
+			g.edgesSolid, g.edgesChosen, g.edgesPending = canvas.Seamless, true, false
+		case g.edgesChosen:
+			canvas.Seamless = g.edgesSolid
+		}
+		mode = "half-blocks, exact edges"
+		if canvas.Seamless {
+			mode = "half-blocks, solid edges"
+		}
 		for _, o := range g.cubes {
 			o.mesh.DrawShadedPixels(canvas, g.cam, sun, o.color)
 		}
@@ -109,7 +129,7 @@ func (g *cubeGame) Draw(fb *engine.FrameBuffer) {
 
 	fb.DrawBox(0, 0, fb.Width(), fb.Height(), 0)
 	fb.DrawText(1, 1, fmt.Sprintf("%.0f fps  %s", g.fps, mode), 0)
-	fb.DrawText(1, fb.Height()-2, "WASD move  QE turn  M mode  Esc quit", 0)
+	fb.DrawText(1, fb.Height()-2, "WASD move  QE turn  M mode  B edges  Esc quit", 0)
 }
 
 func main() {
