@@ -23,7 +23,7 @@ Requires Go 1.27.2 or newer (see `go.mod`).
 ## Run the examples
 
 ```
-make run                              # bounce2d: a ball in a box (q quits)
+make run                              # bounce2d: a ball in a box (Esc quits)
 make run EXAMPLE=./examples/cube3d    # cube3d: walk around a floor with six cubes
 ```
 

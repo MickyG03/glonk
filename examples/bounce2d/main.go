@@ -20,7 +20,7 @@ type bounceGame struct {
 }
 
 func (bg *bounceGame) Update(dt float64, in *engine.Input) error {
-	if in.Pressed('q') {
+	if in.Pressed(engine.KeyEscape) {
 		return engine.ErrQuit
 	}
 	bg.ball.X += bg.vx * dt
