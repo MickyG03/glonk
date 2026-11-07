@@ -4,6 +4,7 @@ import (
 	"math"
 	"math/rand/v2"
 	"testing"
+	"time"
 )
 
 type point struct {
@@ -485,5 +486,187 @@ func TestFillTriangleEdgeIsTight(t *testing.T) {
 		if got := fb.At(tc.x, tc.y) == mark; got != tc.want {
 			t.Errorf("wanted cell (%d,%d) filled=%v, got %v", tc.x, tc.y, tc.want, got)
 		}
+	}
+}
+
+// referenceLine is the original step-by-step Bresenham, kept as the oracle that
+// the windowed walkLine must match cell for cell.
+func referenceLine(x0, y0, x1, y1 int) []point {
+	dx := intAbs(x1 - x0)
+	sx := -1
+	if x0 < x1 {
+		sx = 1
+	}
+	dy := -intAbs(y1 - y0)
+	sy := -1
+	if y0 < y1 {
+		sy = 1
+	}
+	e := dx + dy
+
+	var out []point
+	for {
+		out = append(out, point{x0, y0})
+		if x0 == x1 && y0 == y1 {
+			return out
+		}
+		e2 := 2 * e
+		if e2 >= dy {
+			e += dy
+			x0 += sx
+		}
+		if e2 <= dx {
+			e += dx
+			y0 += sy
+		}
+	}
+}
+
+func windowOf(p []point, w, h int) []point {
+	var out []point
+	for _, q := range p {
+		if q.X >= 0 && q.X < w && q.Y >= 0 && q.Y < h {
+			out = append(out, q)
+		}
+	}
+	return out
+}
+
+func walked(w, h, x0, y0, x1, y1 int) []point {
+	var out []point
+	walkLine(w, h, x0, y0, x1, y1, func(x, y int) { out = append(out, point{x, y}) })
+	return out
+}
+
+func samePoints(a, b []point) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
+// Every line between points of a small square, against several windows: all
+// directions, slopes, ties, lines fully inside, half inside, and fully outside.
+func TestWalkLineMatchesBresenhamExhaustively(t *testing.T) {
+	const lim = 7
+	windows := [][2]int{{1, 1}, {3, 2}, {5, 5}, {4, 7}, {9, 9}}
+
+	for _, win := range windows {
+		w, h := win[0], win[1]
+		for x0 := -lim; x0 <= lim; x0++ {
+			for y0 := -lim; y0 <= lim; y0++ {
+				for x1 := -lim; x1 <= lim; x1++ {
+					for y1 := -lim; y1 <= lim; y1++ {
+						want := windowOf(referenceLine(x0, y0, x1, y1), w, h)
+						got := walked(w, h, x0, y0, x1, y1)
+						if !samePoints(got, want) {
+							t.Fatalf("window %dx%d line (%d,%d)-(%d,%d): wanted %v, got %v", w, h, x0, y0, x1, y1, want, got)
+						}
+					}
+				}
+			}
+		}
+	}
+}
+
+func TestWalkLineMatchesBresenhamOnLongLines(t *testing.T) {
+	rng := rand.New(rand.NewPCG(7, 8))
+
+	for trial := range 3000 {
+		w, h := 1+rng.IntN(60), 1+rng.IntN(30)
+		span := 1 + rng.IntN(2000)
+		x0, y0 := rng.IntN(2*span+1)-span, rng.IntN(2*span+1)-span
+		x1, y1 := rng.IntN(2*span+1)-span, rng.IntN(2*span+1)-span
+
+		want := windowOf(referenceLine(x0, y0, x1, y1), w, h)
+		got := walked(w, h, x0, y0, x1, y1)
+		if !samePoints(got, want) {
+			t.Fatalf("trial %d, window %dx%d, line (%d,%d)-(%d,%d): wanted %d cells, got %d", trial, w, h, x0, y0, x1, y1, len(want), len(got))
+		}
+	}
+}
+
+// A line with a far-away end must cost only what it shows, not what it spans.
+func TestWalkLineFinishesQuicklyForHugeLines(t *testing.T) {
+	cases := [][4]int{
+		{-1 << 29, 3, 1 << 29, 4},
+		{-1 << 29, -1 << 29, 1 << 29, 1 << 29},
+		{0, 0, 1 << 28, 1<<28 - 1},
+		{-1 << 40, 5, 1 << 40, 5},
+		{math.MinInt, math.MinInt, math.MaxInt, math.MaxInt},
+		{math.MaxInt, 0, math.MinInt, 0},
+		{3, math.MinInt, 3, math.MaxInt},
+		{-1 << 29, 7, 1 << 29, 7},
+	}
+
+	for _, c := range cases {
+		start := time.Now()
+		cells := walked(80, 24, c[0], c[1], c[2], c[3])
+
+		if time.Since(start) > time.Second {
+			t.Errorf("line %v: wanted it to finish quickly, took %v", c, time.Since(start))
+		}
+		if len(cells) > 80+24 {
+			t.Errorf("line %v: wanted at most one cell per column or row, got %d cells", c, len(cells))
+		}
+		for _, p := range cells {
+			if p.X < 0 || p.X >= 80 || p.Y < 0 || p.Y >= 24 {
+				t.Errorf("line %v: wanted every cell inside the grid, got %v", c, p)
+			}
+		}
+	}
+}
+
+func TestWalkLineExtremes(t *testing.T) {
+	// A horizontal line through the middle of the grid, however far its ends are.
+	cells := walked(80, 24, -1<<29, 7, 1<<29, 7)
+	if len(cells) != 80 {
+		t.Fatalf("wanted the full row of 80 cells, got %d", len(cells))
+	}
+	for i, p := range cells {
+		if p != (point{i, 7}) {
+			t.Fatalf("wanted cell %d at (%d,7), got %v", i, i, p)
+		}
+	}
+
+	// A line that never touches the grid.
+	if cells := walked(80, 24, -1<<29, 100, 1<<29, 100); len(cells) != 0 {
+		t.Errorf("wanted nothing for a line below the grid, got %d cells", len(cells))
+	}
+	if cells := walked(80, 24, -1<<29, -1, 1<<29, -1); len(cells) != 0 {
+		t.Errorf("wanted nothing for a line above the grid, got %d cells", len(cells))
+	}
+}
+
+// Past +-2^29 an endpoint is treated as sitting at the limit, which is what keeps
+// the arithmetic from overflowing. The documented price is a changed slope.
+func TestWalkLineClampsFarEndpoints(t *testing.T) {
+	const lim = 1 << 29
+
+	cases := []struct {
+		name string
+		far  [4]int
+		near [4]int
+	}{
+		{"far end", [4]int{0, 0, 1 << 40, 1 << 39}, [4]int{0, 0, lim, lim}},
+		{"far start", [4]int{-1 << 41, -1 << 40, 5, 5}, [4]int{-lim, -lim, 5, 5}},
+		{"both ends", [4]int{-1 << 45, 3, 1 << 45, 9}, [4]int{-lim, 3, lim, 9}},
+		{"negative end", [4]int{3, 2, -1 << 50, 1 << 33}, [4]int{3, 2, -lim, lim}},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got := walked(80, 24, c.far[0], c.far[1], c.far[2], c.far[3])
+			want := walked(80, 24, c.near[0], c.near[1], c.near[2], c.near[3])
+
+			if !samePoints(got, want) {
+				t.Errorf("wanted %v, got %v", want, got)
+			}
+		})
 	}
 }

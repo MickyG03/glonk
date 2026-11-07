@@ -1,6 +1,9 @@
 package engine
 
-import "math"
+import (
+	"math"
+	"sort"
+)
 
 func intAbs(a int) int {
 	if a >= 0 {
@@ -9,38 +12,84 @@ func intAbs(a int) int {
 	return -a
 }
 
-// DrawLine draws a line from (x0, y0) to (x1, y1)
-// using Bresenham's algorithm
+// lineLimit bounds the coordinates walkLine works with. Its arithmetic multiplies
+// two distances and doubles the result, which must fit in an int.
+const lineLimit = 1 << 29
+
+// DrawLine draws a line from (x0, y0) to (x1, y1) using Bresenham's algorithm.
+//
+// Only the part inside the buffer is visited, so a line with a far-away end costs
+// no more than one that stays on screen, and the cells drawn are exactly the ones
+// the whole line would draw there. Coordinates beyond +-2^29 are clamped to it.
 func (fb *FrameBuffer) DrawLine(x0, y0, x1, y1 int, cell Cell) {
-	dx := intAbs(x1 - x0)
-	sx := -1
-	if x0 < x1 {
-		sx = 1
+	walkLine(fb.width, fb.height, x0, y0, x1, y1, func(x, y int) {
+		fb.Set(x, y, cell)
+	})
+}
+
+// walkLine calls plot for every cell of the Bresenham line from (x0, y0) to
+// (x1, y1) that lies inside a w x h grid, in order from the first end to the last.
+//
+// It never steps outside the grid. Instead of walking the whole line it works out
+// which steps land inside, which is possible because the minor coordinate of a
+// Bresenham line has a closed form: after i steps along the major axis it has moved
+// round(i * minorDelta / majorDelta), halves rounding away from the start.
+func walkLine(w, h, x0, y0, x1, y1 int, plot func(x, y int)) {
+	x0, y0 = min(max(x0, -lineLimit), lineLimit), min(max(y0, -lineLimit), lineLimit)
+	x1, y1 = min(max(x1, -lineLimit), lineLimit), min(max(y1, -lineLimit), lineLimit)
+
+	// Walk along the longer axis (a) and derive the shorter one (b). A line exactly
+	// diagonal walks along x, as the step-by-step algorithm does.
+	steep := intAbs(y1-y0) > intAbs(x1-x0)
+	a0, a1, b0, b1, aSize, bSize := x0, x1, y0, y1, w, h
+	if steep {
+		a0, a1, b0, b1, aSize, bSize = y0, y1, x0, x1, h, w
 	}
 
-	dy := -intAbs(y1 - y0)
-	sy := -1
-	if y0 < y1 {
-		sy = 1
+	n := intAbs(a1 - a0)  // steps along a
+	db := intAbs(b1 - b0) // distance along b, never more than n
+	sa, sb := 1, 1
+	if a1 < a0 {
+		sa = -1
+	}
+	if b1 < b0 {
+		sb = -1
 	}
 
-	e := dx + dy
-
-	for {
-		fb.Set(x0, y0, cell)
-
-		if x0 == x1 && y0 == y1 {
-			break
+	// off(i) is how far b has moved after i steps along a.
+	off := func(i int) int {
+		if n == 0 {
+			return 0
 		}
+		return (2*i*db + n) / (2 * n)
+	}
 
-		e2 := 2 * e
-		if e2 >= dy {
-			e += dy
-			x0 += sx
-		}
-		if e2 <= dx {
-			e += dx
-			y0 += sy
+	// Steps whose a lies inside the grid.
+	lo, hi := 0, n
+	if sa > 0 {
+		lo, hi = max(lo, -a0), min(hi, aSize-1-a0)
+	} else {
+		lo, hi = max(lo, a0-(aSize-1)), min(hi, a0)
+	}
+	if lo > hi {
+		return
+	}
+
+	// off only ever grows, so the steps whose b lies inside the grid are one
+	// unbroken run, found by searching for where it enters and leaves the range.
+	offLo, offHi := -b0, bSize-1-b0
+	if sb < 0 {
+		offLo, offHi = b0-(bSize-1), b0
+	}
+	lo = max(lo, sort.Search(n+1, func(i int) bool { return off(i) >= offLo }))
+	hi = min(hi, sort.Search(n+1, func(i int) bool { return off(i) > offHi })-1)
+
+	for i := lo; i <= hi; i++ {
+		a, b := a0+sa*i, b0+sb*off(i)
+		if steep {
+			plot(b, a)
+		} else {
+			plot(a, b)
 		}
 	}
 }
