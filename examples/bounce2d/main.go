@@ -1,4 +1,5 @@
-// Command bounce2d is a ball bouncing around inside a box, drawn as a sprite.
+// Command bounce2d is a ball bouncing around inside a box that fills the window,
+// drawn as a sprite.
 //
 //	go run ./examples/bounce2d
 //
@@ -15,11 +16,32 @@ import (
 	"github.com/kyrokohan/glonk/sprite"
 )
 
+// hint is the text on the bottom border.
+const hint = " Esc quits "
+
 type bounceGame struct {
+	// width and height are the size of the frame last drawn into. Update is not told
+	// the frame size, so it bounces inside the one Draw saw; after a resize the ball
+	// can be one cell off for a frame.
 	width, height int
 	vx, vy        float64
 	ball          *sprite.Sprite
 	layer         *sprite.Layer
+}
+
+// newBounceGame returns the game main runs. Its size is only a guess for the first
+// frame, which Draw replaces with the real one.
+func newBounceGame() *bounceGame {
+	game := &bounceGame{
+		vx:     30,
+		vy:     15,
+		width:  64,
+		height: 24,
+		ball:   sprite.New(10, 10, 'o'),
+		layer:  sprite.NewLayer(),
+	}
+	game.layer.Add(game.ball)
+	return game
 }
 
 func (bg *bounceGame) Update(dt float64, in *engine.Input) error {
@@ -51,28 +73,21 @@ func (bg *bounceGame) Update(dt float64, in *engine.Input) error {
 }
 
 func (bg *bounceGame) Draw(fb *engine.FrameBuffer) {
-	fb.DrawBox(0, 0, fb.Width(), fb.Height(), 0)
+	bg.width, bg.height = fb.Width(), fb.Height()
 
+	fb.DrawBox(0, 0, fb.Width(), fb.Height(), 0)
 	bg.layer.Draw(fb)
+
+	// On the bottom border, where the ball never goes. Skipped when it would run into
+	// the corners.
+	if fb.Width() >= len(hint)+4 {
+		fb.DrawText(2, fb.Height()-1, hint, 0)
+	}
 }
 
 func main() {
-	game := &bounceGame{
-		vx:     30,
-		vy:     15,
-		width:  64,
-		height: 24,
-		ball:   sprite.New(10, 10, 'o'),
-		layer:  sprite.NewLayer(),
-	}
-
-	game.layer.Add(game.ball)
-
-	err := engine.Run(context.Background(), game, engine.Config{
-		Width:  game.width,
-		Height: game.height,
-		FPS:    30,
-	})
+	// Width and Height of 0 fill the terminal and follow resizes.
+	err := engine.Run(context.Background(), newBounceGame(), engine.Config{FPS: 30})
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
