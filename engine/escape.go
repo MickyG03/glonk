@@ -17,6 +17,11 @@ const (
 	enableWrapSeq      = "\x1b[?7h"
 	resetSeq           = "\x1b[0m"
 
+	// Synchronized output: the terminal holds what it is sent between the two codes
+	// and shows it all at once. A terminal that does not know the mode ignores them.
+	syncBeginSeq = "\x1b[?2026h"
+	syncEndSeq   = "\x1b[?2026l"
+
 	// Kitty keyboard protocol: ask for the current flags (a supporting terminal
 	// answers ESC [ ? flags u), ask for device attributes (every terminal answers),
 	// and pop the flags we pushed.
@@ -117,6 +122,18 @@ func (sb *sequenceBuilder) HideCursor() {
 
 func (sb *sequenceBuilder) ShowCursor() {
 	sb.Print(showCursorSeq)
+}
+
+// BeginSynchronizedUpdate asks the terminal to hold back what follows until
+// EndSynchronizedUpdate, so that a frame is never seen half drawn.
+func (sb *sequenceBuilder) BeginSynchronizedUpdate() {
+	sb.Print(syncBeginSeq)
+}
+
+// EndSynchronizedUpdate lets the terminal show everything held back since
+// BeginSynchronizedUpdate.
+func (sb *sequenceBuilder) EndSynchronizedUpdate() {
+	sb.Print(syncEndSeq)
 }
 
 func (sb *sequenceBuilder) ResetStyle() {

@@ -15,8 +15,9 @@ import (
 // that could have changed the screen behind its back must call invalidate: the next
 // frame is then sent in full, after erasing the display.
 //
-// In full mode every frame is sent whole and nothing else is written, which is what
-// a program reading the output of a headless Run expects.
+// A frame that changes anything is sent as one synchronized update, in one write. In
+// full mode every frame is sent whole and nothing else is written, which is what a
+// program reading the output of a headless Run expects.
 //
 // One presenter belongs to one run; it is not safe for use by several goroutines.
 type presenter struct {
@@ -54,6 +55,11 @@ func (p *presenter) present(w io.Writer, fb *FrameBuffer, maxW, maxH int) error 
 		return p.sb.Flush(w)
 	}
 
+	// The whole frame, the erase of a restart included, is one synchronized update
+	// in one write, so the terminal never shows it half done.
+	p.sb.BeginSynchronizedUpdate()
+	begun := p.sb.Len()
+
 	// A different region leaves cells of the old one on screen that nothing would
 	// overwrite, so it is a reason to start over as well.
 	full := !p.valid || width != p.prevW || height != p.prevH
@@ -61,12 +67,13 @@ func (p *presenter) present(w io.Writer, fb *FrameBuffer, maxW, maxH int) error 
 		p.sb.EraseInDisplay(2)
 	}
 	pen := p.appendChanges(fb, width, height, full)
-	if p.sb.Len() == 0 {
+	if p.sb.Len() == begun {
 		return nil // nothing changed: nothing to send
 	}
 	if pen != (style{}) {
 		p.sb.ResetStyle() // leave nothing set, for the shell and for whatever draws next
 	}
+	p.sb.EndSynchronizedUpdate()
 
 	if err := p.sb.Flush(w); err != nil {
 		p.valid = false // some of it may have arrived

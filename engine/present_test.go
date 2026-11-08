@@ -115,7 +115,7 @@ func TestPresenterOneChangedCellCostsAFewBytes(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if out.bytes == 0 || out.bytes > 40 || out.writes != 1 {
+	if out.bytes == 0 || out.bytes > 60 || out.writes != 1 { // the cell, its style and cursor move, and the update codes
 		t.Errorf("wanted one small write for one cell, got %d bytes in %d writes", out.bytes, out.writes)
 	}
 }
@@ -129,7 +129,7 @@ func TestPresenterFirstFrameErasesTheDisplayAndSendsEverything(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if !strings.HasPrefix(out.String(), "\x1b[2J") {
+	if !strings.HasPrefix(out.String(), "\x1b[?2026h\x1b[2J") {
 		t.Errorf("wanted the display erased first, got %q", out.String()[:min(out.Len(), 12)])
 	}
 	v := newVterm(t, 12, 5)
@@ -156,7 +156,7 @@ func TestPresenterInvalidateDrawsTheSameFrameAgainInFull(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if !strings.HasPrefix(out.String(), "\x1b[2J") {
+	if !strings.HasPrefix(out.String(), "\x1b[?2026h\x1b[2J") {
 		t.Errorf("wanted an erase first, got %q", out.String()[:min(out.Len(), 12)])
 	}
 	if d := v.screenDiff(fb, 12, 5); d != "" {
@@ -265,8 +265,8 @@ func TestPresenterCarriesTheStyleAcrossJumps(t *testing.T) {
 	if n := strings.Count(got, "m"); n != 2 { // bold and the color in one sequence, and the final reset
 		t.Errorf("wanted the style set once and reset once, got %d sequences in %q", n, got)
 	}
-	if !strings.HasSuffix(got, "\x1b[0m") {
-		t.Errorf("wanted the style reset at the end of the frame, got %q", got)
+	if !strings.HasSuffix(got, "\x1b[0m\x1b[?2026l") {
+		t.Errorf("wanted the style reset at the end of the frame, inside the update, got %q", got)
 	}
 }
 
@@ -505,5 +505,64 @@ func TestPresenterNoticesEveryKindOfChange(t *testing.T) {
 				t.Error(d)
 			}
 		})
+	}
+}
+
+// A frame that changes anything is one synchronized update in one write, with the
+// erase of a restart inside it; one that changes nothing writes nothing at all.
+func TestPresenterWrapsAFrameInOneSynchronizedUpdate(t *testing.T) {
+	rng := rand.New(rand.NewPCG(19, 20))
+	fb := randomFrame(t, rng, 20, 6)
+	p := newPresenter(true)
+	var out bytes.Buffer
+	count := &countingWriter{}
+	w := io.MultiWriter(&out, count)
+
+	for _, step := range []struct {
+		name    string
+		prepare func()
+	}{
+		{"the first frame", func() {}},
+		{"a small change", func() { change(rng, fb, 2) }},
+		{"after invalidate", func() { p.invalidate() }},
+	} {
+		name := step.name
+		out.Reset()
+		*count = countingWriter{}
+		step.prepare()
+
+		if err := p.present(w, fb, 20, 6); err != nil {
+			t.Fatal(err)
+		}
+
+		got := out.String()
+		if !strings.HasPrefix(got, "\x1b[?2026h") || !strings.HasSuffix(got, "\x1b[?2026l") {
+			t.Errorf("%s: wanted the update to begin and end the write, got %q", name, got)
+		}
+		if strings.Count(got, "\x1b[?2026h") != 1 || strings.Count(got, "\x1b[?2026l") != 1 || count.writes != 1 {
+			t.Errorf("%s: wanted one update in one write, got %d begins, %d ends, %d writes", name, strings.Count(got, "\x1b[?2026h"), strings.Count(got, "\x1b[?2026l"), count.writes)
+		}
+		if i := strings.Index(got, "\x1b[2J"); i >= 0 && !(i > strings.Index(got, "\x1b[?2026h") && i < strings.LastIndex(got, "\x1b[?2026l")) {
+			t.Errorf("%s: wanted the erase inside the update, got %q", name, got)
+		}
+	}
+
+	*count = countingWriter{}
+	if err := p.present(count, fb, 20, 6); err != nil || count.writes != 0 {
+		t.Errorf("wanted nothing written, not even an empty update, for a frame that did not change; got %d writes (%v)", count.writes, err)
+	}
+}
+
+func TestFullPresenterNeverSynchronizes(t *testing.T) {
+	rng := rand.New(rand.NewPCG(21, 22))
+	fb := randomFrame(t, rng, 10, 4)
+	var out bytes.Buffer
+
+	if err := newPresenter(false).present(&out, fb, 10, 4); err != nil {
+		t.Fatal(err)
+	}
+
+	if strings.Contains(out.String(), "\x1b[?2026") {
+		t.Errorf("wanted a headless frame to hold no synchronized update, got %q", out.String())
 	}
 }
