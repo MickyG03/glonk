@@ -39,6 +39,20 @@ func NewFrameBuffer(w, h int) (*FrameBuffer, error) {
 	return fb, nil
 }
 
+// resized returns a blank FrameBuffer of w x h cells that carries over the settings
+// of fb, namely Canvas.Seamless if the game has used the canvas. Run uses it when
+// the window changes size, so a game's setting is not lost with the old frame.
+func (fb *FrameBuffer) resized(w, h int) (*FrameBuffer, error) {
+	out, err := NewFrameBuffer(w, h)
+	if err != nil {
+		return nil, err
+	}
+	if fb.canvas != nil {
+		out.Canvas().Seamless = fb.canvas.Seamless
+	}
+	return out, nil
+}
+
 // Clear resets every cell to BlankCell and every depth to infinitely far, and
 // empties the pixel Canvas if one has been used.
 func (fb *FrameBuffer) Clear() {

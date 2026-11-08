@@ -205,7 +205,7 @@ func Run(ctx context.Context, game Game, cfg Config) (err error) {
 				resW, resH := resolveSize(cfg.Width, cfg.Height, termW, termH)
 				// Some terminals briefly report 0x0; keep the current frame instead of failing.
 				if resW > 0 && resH > 0 && (resW != nfb.Width() || resH != nfb.Height()) {
-					nfb, err = NewFrameBuffer(resW, resH)
+					nfb, err = nfb.resized(resW, resH)
 					if err != nil {
 						return err
 					}

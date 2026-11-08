@@ -438,3 +438,84 @@ func TestCanvasComposeSeamlessIgnoresErasedPixelDepth(t *testing.T) {
 		t.Errorf("wanted %+v, got %+v", want, got)
 	}
 }
+
+func TestResizedKeepsTheSeamlessSetting(t *testing.T) {
+	tests := []struct {
+		name        string
+		termProgram string // decides the default of a new canvas
+		set         bool
+	}{
+		{"turned on where the default is off", "", true},
+		{"turned off where the default is on", "Apple_Terminal", false},
+		{"left on where the default is on", "Apple_Terminal", true},
+		{"left off where the default is off", "", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("TERM_PROGRAM", tt.termProgram)
+
+			old, err := NewFrameBuffer(10, 5)
+			if err != nil {
+				t.Fatal(err)
+			}
+			old.Canvas().Seamless = tt.set
+
+			got, err := old.resized(20, 8)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got.Width() != 20 || got.Height() != 8 {
+				t.Errorf("wanted a 20x8 frame, got %dx%d", got.Width(), got.Height())
+			}
+			if got.Canvas().Seamless != tt.set {
+				t.Errorf("wanted Seamless=%v after the resize, got %v", tt.set, got.Canvas().Seamless)
+			}
+			if got.Canvas().Width() != 20 || got.Canvas().Height() != 16 {
+				t.Errorf("wanted a 20x16 canvas for the new size, got %dx%d", got.Canvas().Width(), got.Canvas().Height())
+			}
+		})
+	}
+}
+
+func TestResizedWithoutACanvasStaysLazy(t *testing.T) {
+	old, err := NewFrameBuffer(10, 5)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := old.resized(12, 6)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.canvas != nil {
+		t.Errorf("wanted no canvas made for a game that never used one")
+	}
+}
+
+func TestResizedRejectsABadSize(t *testing.T) {
+	old, err := NewFrameBuffer(10, 5)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, err := old.resized(0, 5); err == nil || got != nil {
+		t.Errorf("wanted an error and no frame for a zero width, got %v, %v", got, err)
+	}
+}
+
+func TestResizedStartsBlank(t *testing.T) {
+	old, err := NewFrameBuffer(4, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	old.Set(1, 1, Cell{Character: 'x'})
+	old.Canvas().Set(1, 1, 5)
+
+	got, err := old.resized(4, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.At(1, 1) != BlankCell || got.Canvas().At(1, 1) != 0 {
+		t.Errorf("wanted a blank frame and canvas, got %v and %d", got.At(1, 1), got.Canvas().At(1, 1))
+	}
+}
