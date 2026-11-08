@@ -185,6 +185,8 @@ func FuzzLoadOBJ(f *testing.F) {
 		"v 0 0 0\nv 1 0 0\nl 1 2",
 		"v 1e999 0 0\nf 1 1 1\n",
 		"v nan 0 0\nv 0 inf 0\nv 0 0 -inf\nf 1 2 3\n",
+		// Quadratic before the continuation fix: about 5 s then, milliseconds now.
+		strings.Repeat("\\\n", 300000),
 		"f 1 2 3\n", "f 0 0 0\n", "v 0 0 0\nf 99999999999999999999 1 1\n", "f \\\n\\\n", "\x00\xff\x1b[",
 	} {
 		f.Add(seed)

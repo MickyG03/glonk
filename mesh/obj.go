@@ -40,9 +40,9 @@ func LoadOBJ(r io.Reader) (Mesh, error) {
 		m          Mesh
 		seen       = map[[2]int]bool{}
 		sc         = bufio.NewScanner(r)
-		lineNo     int    // the line being read
-		startLine  int    // the line a continued statement began on
-		continued  string // the text of a statement carried over from lines ending in \
+		lineNo     int             // the line being read
+		startLine  int             // the line a continued statement began on
+		continued  strings.Builder // the text of a statement carried over from lines ending in \
 		hasPending bool
 	)
 	sc.Buffer(make([]byte, 0, 64*1024), maxOBJLine)
@@ -116,17 +116,23 @@ func LoadOBJ(r io.Reader) (Mesh, error) {
 		if !hasPending {
 			startLine = lineNo
 		}
+		// Pieces go into a Builder so each is copied once. Gluing them with string
+		// concatenation copied everything so far for every piece, which made a long
+		// run of continued lines take time proportional to its square.
 		if strings.HasSuffix(text, "\\") {
-			continued += strings.TrimSuffix(text, "\\") + " "
+			continued.WriteString(strings.TrimSuffix(text, "\\"))
+			continued.WriteByte(' ')
 			hasPending = true
-			if len(continued) > maxOBJLine {
+			if continued.Len() > maxOBJLine {
 				return Mesh{}, fmt.Errorf("obj line %d: %w", startLine, bufio.ErrTooLong)
 			}
 			continue
 		}
 
-		err := statement(startLine, continued+text)
-		continued, hasPending = "", false
+		continued.WriteString(text)
+		err := statement(startLine, continued.String())
+		continued.Reset()
+		hasPending = false
 		if err != nil {
 			return Mesh{}, err
 		}
@@ -135,7 +141,7 @@ func LoadOBJ(r io.Reader) (Mesh, error) {
 		return Mesh{}, fmt.Errorf("obj line %d: %w", lineNo+1, err)
 	}
 	if hasPending { // the file ended on a backslash
-		if err := statement(startLine, continued); err != nil {
+		if err := statement(startLine, continued.String()); err != nil {
 			return Mesh{}, err
 		}
 	}

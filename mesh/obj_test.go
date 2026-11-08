@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/kyrokohan/glonk/engine"
 	"github.com/kyrokohan/glonk/geometry"
@@ -317,6 +318,87 @@ func TestLoadOBJLongLines(t *testing.T) {
 	_, err = LoadOBJ(strings.NewReader("f 1 \\\n" + strings.Repeat(strings.Repeat("1 ", 4000)+"\\\n", 400)))
 	if !errors.Is(err, bufio.ErrTooLong) {
 		t.Errorf("wanted bufio.ErrTooLong for runaway continuation, got %v", err)
+	}
+}
+
+// loadWithin runs LoadOBJ and fails the test, instead of waiting it out, if it takes
+// longer than d. The stuck call keeps running in the background until it ends.
+func loadWithin(t *testing.T, text string, d time.Duration) (Mesh, error) {
+	t.Helper()
+
+	type result struct {
+		m   Mesh
+		err error
+	}
+	done := make(chan result, 1)
+	go func() {
+		m, err := LoadOBJ(strings.NewReader(text))
+		done <- result{m, err}
+	}()
+
+	select {
+	case r := <-done:
+		return r.m, r.err
+	case <-time.After(d):
+		t.Fatalf("wanted %d bytes to load within %v, still running", len(text), d)
+		return Mesh{}, nil
+	}
+}
+
+// Each continued line used to be copied into a longer string, so the cost grew with
+// the square of the number of lines: a 2 MiB file of backslashes took 35 seconds.
+func TestLoadOBJContinuationRunsInLinearTime(t *testing.T) {
+	const limit = 1 << 20 // maxOBJLine, in bytes of glued text; each lone backslash adds one
+
+	t.Run("a file that ends just inside the limit", func(t *testing.T) {
+		_, err := loadWithin(t, strings.Repeat("\\\n", limit), 5*time.Second)
+		if err == nil || !strings.Contains(err.Error(), "no faces or lines") {
+			t.Errorf("wanted the file to load and find no geometry, got %v", err)
+		}
+	})
+
+	t.Run("a file that crosses the limit", func(t *testing.T) {
+		_, err := loadWithin(t, strings.Repeat("\\\n", limit+10), 5*time.Second)
+		if !errors.Is(err, bufio.ErrTooLong) || !strings.Contains(err.Error(), "obj line 1:") {
+			t.Errorf("wanted ErrTooLong naming line 1, got %v", err)
+		}
+	})
+
+	t.Run("the limit is counted from the line the statement began on", func(t *testing.T) {
+		text := "v 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 \\\n" + strings.Repeat("\\\n", limit+10)
+		_, err := loadWithin(t, text, 5*time.Second)
+		if !errors.Is(err, bufio.ErrTooLong) || !strings.Contains(err.Error(), "obj line 4:") {
+			t.Errorf("wanted ErrTooLong naming line 4, got %v", err)
+		}
+	})
+}
+
+// Speed is not enough: a long continued polygon must also come out right.
+func TestLoadOBJLongContinuedPolygon(t *testing.T) {
+	var sb strings.Builder
+	sb.WriteString("v 0 0 0\nv 1 0 0\nv 0 1 0\nf")
+	const cycles = 66666
+	for range cycles {
+		sb.WriteString(" 1 \\\n 2 \\\n 3 \\\n")
+	}
+	sb.WriteString(" 1\n")
+	corners := 3*cycles + 1
+
+	m, err := loadWithin(t, sb.String(), 5*time.Second)
+	if err != nil {
+		t.Fatalf("unable to load: %v", err)
+	}
+
+	if want := corners - 2; len(m.Faces) != want {
+		t.Fatalf("wanted %d triangles from %d corners, got %d", want, corners, len(m.Faces))
+	}
+	// Corners run 1 2 3 1 2 3 ... and the fan is anchored at the first, so the first
+	// triangles use corners (1,2,3) and (1,3,1) reversed.
+	if want := [3]int{0, 2, 1}; m.Faces[0] != want {
+		t.Errorf("wanted the first triangle %v, got %v", want, m.Faces[0])
+	}
+	if want := [][2]int{{0, 1}, {1, 2}, {0, 2}}; !slices.Equal(m.Edges, want) {
+		t.Errorf("wanted the three distinct edges %v, got %v", want, m.Edges)
 	}
 }
 
