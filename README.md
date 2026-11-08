@@ -133,7 +133,7 @@ func main() {
 
 ## Compatibility and limits
 
-Built to work in most terminals: it uses only the alternate screen, cursor movement, and 256-color escape codes. It is developed on macOS and tested mainly in Ghostty.
+Built to work in most terminals. The basics need only the alternate screen, cursor movement, and 256-color escape codes; line wrapping is turned off while a program runs, and the kitty keyboard protocol and focus reporting are used where the terminal has them. All of it is undone when `Run` returns. It is developed on macOS and tested mainly in Ghostty.
 
 - **Without key releases, held keys are a timing guess.** Most terminals report presses and repeats but never releases, so a key counts as held until about 150 ms pass without a repeat, with a short pause when you first hold one. glonk detects the kitty keyboard protocol at startup and uses it where it exists; everywhere else this is what you get.
 - **Without key releases, only one key stays held at a time.** The OS repeats just the most recently pressed key, so holding W and then pressing E stops W and you cannot walk and turn together (Terminal.app, for one). Set `Config.LegacyKeys` to force this behavior if a terminal misbehaves with the protocol.

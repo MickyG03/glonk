@@ -109,13 +109,11 @@ func (m Mesh) toWorld(v geometry.Vector3) geometry.Vector3 {
 	return v.RotateX(m.Pitch).RotateY(m.Yaw).Add(m.Position)
 }
 
-// Draw renders the mesh's edges as lines.
+// Draw renders the mesh's edges as lines, all in cell.
 // Edges crossing the near plane are cut where they cross it;
 // edges entirely behind it are skipped, and so are edges that name a vertex the
-// mesh does not have (Validate finds them).
-//
-// shortcut: a cut endpoint can project far off screen and DrawLine still steps
-// every cell to it, so a tiny Near gets slow; clip lines to the screen in DrawLine to upgrade.
+// mesh does not have (Validate finds them). An edge that ends far off screen
+// costs no more than one that stays on screen.
 func (m Mesh) Draw(fb *engine.FrameBuffer, cam Camera, cell engine.Cell) {
 	cam, ok := cam.withDefaults()
 	if !ok {

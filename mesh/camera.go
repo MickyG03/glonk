@@ -51,7 +51,7 @@ func (c Camera) withDefaults() (cam Camera, ok bool) {
 // cellAspect exists because terminal cells are about twice as tall as they are wide
 const cellAspect = 2
 
-// Project returns the 2D projection of 'p'.
+// Project returns the 2D projection of p.
 // ok=false means that the point is behind the camera
 // with respect to the Near value, has no finite place on the screen, or that the
 // camera sees nothing at all (see Camera).
@@ -79,8 +79,8 @@ func (c Camera) Project(p geometry.Vector3, w, h int) (x, y float64, ok bool) {
 
 // Forward returns the unit vector the camera faces, flat on the xz plane: Pitch
 // is ignored, so walking along it never climbs or dives. Use Look for the way
-// the camera actually points.
-// It is view-space +z rotated by Yaw, the inverse of toView's RotateY(-Yaw).
+// the camera actually points. With Yaw 0 it is +z, and a positive Yaw turns it
+// toward +x.
 func (c Camera) Forward() geometry.Vector3 {
 	return geometry.Vector3{X: 0, Y: 0, Z: 1}.RotateY(c.Yaw)
 }

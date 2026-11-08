@@ -6,7 +6,8 @@ import "errors"
 var ErrQuit = errors.New("quit")
 
 // Game is what Run drives: Update advances state, Draw renders it.
-// Any other error returned from Update ends Run with that error.
+// An error returned from Update ends Run with that error, except ErrQuit, which
+// ends it cleanly.
 type Game interface {
 	Update(dt float64, in *Input) error
 	Draw(fb *FrameBuffer)

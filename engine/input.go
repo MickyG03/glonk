@@ -72,7 +72,7 @@ func (in *Input) endFrame() {
 
 // IsDown reports whether k is held. Where the terminal reports releases this is
 // exact. Elsewhere a new hold reads up briefly before the OS starts
-// auto-repeating, and a released key stays down for up to holdTimeout.
+// auto-repeating, and a released key stays down for up to about 150 ms.
 func (in *Input) IsDown(k Key) bool {
 	if in.exact {
 		// pressed keeps a tap shorter than one frame visible.
