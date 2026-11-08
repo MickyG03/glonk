@@ -50,7 +50,16 @@ type Config struct {
 	// When Input and Output are both terminals, Run takes them over: raw mode, the
 	// alternate screen, the keyboard protocol, quit signals and Ctrl-Z. Opening
 	// /dev/tty for both lets a program draw on the terminal while its stdin is a
-	// pipe. When either is not a terminal, Run runs headless: see Output.
+	// pipe:
+	//
+	//	tty, err := os.OpenFile("/dev/tty", os.O_RDWR, 0)
+	//	if err != nil {
+	//		return err
+	//	}
+	//	defer tty.Close()
+	//	err = engine.Run(ctx, game, engine.Config{FPS: 30, Input: tty, Output: tty})
+	//
+	// When either is not a terminal, Run runs headless: see Output.
 	Input io.Reader
 
 	// Output is where frames are written; nil means os.Stdout.

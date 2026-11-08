@@ -1,6 +1,7 @@
 package engine_test
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"os"
@@ -45,6 +46,37 @@ func ExampleRun() {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
+}
+
+// greeter draws a greeting and quits on its third Update.
+type greeter struct{ updates int }
+
+func (g *greeter) Update(float64, *engine.Input) error {
+	if g.updates++; g.updates == 3 {
+		return engine.ErrQuit
+	}
+	return nil
+}
+
+func (g *greeter) Draw(fb *engine.FrameBuffer) {
+	fb.DrawText(0, 0, "hello", engine.Color{})
+}
+
+// Without a terminal, Run needs a size and writes only the frames, and reads keys
+// from Input, so a game can be run and checked in a test.
+func ExampleRun_headless() {
+	var out bytes.Buffer
+	err := engine.Run(context.Background(), &greeter{}, engine.Config{
+		Width: 8, Height: 1, FPS: 100,
+		Input:  strings.NewReader(""), // key presses would be read from here
+		Output: &out,
+	})
+
+	fmt.Println("error:", err)
+	fmt.Println("frames written:", strings.Count(out.String(), "hello"))
+	// Output:
+	// error: <nil>
+	// frames written: 2
 }
 
 func ExampleFrameBuffer_DrawText() {
