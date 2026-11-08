@@ -16,6 +16,14 @@ func newFrame(t *testing.T, w, h int) *engine.FrameBuffer {
 	return fb
 }
 
+// newSizedGame returns a game that has been told its frame is w x h, as Run does
+// before the first Update.
+func newSizedGame(w, h int) *bounceGame {
+	g := newBounceGame()
+	g.Resize(w, h)
+	return g
+}
+
 // rowText returns the characters of row y.
 func rowText(fb *engine.FrameBuffer, y int) string {
 	var sb strings.Builder
@@ -26,7 +34,7 @@ func rowText(fb *engine.FrameBuffer, y int) string {
 }
 
 func TestBallMovesByVelocityTimesTime(t *testing.T) {
-	g := newBounceGame()
+	g := newSizedGame(64, 24)
 	if err := g.Update(0.1, &engine.Input{}); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -36,7 +44,7 @@ func TestBallMovesByVelocityTimesTime(t *testing.T) {
 }
 
 func TestBallBouncesOffEachWall(t *testing.T) {
-	// The default size is 64x24, so the ball lives in columns 1 to 62 and rows 1 to 22.
+	// In a 64x24 frame the ball lives in columns 1 to 62 and rows 1 to 22.
 	tests := []struct {
 		name           string
 		x, y           float64
@@ -54,7 +62,7 @@ func TestBallBouncesOffEachWall(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			g := newBounceGame()
+			g := newSizedGame(64, 24)
 			g.ball.X, g.ball.Y, g.vx, g.vy = tt.x, tt.y, tt.vx, tt.vy
 
 			if err := g.Update(0, &engine.Input{}); err != nil {
@@ -71,20 +79,20 @@ func TestBallBouncesOffEachWall(t *testing.T) {
 }
 
 // The box is the size of the window: the ball bounces off the walls of the frame
-// that was last drawn, not off a fixed size.
-func TestBallBouncesInsideTheFrameLastDrawn(t *testing.T) {
+// it was last told about, not off a fixed size.
+func TestBallBouncesInsideTheFrameLastResizedTo(t *testing.T) {
 	g := newBounceGame()
 
-	g.Draw(newFrame(t, 100, 30))
+	g.Resize(100, 30)
 	g.ball.X, g.ball.Y, g.vx = 90, 10, 30
 	if err := g.Update(0.01, &engine.Input{}); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if g.vx <= 0 {
-		t.Errorf("wanted the ball to fly on past the old 64 columns in a 100 column frame, vx=%v", g.vx)
+		t.Errorf("wanted the ball to fly on past 64 columns in a 100 column frame, vx=%v", g.vx)
 	}
 
-	g.Draw(newFrame(t, 40, 12))
+	g.Resize(40, 12)
 	if err := g.Update(0, &engine.Input{}); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -94,7 +102,7 @@ func TestBallBouncesInsideTheFrameLastDrawn(t *testing.T) {
 }
 
 func TestDrawShowsTheBoxTheBallAndTheKey(t *testing.T) {
-	g := newBounceGame()
+	g := newSizedGame(40, 12)
 	fb := newFrame(t, 40, 12)
 	g.Draw(fb)
 
@@ -113,7 +121,7 @@ func TestDrawShowsTheBoxTheBallAndTheKey(t *testing.T) {
 func TestDrawInTinyFramesKeepsTheCornersAndDoesNotPanic(t *testing.T) {
 	for _, size := range [][2]int{{1, 1}, {2, 2}, {3, 3}, {5, 5}, {10, 4}, {14, 4}, {15, 4}} {
 		fb := newFrame(t, size[0], size[1])
-		g := newBounceGame()
+		g := newSizedGame(size[0], size[1])
 		g.Draw(fb)
 		if err := g.Update(0.1, &engine.Input{}); err != nil {
 			t.Fatalf("%v: unexpected error: %v", size, err)

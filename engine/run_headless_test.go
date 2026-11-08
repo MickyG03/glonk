@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"strings"
 	"sync/atomic"
@@ -271,5 +272,38 @@ func TestRunHeadlessDeliversAPlainKeyAsAPress(t *testing.T) {
 
 	if err != nil || !pressed {
 		t.Errorf("wanted a press of w, got err=%v pressed=%v", err, pressed)
+	}
+}
+
+// sizedGame records the calls Run makes, in order.
+type sizedGame struct {
+	scriptedGame
+	calls []string
+}
+
+func (g *sizedGame) Resize(w, h int) { g.calls = append(g.calls, fmt.Sprintf("resize %dx%d", w, h)) }
+
+func TestRunTellsTheGameItsSizeBeforeTheFirstUpdate(t *testing.T) {
+	g := &sizedGame{}
+	updates := 0
+	g.update = func(float64, *Input) error {
+		g.calls = append(g.calls, "update")
+		updates++
+		if updates == 3 {
+			return ErrQuit
+		}
+		return nil
+	}
+	g.draw = func(*FrameBuffer) { g.calls = append(g.calls, "draw") }
+
+	err := runHeadless(t, g, Config{Width: 5, Height: 4, Input: strings.NewReader(""), Output: io.Discard})
+
+	if err != nil {
+		t.Fatalf("wanted nil, got %v", err)
+	}
+	// One Resize, because a fixed frame never changes size, and before everything else.
+	want := "resize 5x4,update,draw,update,draw,update"
+	if got := strings.Join(g.calls, ","); got != want {
+		t.Errorf("wanted calls\n%s\ngot\n%s", want, got)
 	}
 }

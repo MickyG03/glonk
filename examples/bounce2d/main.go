@@ -20,28 +20,30 @@ import (
 const hint = " Esc quits "
 
 type bounceGame struct {
-	// width and height are the size of the frame last drawn into. Update is not told
-	// the frame size, so it bounces inside the one Draw saw; after a resize the ball
-	// can be one cell off for a frame.
-	width, height int
+	width, height int // the frame's size, from Resize
 	vx, vy        float64
 	ball          *sprite.Sprite
 	layer         *sprite.Layer
 }
 
-// newBounceGame returns the game main runs. Its size is only a guess for the first
-// frame, which Draw replaces with the real one.
+// newBounceGame returns the game main runs. It has no size until Run calls Resize.
 func newBounceGame() *bounceGame {
 	game := &bounceGame{
-		vx:     30,
-		vy:     15,
-		width:  64,
-		height: 24,
-		ball:   sprite.New(10, 10, 'o'),
-		layer:  sprite.NewLayer(),
+		vx:    30,
+		vy:    15,
+		ball:  sprite.New(10, 10, 'o'),
+		layer: sprite.NewLayer(),
 	}
 	game.layer.Add(game.ball)
 	return game
+}
+
+// A game with a wrong Resize signature would compile and never be told its size.
+var _ engine.Resizer = (*bounceGame)(nil)
+
+// Resize keeps the ball bouncing inside the frame, which fills the window.
+func (bg *bounceGame) Resize(width, height int) {
+	bg.width, bg.height = width, height
 }
 
 func (bg *bounceGame) Update(dt float64, in *engine.Input) error {
@@ -73,8 +75,6 @@ func (bg *bounceGame) Update(dt float64, in *engine.Input) error {
 }
 
 func (bg *bounceGame) Draw(fb *engine.FrameBuffer) {
-	bg.width, bg.height = fb.Width(), fb.Height()
-
 	fb.DrawBox(0, 0, fb.Width(), fb.Height(), engine.Color{})
 	bg.layer.Draw(fb)
 

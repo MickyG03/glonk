@@ -271,6 +271,11 @@ func Run(ctx context.Context, game Game, cfg Config) (err error) {
 		}
 	}
 
+	resizer, _ := game.(Resizer)
+	if resizer != nil {
+		resizer.Resize(nfb.Width(), nfb.Height())
+	}
+
 	// The window size the screen was last cleared for.
 	shownW, shownH := termW, termH
 
@@ -295,6 +300,9 @@ func Run(ctx context.Context, game Game, cfg Config) (err error) {
 						nfb, err = nfb.resized(resW, resH)
 						if err != nil {
 							return err
+						}
+						if resizer != nil {
+							resizer.Resize(resW, resH)
 						}
 					}
 				}
