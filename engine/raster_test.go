@@ -2,6 +2,7 @@ package engine
 
 import (
 	"math"
+	"math/big"
 	"math/rand/v2"
 	"testing"
 	"time"
@@ -635,13 +636,17 @@ func TestWalkLineMatchesBresenhamOnLongLines(t *testing.T) {
 	}
 }
 
+// farAway is beyond the coordinate limit of walkLine on every system, including
+// those where int is 32 bits and 1 << 40 is not a valid int.
+const farAway = math.MaxInt / 2
+
 // A line with a far-away end must cost only what it shows, not what it spans.
 func TestWalkLineFinishesQuicklyForHugeLines(t *testing.T) {
 	cases := [][4]int{
 		{-1 << 29, 3, 1 << 29, 4},
 		{-1 << 29, -1 << 29, 1 << 29, 1 << 29},
 		{0, 0, 1 << 28, 1<<28 - 1},
-		{-1 << 40, 5, 1 << 40, 5},
+		{-farAway, 5, farAway, 5},
 		{math.MinInt, math.MinInt, math.MaxInt, math.MaxInt},
 		{math.MaxInt, 0, math.MinInt, 0},
 		{3, math.MinInt, 3, math.MaxInt},
@@ -697,10 +702,10 @@ func TestWalkLineClampsFarEndpoints(t *testing.T) {
 		far  [4]int
 		near [4]int
 	}{
-		{"far end", [4]int{0, 0, 1 << 40, 1 << 39}, [4]int{0, 0, lim, lim}},
-		{"far start", [4]int{-1 << 41, -1 << 40, 5, 5}, [4]int{-lim, -lim, 5, 5}},
-		{"both ends", [4]int{-1 << 45, 3, 1 << 45, 9}, [4]int{-lim, 3, lim, 9}},
-		{"negative end", [4]int{3, 2, -1 << 50, 1 << 33}, [4]int{3, 2, -lim, lim}},
+		{"far end", [4]int{0, 0, farAway, farAway - 1}, [4]int{0, 0, lim, lim}},
+		{"far start", [4]int{-farAway, 1 - farAway, 5, 5}, [4]int{-lim, -lim, 5, 5}},
+		{"both ends", [4]int{-farAway, 3, farAway, 9}, [4]int{-lim, 3, lim, 9}},
+		{"negative end", [4]int{3, 2, -farAway, farAway - 1}, [4]int{3, 2, -lim, lim}},
 	}
 
 	for _, c := range cases {
@@ -712,5 +717,55 @@ func TestWalkLineClampsFarEndpoints(t *testing.T) {
 				t.Errorf("wanted %v, got %v", want, got)
 			}
 		})
+	}
+}
+
+func TestMinorOffset(t *testing.T) {
+	tests := []struct {
+		name     string
+		i, db, n int
+		want     int
+	}{
+		{"no steps", 0, 0, 0, 0},
+		{"no steps along a point", 5, 0, 0, 0},
+		{"start", 0, 7, 10, 0},
+		{"end", 10, 7, 10, 7},
+		{"straight", 4, 0, 10, 0},
+		{"diagonal", 6, 10, 10, 6},
+		{"half rounds away from the start", 1, 1, 2, 1},
+		{"just under a half", 1, 1, 3, 0},
+		{"just over a half", 2, 1, 3, 1},
+		{"largest line", 1 << 30, 1 << 30, 1 << 30, 1 << 30},
+		{"largest line, halfway", 1 << 29, 1 << 30, 1 << 30, 1 << 29},
+		{"largest line, almost flat", 1<<30 - 1, 1, 1 << 30, 1},
+		{"product past 2^31", 1 << 20, 1 << 20, 1 << 25, 1 << 15},
+		{"product near 2^61", 1<<30 - 1, 1<<30 - 1, 1 << 30, 1<<30 - 2},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := minorOffset(tt.i, tt.db, tt.n); got != tt.want {
+				t.Errorf("wanted minorOffset(%d, %d, %d) = %d, got %d", tt.i, tt.db, tt.n, tt.want, got)
+			}
+		})
+	}
+}
+
+// Against exact arithmetic, over values spread up to the largest line walkLine accepts.
+func TestMinorOffsetMatchesExactArithmetic(t *testing.T) {
+	exact := func(i, db, n int) int {
+		num := new(big.Int).Mul(big.NewInt(2*int64(i)), big.NewInt(int64(db)))
+		num.Add(num, big.NewInt(int64(n)))
+		return int(num.Quo(num, big.NewInt(2*int64(n))).Int64())
+	}
+
+	rng := rand.New(rand.NewPCG(1, 2))
+	for range 20000 {
+		n := 1 + rng.IntN(1<<30)
+		db := rng.IntN(n + 1)
+		i := rng.IntN(n + 1)
+		if got, want := minorOffset(i, db, n), exact(i, db, n); got != want {
+			t.Fatalf("wanted minorOffset(%d, %d, %d) = %d, got %d", i, db, n, want, got)
+		}
 	}
 }

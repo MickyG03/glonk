@@ -13,7 +13,8 @@ func intAbs(a int) int {
 }
 
 // lineLimit bounds the coordinates walkLine works with. Its arithmetic multiplies
-// two distances and doubles the result, which must fit in an int.
+// two distances and doubles the result, which comes to as much as 2^61; see
+// minorOffset for why that matters on systems where int is 32 bits.
 const lineLimit = 1 << 29
 
 // DrawLine draws a line from (x0, y0) to (x1, y1) using Bresenham's algorithm.
@@ -25,6 +26,19 @@ func (fb *FrameBuffer) DrawLine(x0, y0, x1, y1 int, cell Cell) {
 	walkLine(fb.width, fb.height, x0, y0, x1, y1, func(x, y int) {
 		fb.Set(x, y, cell)
 	})
+}
+
+// minorOffset is how far the shorter axis of a Bresenham line has moved after i
+// steps along the longer one, which is n steps long and covers db on the shorter:
+// round(i*db/n), with halves rounding away from the start.
+//
+// The product i*db can pass 2^31 even though both factors fit in 31 bits, so it is
+// worked out in 64 bits; in an int it would overflow where int is 32 bits wide.
+func minorOffset(i, db, n int) int {
+	if n == 0 {
+		return 0
+	}
+	return int((2*int64(i)*int64(db) + int64(n)) / (2 * int64(n)))
 }
 
 // walkLine calls plot for every cell of the Bresenham line from (x0, y0) to
@@ -57,12 +71,7 @@ func walkLine(w, h, x0, y0, x1, y1 int, plot func(x, y int)) {
 	}
 
 	// off(i) is how far b has moved after i steps along a.
-	off := func(i int) int {
-		if n == 0 {
-			return 0
-		}
-		return (2*i*db + n) / (2 * n)
-	}
+	off := func(i int) int { return minorOffset(i, db, n) }
 
 	// Steps whose a lies inside the grid.
 	lo, hi := 0, n
