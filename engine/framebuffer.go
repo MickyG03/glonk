@@ -115,8 +115,14 @@ func (fb *FrameBuffer) Height() int {
 }
 
 func (fb *FrameBuffer) present(w io.Writer) error {
-	width := fb.width
-	height := fb.height
+	return fb.presentClipped(w, fb.width, fb.height)
+}
+
+// presentClipped is present for a terminal smaller than the frame: only the first
+// maxW columns of the first maxH rows are written, so nothing runs past the edge.
+func (fb *FrameBuffer) presentClipped(w io.Writer, maxW, maxH int) error {
+	width := min(fb.width, max(maxW, 0))
+	height := min(fb.height, max(maxH, 0))
 
 	sb := newSequenceBuilder()
 
@@ -128,7 +134,7 @@ func (fb *FrameBuffer) present(w io.Writer) error {
 		sb.MoveTo(y+1, 1)
 		var fg, bg uint8
 		for x := range width {
-			cell := fb.frame[y*width+x]
+			cell := fb.frame[y*fb.width+x]
 
 			if cell.Color != fg || cell.Background != bg {
 				if cell.Color == 0 && cell.Background == 0 {

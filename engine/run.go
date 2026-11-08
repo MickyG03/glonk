@@ -200,6 +200,9 @@ func Run(ctx context.Context, game Game, cfg Config) (err error) {
 		}
 	}
 
+	// The window size the screen was last cleared for.
+	shownW, shownH := termW, termH
+
 	dynamic := cfg.Width == 0 || cfg.Height == 0
 	for {
 		select {
@@ -209,22 +212,28 @@ func Run(ctx context.Context, game Game, cfg Config) (err error) {
 			dt := frameDT(now, last)
 			last = now
 
-			if dynamic {
-				termW, termH, err := tty.Size()
-				if err != nil {
-					return err
+			curW, curH, err := tty.Size()
+			if err != nil {
+				return err
+			}
+			// Some terminals briefly report 0x0; keep what is on screen then.
+			if curW > 0 && curH > 0 {
+				if dynamic {
+					resW, resH := resolveSize(cfg.Width, cfg.Height, curW, curH)
+					if resW != nfb.Width() || resH != nfb.Height() {
+						nfb, err = nfb.resized(resW, resH)
+						if err != nil {
+							return err
+						}
+					}
 				}
-				resW, resH := resolveSize(cfg.Width, cfg.Height, termW, termH)
-				// Some terminals briefly report 0x0; keep the current frame instead of failing.
-				if resW > 0 && resH > 0 && (resW != nfb.Width() || resH != nfb.Height()) {
-					nfb, err = nfb.resized(resW, resH)
-					if err != nil {
+				// Whatever the window held before no longer matches it, and what is left
+				// outside a smaller frame or past a shrunk window would stay on screen.
+				if curW != shownW || curH != shownH {
+					if err := tty.Clear(); err != nil {
 						return err
 					}
-					err = tty.Clear()
-					if err != nil {
-						return err
-					}
+					shownW, shownH = curW, curH
 				}
 			}
 
@@ -238,7 +247,8 @@ func Run(ctx context.Context, game Game, cfg Config) (err error) {
 			in.endFrame()
 			nfb.Clear()
 			game.Draw(nfb)
-			if err := nfb.present(tty.out); err != nil {
+			// A fixed-size frame can be larger than the window: show the part that fits.
+			if err := nfb.presentClipped(tty.out, shownW, shownH); err != nil {
 				return err
 			}
 		case b, ok := <-input:

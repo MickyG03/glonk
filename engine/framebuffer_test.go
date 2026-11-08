@@ -604,3 +604,88 @@ func BenchmarkPresentBlocks(b *testing.B) {
 		}
 	}
 }
+
+// lettered is a 4x3 frame holding a..l, row by row.
+func lettered(t *testing.T) *FrameBuffer {
+	t.Helper()
+	fb, err := NewFrameBuffer(4, 3)
+	if err != nil {
+		t.Fatalf("unable to initialize frame buffer: %v", err)
+	}
+	for i := range 12 {
+		fb.Set(i%4, i/4, Cell{Character: rune('a' + i)})
+	}
+	return fb
+}
+
+func TestPresentClipped(t *testing.T) {
+	tests := []struct {
+		name       string
+		maxW, maxH int
+		want       string
+	}{
+		{"exactly the frame", 4, 3, "\x1b[1;1Habcd\x1b[2;1Hefgh\x1b[3;1Hijkl"},
+		{"a terminal larger than the frame shows all of it", 100, 50, "\x1b[1;1Habcd\x1b[2;1Hefgh\x1b[3;1Hijkl"},
+		{"narrower", 2, 3, "\x1b[1;1Hab\x1b[2;1Hef\x1b[3;1Hij"},
+		{"shorter", 4, 2, "\x1b[1;1Habcd\x1b[2;1Hefgh"},
+		{"narrower and shorter", 3, 1, "\x1b[1;1Habc"},
+		{"one cell", 1, 1, "\x1b[1;1Ha"},
+		{"no width", 0, 3, "\x1b[1;1H\x1b[2;1H\x1b[3;1H"},
+		{"no height", 4, 0, ""},
+		{"negative size", -3, -1, ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			if err := lettered(t).presentClipped(&buf, tt.maxW, tt.maxH); err != nil {
+				t.Fatalf("could not present: %v", err)
+			}
+			if buf.String() != tt.want {
+				t.Errorf("wanted %q, got %q", tt.want, buf.String())
+			}
+		})
+	}
+}
+
+func TestPresentIsPresentClippedToTheWholeFrame(t *testing.T) {
+	fb := lettered(t)
+	fb.Set(1, 1, Cell{Character: 'x', Color: 3, Background: 4})
+
+	var a, b bytes.Buffer
+	if err := fb.present(&a); err != nil {
+		t.Fatal(err)
+	}
+	if err := fb.presentClipped(&b, fb.Width(), fb.Height()); err != nil {
+		t.Fatal(err)
+	}
+	if a.String() != b.String() {
+		t.Errorf("wanted the same bytes, got %q and %q", a.String(), b.String())
+	}
+}
+
+// A colour set before the cut must be reset at the end of the row, as for a full row.
+func TestPresentClippedResetsColoursAtTheCut(t *testing.T) {
+	fb := lettered(t)
+	fb.Set(0, 0, Cell{Character: 'a', Color: 5})
+	fb.Set(1, 0, Cell{Character: 'b', Color: 5})
+
+	var buf bytes.Buffer
+	if err := fb.presentClipped(&buf, 2, 1); err != nil {
+		t.Fatal(err)
+	}
+	if want := "\x1b[1;1H\x1b[38;5;5mab\x1b[0m"; buf.String() != want {
+		t.Errorf("wanted %q, got %q", want, buf.String())
+	}
+}
+
+// Cells past the cut must not shift the ones before the next row.
+func TestPresentClippedReadsRowsAtTheFullWidth(t *testing.T) {
+	var buf bytes.Buffer
+	if err := lettered(t).presentClipped(&buf, 1, 3); err != nil {
+		t.Fatal(err)
+	}
+	if want := "\x1b[1;1Ha\x1b[2;1He\x1b[3;1Hi"; buf.String() != want {
+		t.Errorf("wanted %q, got %q", want, buf.String())
+	}
+}
