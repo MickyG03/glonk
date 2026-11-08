@@ -119,6 +119,7 @@ type inputFeed struct {
 	wait       time.Duration
 	timer      *time.Timer
 	canSuspend bool // whether Ctrl-Z may stop the program
+	refresh    bool // the window came back to the front since refreshNeeded was last asked
 }
 
 func newInputFeed(in *Input) *inputFeed {
@@ -170,8 +171,20 @@ func (f *inputFeed) stop() {
 	}
 }
 
+// refreshNeeded reports whether the terminal said its window came back to the front
+// since the last time it was asked. What the window showed may have been disturbed
+// meanwhile, so the screen is worth drawing again in full.
+func (f *inputFeed) refreshNeeded() bool {
+	r := f.refresh
+	f.refresh = false
+	return r
+}
+
 func (f *inputFeed) apply(events []keyEvent, now time.Time) inputAction {
 	for _, e := range events {
+		if e.kind == kindFocusGained {
+			f.refresh = true
+		}
 		switch {
 		case e.key == KeyCtrlC && e.kind != kindRelease:
 			return actionQuit

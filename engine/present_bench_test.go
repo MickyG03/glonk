@@ -7,10 +7,20 @@ import (
 	"testing"
 )
 
-// benchEmit sends one frame the way Run does. It is a variable so that the same scenes
-// measure whatever way of presenting a frame is current.
-var benchEmit = func() func(w io.Writer, fb *FrameBuffer) error {
-	return func(w io.Writer, fb *FrameBuffer) error { return fb.present(w) }
+// benchEmitters are the ways to send a frame that the benchmarks compare: every cell
+// of every frame, and only the cells that changed.
+var benchEmitters = []struct {
+	name string
+	make func() func(w io.Writer, fb *FrameBuffer) error
+}{
+	{"full", func() func(io.Writer, *FrameBuffer) error {
+		p := newPresenter(false)
+		return func(w io.Writer, fb *FrameBuffer) error { return p.present(w, fb, fb.width, fb.height) }
+	}},
+	{"changes", func() func(io.Writer, *FrameBuffer) error {
+		p := newPresenter(true)
+		return func(w io.Writer, fb *FrameBuffer) error { return p.present(w, fb, fb.width, fb.height) }
+	}},
 }
 
 // benchScene is a made-up but typical sequence of frames: what moves, and how much.
@@ -88,33 +98,35 @@ var benchScenes = []benchScene{
 }
 
 // BenchmarkFrames reports the time, the allocations and the bytes written per frame
-// for each scene. The frames are made first and then cycled, so the one jump from the
-// last back to the first is part of the average.
+// for each scene and each way of sending it. The frames are made first and then
+// cycled, so the one jump from the last back to the first is part of the average.
 func BenchmarkFrames(b *testing.B) {
 	const frames = 120
 	for _, sc := range benchScenes {
-		b.Run(sc.name, func(b *testing.B) {
-			seq := make([]*FrameBuffer, frames)
-			for i := range seq {
-				fb, err := NewFrameBuffer(sc.w, sc.h)
-				if err != nil {
-					b.Fatal(err)
-				}
-				sc.draw(fb, i)
-				seq[i] = fb
+		seq := make([]*FrameBuffer, frames)
+		for i := range seq {
+			fb, err := NewFrameBuffer(sc.w, sc.h)
+			if err != nil {
+				b.Fatal(err)
 			}
-			emit := benchEmit()
-			var out countingWriter
+			sc.draw(fb, i)
+			seq[i] = fb
+		}
+		for _, em := range benchEmitters {
+			b.Run(sc.name+"/"+em.name, func(b *testing.B) {
+				emit := em.make()
+				var out countingWriter
 
-			b.ReportAllocs()
-			n := 0
-			for b.Loop() {
-				if err := emit(&out, seq[n%frames]); err != nil {
-					b.Fatal(err)
+				b.ReportAllocs()
+				n := 0
+				for b.Loop() {
+					if err := emit(&out, seq[n%frames]); err != nil {
+						b.Fatal(err)
+					}
+					n++
 				}
-				n++
-			}
-			b.ReportMetric(float64(out.bytes)/float64(n), "bytes/frame")
-		})
+				b.ReportMetric(float64(out.bytes)/float64(n), "bytes/frame")
+			})
+		}
 	}
 }

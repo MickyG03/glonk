@@ -127,14 +127,3 @@ func (t *terminal) Size() (int, int, error) {
 	}
 	return term.GetSize(t.fd)
 }
-
-// Clear erases the screen. Needed after a resize because present only writes
-// inside the frame, so stale cells outside a smaller frame would stay.
-func (t *terminal) Clear() error {
-	if t.headless {
-		return nil
-	}
-	sb := newSequenceBuilder()
-	sb.EraseInDisplay(2)
-	return sb.Flush(t.out)
-}

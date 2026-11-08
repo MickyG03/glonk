@@ -150,7 +150,14 @@ func (fb *FrameBuffer) presentClipped(w io.Writer, maxW, maxH int) error {
 	height := min(fb.height, max(maxH, 0))
 
 	sb := newSequenceBuilder()
+	fb.appendFrame(sb, width, height)
+	return sb.Flush(w)
+}
 
+// appendFrame adds to sb the whole of the top left width x height cells: each row
+// starts with a cursor move and ends with the style reset, so rows do not depend on
+// one another.
+func (fb *FrameBuffer) appendFrame(sb *sequenceBuilder, width, height int) {
 	// 3 bytes covers box-drawing runes; 32 per row covers the cursor move and color escapes.
 	// An undershoot is harmless, the builder just grows once.
 	sb.Grow(width*height*3 + height*32)
@@ -182,6 +189,4 @@ func (fb *FrameBuffer) presentClipped(w io.Writer, maxW, maxH int) error {
 			sb.ResetStyle()
 		}
 	}
-
-	return sb.Flush(w)
 }

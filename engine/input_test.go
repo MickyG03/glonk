@@ -626,3 +626,28 @@ func TestTypedAheadCtrlCStillQuits(t *testing.T) {
 		t.Errorf("wanted a quit, got %v", got)
 	}
 }
+
+func TestInputFeedSaysWhenTheWindowCameBackToTheFront(t *testing.T) {
+	f, _ := newTestFeed(true)
+
+	if f.refreshNeeded() {
+		t.Fatalf("wanted no refresh before anything happened")
+	}
+	f.feed([]byte("\x1b[119u"), time.Unix(0, 0)) // a key press is not the window coming back
+	if f.refreshNeeded() {
+		t.Errorf("wanted no refresh for a key press")
+	}
+
+	f.feed([]byte("\x1b[I"), time.Unix(0, 0))
+	if !f.refreshNeeded() {
+		t.Fatalf("wanted a refresh once the terminal reports focus gained")
+	}
+	if f.refreshNeeded() {
+		t.Errorf("wanted the refresh reported once, not again")
+	}
+
+	f.feed([]byte("\x1b[O"), time.Unix(0, 0)) // focus lost: nothing to redraw
+	if f.refreshNeeded() {
+		t.Errorf("wanted no refresh when focus is lost")
+	}
+}

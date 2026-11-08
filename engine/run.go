@@ -276,6 +276,10 @@ func Run(ctx context.Context, game Game, cfg Config) (err error) {
 	keys.canSuspend = tty.canSuspend()
 	defer keys.stop()
 
+	// Only the cells that changed are sent to a terminal; to anything else every
+	// frame goes whole.
+	pres := newPresenter(!tty.headless)
+
 	// suspend hands the terminal back, stops the process until the shell continues
 	// it, then takes the terminal over again.
 	suspend := func() error {
@@ -292,6 +296,7 @@ func Run(ctx context.Context, game Game, cfg Config) (err error) {
 				return err
 			}
 		}
+		pres.invalidate() // the screen was left and set up again, so it is blank
 		last = time.Now() // so the time spent stopped is not a frame
 		return nil
 	}
@@ -347,11 +352,10 @@ func Run(ctx context.Context, game Game, cfg Config) (err error) {
 					}
 				}
 				// Whatever the window held before no longer matches it, and what is left
-				// outside a smaller frame or past a shrunk window would stay on screen.
+				// outside a smaller frame or past a shrunk window would stay on screen:
+				// the next frame erases the display and is sent whole.
 				if curW != shownW || curH != shownH {
-					if err := tty.Clear(); err != nil {
-						return err
-					}
+					pres.invalidate()
 					shownW, shownH = curW, curH
 				}
 			}
@@ -367,7 +371,7 @@ func Run(ctx context.Context, game Game, cfg Config) (err error) {
 			nfb.Clear()
 			game.Draw(nfb)
 			// A fixed-size frame can be larger than the window: show the part that fits.
-			if err := nfb.presentClipped(tty.out, shownW, shownH); err != nil {
+			if err := pres.present(tty.out, nfb, shownW, shownH); err != nil {
 				return err
 			}
 		case b, ok := <-input:
@@ -375,7 +379,11 @@ func Run(ctx context.Context, game Game, cfg Config) (err error) {
 				input = nil
 				continue
 			}
-			if done, err := handle(keys.feed(b, time.Now()), suspend); done {
+			action := keys.feed(b, time.Now())
+			if keys.refreshNeeded() {
+				pres.invalidate()
+			}
+			if done, err := handle(action, suspend); done {
 				return err
 			}
 		case <-keys.expired():

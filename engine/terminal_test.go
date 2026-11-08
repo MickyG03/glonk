@@ -153,7 +153,6 @@ func TestHeadlessTerminalWritesNothingAndKeepsItsSize(t *testing.T) {
 	for name, err := range map[string]error{
 		"Setup":                  tty.Setup(),
 		"EnableKeyboardProtocol": tty.EnableKeyboardProtocol(),
-		"Clear":                  tty.Clear(),
 		"Teardown":               tty.Teardown(),
 	} {
 		if err != nil {
