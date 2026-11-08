@@ -41,7 +41,7 @@ func (in *Input) event(e keyEvent, at time.Time) {
 	switch e.kind {
 	case kindRelease:
 		delete(in.held, e.key)
-	case kindFocusLost:
+	case kindFocusLost, kindReset:
 		in.releaseAll()
 	case kindFocusGained:
 		// Nothing to do: keys held across a focus change send fresh repeats.

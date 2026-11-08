@@ -1,7 +1,9 @@
 package engine
 
 import (
+	"bytes"
 	"math"
+	"slices"
 	"strings"
 	"testing"
 	"unicode/utf8"
@@ -45,9 +47,9 @@ func FuzzParseEvents(f *testing.F) {
 				} else if e.key < 32 && e.key != 0 || !utf8.ValidRune(rune(e.key)) {
 					t.Fatalf("wanted a printable rune or a special key, got %+v from %q", e, b)
 				}
-			case kindFocusGained, kindFocusLost:
+			case kindFocusGained, kindFocusLost, kindReset:
 				if e.key != KeyUnknown {
-					t.Fatalf("wanted focus events to carry no key, got %+v from %q", e, b)
+					t.Fatalf("wanted focus and reset events to carry no key, got %+v from %q", e, b)
 				}
 			default:
 				t.Fatalf("wanted a known event kind, got %+v from %q", e, b)
@@ -227,6 +229,61 @@ func FuzzShade(f *testing.F) {
 		}
 		if again := Shade(color, intensity); again != got {
 			t.Fatalf("wanted Shade to be deterministic, got %d then %d", got, again)
+		}
+	})
+}
+
+func FuzzKeyParser(f *testing.F) {
+	for _, s := range seedInputs {
+		f.Add([]byte(s), uint8(1), uint8(4))
+		f.Add([]byte(s), uint8(0), uint8(255))
+	}
+	f.Add([]byte("\x1b[119;1:3u\x1b[101u\xe2\x82\xac\x1bOA\x1bx"), uint8(7), uint8(9))
+	f.Add(append([]byte("\x1b["), bytes.Repeat([]byte("1"), 300)...), uint8(100), uint8(200))
+
+	f.Fuzz(func(t *testing.T, b []byte, cut1, cut2 uint8) {
+		n := len(b)
+		a, c := 0, 0
+		if n > 0 {
+			a, c = int(cut1)%(n+1), int(cut2)%(n+1)
+		}
+		if a > c {
+			a, c = c, a
+		}
+
+		feed := func(pieces ...[]byte) []keyEvent {
+			var p keyParser
+			var events []keyEvent
+			for _, piece := range pieces {
+				events = append(events, p.Feed(piece)...)
+				if len(p.pending) > maxPendingInput {
+					t.Fatalf("wanted at most %d bytes held, got %d", maxPendingInput, len(p.pending))
+				}
+			}
+			events = append(events, p.Flush()...)
+			if p.Pending() {
+				t.Fatalf("wanted nothing held after a flush")
+			}
+			return events
+		}
+
+		split := feed(b[:a], b[a:c], b[c:])
+		bytewise := make([][]byte, n)
+		for i := range b {
+			bytewise[i] = b[i : i+1]
+		}
+		single := feed(bytewise...)
+
+		// A sequence longer than the hold limit is discarded by design, so the split
+		// readings only have to match the whole when nothing could exceed it.
+		if n <= maxPendingInput {
+			whole := parseEvents(b)
+			if !slices.Equal(split, whole) {
+				t.Fatalf("wanted %q cut at %d and %d to give %v, got %v", b, a, c, whole, split)
+			}
+			if !slices.Equal(single, whole) {
+				t.Fatalf("wanted %q one byte at a time to give %v, got %v", b, whole, single)
+			}
 		}
 	})
 }

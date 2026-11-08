@@ -29,6 +29,8 @@ const (
 // keyboard protocol report repeats and releases; everything else sends presses.
 // The focus kinds are not about a key: they carry KeyUnknown and tell Input the
 // window gained or lost focus, which we only ask for alongside the protocol.
+// kindReset also carries KeyUnknown: part of the input was thrown away, so any
+// release in it may have been lost and Input must forget which keys are held.
 type keyKind uint8
 
 const (
@@ -37,6 +39,7 @@ const (
 	kindRelease
 	kindFocusGained
 	kindFocusLost
+	kindReset
 )
 
 // keyEvent is one decoded key event.
@@ -77,11 +80,30 @@ func arrow(c byte) Key {
 	}
 }
 
-// parseEvents decodes one chunk of raw terminal input into key events.
-// An escape sequence split across two reads is misparsed; that is rare
-// locally and fixing it needs a stateful parser with timeouts.
+// maxPendingInput bounds how many bytes of an unfinished sequence keyParser holds.
+// Real key sequences are a few bytes long; more than this is garbage.
+const maxPendingInput = 128
+
+// parseEvents decodes input that is known to be complete into key events. For
+// input that arrives in pieces use a keyParser.
 func parseEvents(b []byte) []keyEvent {
-	var events []keyEvent
+	events, _ := parse(b, true)
+	return events
+}
+
+// parse decodes raw terminal input into key events and reports how many bytes it
+// used.
+//
+// A sequence cut off at the end of b is not used when final is false: the caller
+// keeps those bytes and tries again once more have arrived. When final is true
+// nothing more is coming, so a lone ESC is the Escape key, an unfinished UTF-8
+// rune is dropped, and an unfinished CSI sequence is dropped with a reset event,
+// since the release it may have carried is lost.
+//
+// ESC followed by a key is an Alt chord (Alt+x arrives as ESC x). Games do not get
+// chords, and reading them as Escape then x would make Alt+anything press Escape,
+// so they are dropped, as the kitty protocol path already does.
+func parse(b []byte, final bool) (events []keyEvent, consumed int) {
 	press := func(k Key) { events = append(events, keyEvent{k, kindPress}) }
 
 	i := 0
@@ -90,23 +112,16 @@ func parseEvents(b []byte) []keyEvent {
 		switch {
 		case c == 0x1b:
 			if i+1 >= len(b) {
+				if !final {
+					return events, i
+				}
 				press(KeyEscape)
 				i++
 				continue
 			}
 
-			next := b[i+1]
-
-			// Some terminals send arrows as SS3 (ESC O A) instead of CSI.
-			if next == 'O' {
-				if i+2 < len(b) && b[i+2] >= 'A' && b[i+2] <= 'D' {
-					press(arrow(b[i+2]))
-					i += 3
-					continue
-				}
-			}
-
-			if next == '[' {
+			switch next := b[i+1]; {
+			case next == '[':
 				j := i + 2
 				// Skipping parameters lets modified arrows (ESC [1;5C) read as
 				// plain arrows and unknown keys (ESC [15~) drop cleanly.
@@ -114,16 +129,49 @@ func parseEvents(b []byte) []keyEvent {
 					j++
 				}
 				if j >= len(b) {
+					if !final {
+						return events, i
+					}
+					events = append(events, keyEvent{KeyUnknown, kindReset})
 					i = len(b)
 					continue
 				}
 				events = appendCSI(events, b[i+2:j], b[j])
 				i = j + 1
-				continue
-			}
 
-			press(KeyEscape)
-			i++
+			case next == 'O':
+				// Some terminals send arrows as SS3 (ESC O A) instead of CSI.
+				if i+2 >= len(b) {
+					if !final {
+						return events, i
+					}
+					i += 2 // Alt+O
+					continue
+				}
+				switch f := b[i+2]; {
+				case f >= 'A' && f <= 'D':
+					press(arrow(f))
+					i += 3
+				case f >= 0x40 && f <= 0x7e:
+					i += 3 // F1 to F4, Home, End, keypad: not game keys
+				default:
+					i += 2 // Alt+O; f is read on its own
+				}
+
+			case next == 0x1b:
+				press(KeyEscape) // the first of two; the second is read next
+				i++
+
+			default: // Alt chord
+				size := 1
+				if next >= utf8.RuneSelf {
+					if !final && !utf8.FullRune(b[i+1:]) {
+						return events, i
+					}
+					_, size = utf8.DecodeRune(b[i+1:])
+				}
+				i += 1 + size
+			}
 		case c == 0x03:
 			press(KeyCtrlC)
 			i++
@@ -139,6 +187,9 @@ func parseEvents(b []byte) []keyEvent {
 		case c < 0x20:
 			i++
 		default:
+			if !final && !utf8.FullRune(b[i:]) {
+				return events, i
+			}
 			r, size := utf8.DecodeRune(b[i:])
 			if !(r == utf8.RuneError && size == 1) {
 				press(Key(r))
@@ -146,6 +197,47 @@ func parseEvents(b []byte) []keyEvent {
 			i += size
 		}
 	}
+	return events, i
+}
+
+// keyParser decodes input that arrives in pieces. Terminals send a key as a short
+// sequence of bytes, and a read can end in the middle of one; the parser keeps the
+// unfinished tail and joins it to the next piece.
+//
+// A tail that is a lone ESC cannot be told from the Escape key until a moment has
+// passed without more bytes: the caller checks Pending after each Feed, waits, and
+// calls Flush if nothing came.
+type keyParser struct {
+	pending []byte
+}
+
+// Feed decodes the next piece of input after whatever was left over from the last.
+func (p *keyParser) Feed(b []byte) []keyEvent {
+	data := b
+	if len(p.pending) > 0 {
+		data = append(p.pending, b...)
+	}
+
+	events, n := parse(data, false)
+	rest := data[n:]
+	if len(rest) > maxPendingInput {
+		// No key sequence is this long, so this is garbage that would only grow.
+		events = append(events, keyEvent{KeyUnknown, kindReset})
+		rest = nil
+	}
+	p.pending = append(p.pending[:0], rest...)
+	return events
+}
+
+// Pending reports whether an unfinished sequence is being held.
+func (p *keyParser) Pending() bool {
+	return len(p.pending) > 0
+}
+
+// Flush gives up waiting: it decodes the held bytes as the end of the input.
+func (p *keyParser) Flush() []keyEvent {
+	events, _ := parse(p.pending, true)
+	p.pending = p.pending[:0]
 	return events
 }
 
