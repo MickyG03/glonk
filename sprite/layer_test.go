@@ -2,6 +2,7 @@ package sprite
 
 import (
 	"math"
+	"strings"
 	"testing"
 
 	"github.com/kyrokohan/glonk/engine"
@@ -233,5 +234,158 @@ func TestZeroSpriteIsABlankAtTheOrigin(t *testing.T) {
 
 	if got := fb.At(0, 0); got != (engine.Cell{}) {
 		t.Errorf("wanted the zero Cell at the origin, got %+v", got)
+	}
+}
+
+// plain returns a sprite showing r at (x, 0).
+func plain(x float64, r rune) *Sprite {
+	return New(geometry.Vector2{X: x}, r)
+}
+
+// rowZero is the first line of the drawn frame.
+func rowZero(l *Layer, t *testing.T) string {
+	fb := newFrame(t)
+	l.Draw(fb)
+	line, _, _ := strings.Cut(fb.String(), "\n")
+	return line
+}
+
+func TestLayerLen(t *testing.T) {
+	l := NewLayer()
+	if l.Len() != 0 {
+		t.Fatalf("wanted a new layer to be empty, got %d", l.Len())
+	}
+	a := plain(0, 'a')
+	l.Add(a)
+	l.Add(nil)
+	l.Add(plain(1, 'b'))
+	l.Add(a) // the same sprite again
+
+	if got := l.Len(); got != 3 {
+		t.Errorf("wanted 3 (nil ignored, a duplicate counted), got %d", got)
+	}
+}
+
+func TestLayerRemove(t *testing.T) {
+	a, b, c := plain(0, 'a'), plain(1, 'b'), plain(2, 'c')
+
+	tests := []struct {
+		name      string
+		remove    *Sprite
+		wantFound bool
+		wantRow   string
+	}{
+		{"the first", a, true, " bc"},
+		{"one in the middle", b, true, "a c"},
+		{"the last", c, true, "ab"},
+		{"one that is not in the layer", plain(0, 'z'), false, "abc"},
+		{"nil", nil, false, "abc"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			l := NewLayer()
+			l.Add(a)
+			l.Add(b)
+			l.Add(c)
+
+			found := l.Remove(tt.remove)
+
+			if found != tt.wantFound {
+				t.Errorf("wanted Remove to report %v, got %v", tt.wantFound, found)
+			}
+			if got := rowZero(l, t); got != tt.wantRow {
+				t.Errorf("wanted the row %q, got %q", tt.wantRow, got)
+			}
+		})
+	}
+}
+
+func TestLayerRemoveTakesOutEveryTimeASpriteWasAdded(t *testing.T) {
+	l := NewLayer()
+	a := plain(0, 'a')
+	l.Add(a)
+	l.Add(plain(1, 'b'))
+	l.Add(a)
+
+	if !l.Remove(a) || l.Len() != 1 {
+		t.Fatalf("wanted both a's gone and b left, got %d sprites", l.Len())
+	}
+	if l.Remove(a) {
+		t.Errorf("wanted a second Remove to find nothing")
+	}
+}
+
+// Removing one sprite must not change which of the others is on top.
+func TestLayerRemoveKeepsTheDrawOrder(t *testing.T) {
+	l := NewLayer()
+	under, middle, over := plain(0, 'u'), plain(0, 'm'), plain(0, 'o')
+	l.Add(under)
+	l.Add(middle)
+	l.Add(over)
+
+	l.Remove(middle)
+	if got := rowZero(l, t); got != "o" {
+		t.Errorf("wanted the later sprite still on top, got %q", got)
+	}
+	l.Remove(over)
+	if got := rowZero(l, t); got != "u" {
+		t.Errorf("wanted the first sprite to show once the others are gone, got %q", got)
+	}
+}
+
+func TestRemovedSpriteCanBeAddedBack(t *testing.T) {
+	l := NewLayer()
+	a := plain(3, 'a')
+	l.Add(a)
+	l.Remove(a)
+	if got := rowZero(l, t); got != "" {
+		t.Fatalf("wanted nothing drawn once removed, got %q", got)
+	}
+
+	l.Add(a)
+
+	if got := rowZero(l, t); got != "   a" {
+		t.Errorf("wanted a drawn again, got %q", got)
+	}
+}
+
+func TestLayerClear(t *testing.T) {
+	l := NewLayer()
+	l.Add(plain(0, 'a'))
+	l.Add(plain(1, 'b'))
+
+	l.Clear()
+
+	if l.Len() != 0 || rowZero(l, t) != "" {
+		t.Errorf("wanted an empty layer that draws nothing, got %d sprites and %q", l.Len(), rowZero(l, t))
+	}
+	l.Add(plain(2, 'c'))
+	if got := rowZero(l, t); got != "  c" {
+		t.Errorf("wanted the layer usable again, got %q", got)
+	}
+	NewLayer().Clear() // an empty layer clears without trouble
+}
+
+// A removed sprite must not stay reachable through the layer's spare capacity.
+func TestRemoveAndClearLetGoOfTheSprites(t *testing.T) {
+	spare := func(l *Layer) []*Sprite { return l.sprites[len(l.sprites):cap(l.sprites)] }
+
+	l := NewLayer()
+	a, b, c := plain(0, 'a'), plain(1, 'b'), plain(2, 'c')
+	l.Add(a)
+	l.Add(b)
+	l.Add(c)
+
+	l.Remove(a)
+	for i, sp := range spare(l) {
+		if sp != nil {
+			t.Errorf("after Remove: wanted spare slot %d empty, got %+v", i, *sp)
+		}
+	}
+	l.Clear()
+	for i, sp := range l.sprites[:cap(l.sprites)] {
+		if sp != nil {
+			t.Errorf("after Clear: wanted slot %d empty, got %+v", i, *sp)
+		}
 	}
 }

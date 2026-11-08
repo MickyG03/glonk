@@ -2,6 +2,7 @@ package sprite
 
 import (
 	"math"
+	"slices"
 
 	"github.com/kyrokohan/glonk/engine"
 )
@@ -22,6 +23,26 @@ func (l *Layer) Add(obj *Sprite) {
 		return
 	}
 	l.sprites = append(l.sprites, obj)
+}
+
+// Remove takes obj out of the layer, every time it was added, and reports whether it
+// was there. The sprites left keep their order, so they still draw over one another
+// as before. A nil sprite removes nothing.
+func (l *Layer) Remove(obj *Sprite) bool {
+	before := len(l.sprites) // a nil sprite is never in the list, so it finds nothing
+	l.sprites = slices.DeleteFunc(l.sprites, func(sp *Sprite) bool { return sp == obj })
+	return len(l.sprites) < before
+}
+
+// Clear takes every sprite out of the layer.
+func (l *Layer) Clear() {
+	clear(l.sprites) // so the old slots do not keep the sprites alive
+	l.sprites = l.sprites[:0]
+}
+
+// Len returns how many sprites are in the layer. A sprite added twice counts twice.
+func (l *Layer) Len() int {
+	return len(l.sprites)
 }
 
 // Draw sets each sprite's Cell in fb, clipping anything off screen. A sprite replaces
