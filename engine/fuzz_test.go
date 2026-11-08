@@ -411,3 +411,26 @@ func FuzzStripProbeReplies(f *testing.F) {
 		}
 	})
 }
+
+func FuzzNearestPalette(f *testing.F) {
+	f.Add(0.0, 0.0, 0.0)
+	f.Add(255.0, 255.0, 255.0)
+	f.Add(47.5, 115.0, 155.0)
+	f.Add(127.5, 127.5, 127.5)
+	f.Add(115.0, 115.0, 115.0)
+	f.Add(1.0/3, 2.0/3, 100.0)
+
+	f.Fuzz(func(t *testing.T, r, g, b float64) {
+		for _, v := range []float64{r, g, b} {
+			if math.IsNaN(v) || math.IsInf(v, 0) {
+				return
+			}
+		}
+		// Shade only ever asks about colors inside the palette's range.
+		r, g, b = min(max(r, 0), 255), min(max(g, 0), 255), min(max(b, 0), 255)
+
+		if got, want := nearestPalette(r, g, b), nearestPaletteScan(r, g, b); !sameNearest(r, g, b, got, want) {
+			t.Fatalf("wanted palette %d (or as near), got %d, for (%v, %v, %v)", want, got, r, g, b)
+		}
+	})
+}
