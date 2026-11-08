@@ -25,12 +25,12 @@ func (l *Layer) Add(obj *Sprite) {
 }
 
 // Draw sets each sprite's cell in fb, clipping anything off screen. A sprite whose
-// X or Y is NaN or infinite is not drawn, like one that is off screen.
+// Position has a NaN or infinite X or Y is not drawn, like one that is off screen.
 func (l *Layer) Draw(fb *engine.FrameBuffer) {
 	w, h := float64(fb.Width()), float64(fb.Height())
 
 	for _, sp := range l.sprites {
-		x, y := math.Floor(sp.X), math.Floor(sp.Y)
+		x, y := math.Floor(sp.Position.X), math.Floor(sp.Position.Y)
 
 		// Checked before converting to int, and written so that NaN fails: what
 		// int(NaN) or int(1e300) gives differs from one CPU to the next.

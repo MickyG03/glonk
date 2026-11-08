@@ -13,6 +13,7 @@ import (
 	"os"
 
 	"github.com/kyrokohan/glonk/engine"
+	"github.com/kyrokohan/glonk/geometry"
 	"github.com/kyrokohan/glonk/sprite"
 )
 
@@ -20,8 +21,8 @@ import (
 const hint = " Esc quits "
 
 type bounceGame struct {
-	width, height int // the frame's size, from Resize
-	vx, vy        float64
+	width, height int              // the frame's size, from Resize
+	velocity      geometry.Vector2 // cells per second
 	ball          *sprite.Sprite
 	layer         *sprite.Layer
 }
@@ -29,10 +30,9 @@ type bounceGame struct {
 // newBounceGame returns the game main runs. It has no size until Run calls Resize.
 func newBounceGame() *bounceGame {
 	game := &bounceGame{
-		vx:    30,
-		vy:    15,
-		ball:  sprite.New(10, 10, 'o'),
-		layer: sprite.NewLayer(),
+		velocity: geometry.Vector2{X: 30, Y: 15},
+		ball:     sprite.New(geometry.Vector2{X: 10, Y: 10}, 'o'),
+		layer:    sprite.NewLayer(),
 	}
 	game.layer.Add(game.ball)
 	return game
@@ -50,25 +50,24 @@ func (bg *bounceGame) Update(dt float64, in *engine.Input) error {
 	if in.Pressed(engine.KeyEscape) {
 		return engine.ErrQuit
 	}
-	bg.ball.X += bg.vx * dt
-	bg.ball.Y += bg.vy * dt
+	bg.ball.Position = bg.ball.Position.Add(bg.velocity.Scale(dt))
 
-	if bg.ball.X >= float64(bg.width-2) {
-		bg.vx = -math.Abs(bg.vx)
-		bg.ball.X = float64(bg.width - 2)
+	if bg.ball.Position.X >= float64(bg.width-2) {
+		bg.velocity.X = -math.Abs(bg.velocity.X)
+		bg.ball.Position.X = float64(bg.width - 2)
 	}
-	if bg.ball.X < 1 {
-		bg.vx = math.Abs(bg.vx)
-		bg.ball.X = 1
+	if bg.ball.Position.X < 1 {
+		bg.velocity.X = math.Abs(bg.velocity.X)
+		bg.ball.Position.X = 1
 	}
 
-	if bg.ball.Y >= float64(bg.height-2) {
-		bg.vy = -math.Abs(bg.vy)
-		bg.ball.Y = float64(bg.height - 2)
+	if bg.ball.Position.Y >= float64(bg.height-2) {
+		bg.velocity.Y = -math.Abs(bg.velocity.Y)
+		bg.ball.Position.Y = float64(bg.height - 2)
 	}
-	if bg.ball.Y < 1 {
-		bg.vy = math.Abs(bg.vy)
-		bg.ball.Y = 1
+	if bg.ball.Position.Y < 1 {
+		bg.velocity.Y = math.Abs(bg.velocity.Y)
+		bg.ball.Position.Y = 1
 	}
 
 	return nil

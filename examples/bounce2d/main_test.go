@@ -31,8 +31,8 @@ func TestBallMovesByVelocityTimesTime(t *testing.T) {
 	if err := g.Update(0.1, &engine.Input{}); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if g.ball.X != 13 || g.ball.Y != 11.5 {
-		t.Errorf("wanted the ball at (13, 11.5), got (%v, %v)", g.ball.X, g.ball.Y)
+	if g.ball.Position.X != 13 || g.ball.Position.Y != 11.5 {
+		t.Errorf("wanted the ball at (13, 11.5), got (%v, %v)", g.ball.Position.X, g.ball.Position.Y)
 	}
 }
 
@@ -56,16 +56,16 @@ func TestBallBouncesOffEachWall(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			g := newSizedGame(64, 24)
-			g.ball.X, g.ball.Y, g.vx, g.vy = tt.x, tt.y, tt.vx, tt.vy
+			g.ball.Position.X, g.ball.Position.Y, g.velocity.X, g.velocity.Y = tt.x, tt.y, tt.vx, tt.vy
 
 			if err := g.Update(0, &engine.Input{}); err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
-			if g.ball.X != tt.wantX || g.ball.Y != tt.wantY {
-				t.Errorf("wanted the ball at (%v, %v), got (%v, %v)", tt.wantX, tt.wantY, g.ball.X, g.ball.Y)
+			if g.ball.Position.X != tt.wantX || g.ball.Position.Y != tt.wantY {
+				t.Errorf("wanted the ball at (%v, %v), got (%v, %v)", tt.wantX, tt.wantY, g.ball.Position.X, g.ball.Position.Y)
 			}
-			if (g.vx > 0) != tt.wantVxPositive || (g.vy > 0) != tt.wantVyPositive {
-				t.Errorf("wanted velocity signs (%v, %v), got (%v, %v)", tt.wantVxPositive, tt.wantVyPositive, g.vx, g.vy)
+			if (g.velocity.X > 0) != tt.wantVxPositive || (g.velocity.Y > 0) != tt.wantVyPositive {
+				t.Errorf("wanted velocity signs (%v, %v), got (%v, %v)", tt.wantVxPositive, tt.wantVyPositive, g.velocity.X, g.velocity.Y)
 			}
 		})
 	}
@@ -77,20 +77,20 @@ func TestBallBouncesInsideTheFrameLastResizedTo(t *testing.T) {
 	g := newBounceGame()
 
 	g.Resize(100, 30)
-	g.ball.X, g.ball.Y, g.vx = 90, 10, 30
+	g.ball.Position.X, g.ball.Position.Y, g.velocity.X = 90, 10, 30
 	if err := g.Update(0.01, &engine.Input{}); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if g.vx <= 0 {
-		t.Errorf("wanted the ball to fly on past 64 columns in a 100 column frame, vx=%v", g.vx)
+	if g.velocity.X <= 0 {
+		t.Errorf("wanted the ball to fly on past 64 columns in a 100 column frame, vx=%v", g.velocity.X)
 	}
 
 	g.Resize(40, 12)
 	if err := g.Update(0, &engine.Input{}); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if g.ball.X > 38 || g.ball.Y > 10 || g.ball.X < 1 || g.ball.Y < 1 {
-		t.Errorf("wanted the ball back inside a 40x12 frame after it shrank, got (%v, %v)", g.ball.X, g.ball.Y)
+	if g.ball.Position.X > 38 || g.ball.Position.Y > 10 || g.ball.Position.X < 1 || g.ball.Position.Y < 1 {
+		t.Errorf("wanted the ball back inside a 40x12 frame after it shrank, got (%v, %v)", g.ball.Position.X, g.ball.Position.Y)
 	}
 }
 
@@ -106,7 +106,7 @@ func TestDrawShowsTheBoxTheBallAndTheKey(t *testing.T) {
 	if got := strings.Split(fb.String(), "\n")[11]; !strings.Contains(got, " Esc quits ") {
 		t.Errorf("wanted the key hint on the bottom border, got %q", got)
 	}
-	if got := fb.At(int(g.ball.X), int(g.ball.Y)).Character; got != 'o' {
+	if got := fb.At(int(g.ball.Position.X), int(g.ball.Position.Y)).Character; got != 'o' {
 		t.Errorf("wanted the ball drawn, got %q", got)
 	}
 }
@@ -131,12 +131,12 @@ func TestEscapeQuitsAndOtherKeysDoNot(t *testing.T) {
 	kb := engine.NewKeyboard()
 
 	kb.Press('w', 'q', engine.KeyEnter, engine.KeyUp)
-	x, y := g.ball.X, g.ball.Y
+	x, y := g.ball.Position.X, g.ball.Position.Y
 	if err := g.Update(0.1, kb.Input()); err != nil {
 		t.Fatalf("wanted other keys to be ignored, got %v", err)
 	}
-	if math.Abs(g.ball.X-(x+3)) > 1e-9 || math.Abs(g.ball.Y-(y+1.5)) > 1e-9 {
-		t.Errorf("wanted the ball to fly on as usual, got (%v, %v) from (%v, %v)", g.ball.X, g.ball.Y, x, y)
+	if math.Abs(g.ball.Position.X-(x+3)) > 1e-9 || math.Abs(g.ball.Position.Y-(y+1.5)) > 1e-9 {
+		t.Errorf("wanted the ball to fly on as usual, got (%v, %v) from (%v, %v)", g.ball.Position.X, g.ball.Position.Y, x, y)
 	}
 	kb.EndFrame()
 

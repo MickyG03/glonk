@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/kyrokohan/glonk/engine"
+	"github.com/kyrokohan/glonk/geometry"
 )
 
 const (
@@ -53,7 +54,7 @@ func TestLayerDrawFloorsThePosition(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			l := NewLayer()
-			l.Add(New(tt.x, tt.y, 'X'))
+			l.Add(New(geometry.Vector2{X: tt.x, Y: tt.y}, 'X'))
 			fb := newFrame(t)
 			l.Draw(fb)
 
@@ -96,7 +97,7 @@ func TestLayerDrawSkipsSpritesWithoutARealPosition(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			l := NewLayer()
-			l.Add(New(tt.x, tt.y, 'X'))
+			l.Add(New(geometry.Vector2{X: tt.x, Y: tt.y}, 'X'))
 			fb := newFrame(t)
 			l.Draw(fb)
 
@@ -109,9 +110,9 @@ func TestLayerDrawSkipsSpritesWithoutARealPosition(t *testing.T) {
 
 func TestLayerIgnoresNilSprites(t *testing.T) {
 	l := NewLayer()
-	l.Add(New(1, 1, 'A'))
+	l.Add(New(geometry.Vector2{X: 1, Y: 1}, 'A'))
 	l.Add(nil)
-	l.Add(New(2, 1, 'B'))
+	l.Add(New(geometry.Vector2{X: 2, Y: 1}, 'B'))
 
 	fb := newFrame(t)
 	l.Draw(fb)
@@ -125,8 +126,8 @@ func TestLayerIgnoresNilSprites(t *testing.T) {
 
 func TestLayerDrawsAfterABadSprite(t *testing.T) {
 	l := NewLayer()
-	l.Add(New(math.NaN(), 0, 'N'))
-	l.Add(New(3, 2, 'G'))
+	l.Add(New(geometry.Vector2{X: math.NaN(), Y: 0}, 'N'))
+	l.Add(New(geometry.Vector2{X: 3, Y: 2}, 'G'))
 
 	fb := newFrame(t)
 	l.Draw(fb)
@@ -139,8 +140,8 @@ func TestLayerDrawsAfterABadSprite(t *testing.T) {
 
 func TestLayerLaterSpritesDrawOverEarlierOnes(t *testing.T) {
 	l := NewLayer()
-	l.Add(New(4, 4, 'a'))
-	l.Add(New(4.5, 4.5, 'b'))
+	l.Add(New(geometry.Vector2{X: 4, Y: 4}, 'a'))
+	l.Add(New(geometry.Vector2{X: 4.5, Y: 4.5}, 'b'))
 
 	fb := newFrame(t)
 	l.Draw(fb)
