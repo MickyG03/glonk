@@ -3,6 +3,7 @@ package engine
 import (
 	"bytes"
 	"io"
+	"sync"
 	"time"
 )
 
@@ -157,24 +158,31 @@ func (f *inputFeed) apply(events []keyEvent, now time.Time) (quit bool) {
 	return false
 }
 
-// readInput streams chunks read from r until it errors
-// then closes the channel.
-func readInput(r io.Reader) <-chan []byte {
+// readBlocking streams chunks read from r until it errors, then closes the channel.
+// Its goroutine sits in a blocking Read, which nothing can interrupt, so stop only
+// lets go of a chunk nobody is receiving: a goroutine waiting in Read stays behind
+// and takes the next input. readInput avoids that where it can.
+func readBlocking(r io.Reader) (chunks <-chan []byte, stop func()) {
 	ch := make(chan []byte)
-	// the goroutine stays blocked in Read after Run returns;
-	// harmless unless Run is called twice.
+	done := make(chan struct{})
 	go func() {
 		defer close(ch)
 		buf := make([]byte, readBuffer)
 		for {
 			n, err := r.Read(buf)
 			if n > 0 {
-				ch <- bytes.Clone(buf[:n])
+				select {
+				case ch <- bytes.Clone(buf[:n]):
+				case <-done:
+					return
+				}
 			}
 			if err != nil {
 				return
 			}
 		}
 	}()
-	return ch
+
+	var once sync.Once
+	return ch, func() { once.Do(func() { close(done) }) }
 }

@@ -80,7 +80,8 @@ func Run(ctx context.Context, game Game, cfg Config) error {
 		return err
 	}
 	defer tty.Teardown()
-	input := readInput(os.Stdin)
+	input, stopInput := readInput(os.Stdin)
+	defer stopInput() // before Teardown: nothing may read the terminal once Run is over
 
 	exact := false
 	if !cfg.LegacyKeys {

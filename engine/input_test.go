@@ -2,16 +2,18 @@ package engine
 
 import (
 	"bytes"
+	"io"
 	"strings"
 	"testing"
 	"testing/iotest"
 	"time"
 )
 
-func TestReadInput(t *testing.T) {
+func TestReadBlocking(t *testing.T) {
 	r := iotest.DataErrReader(iotest.OneByteReader(strings.NewReader("ab\x03")))
 	var chunks [][]byte
-	for chunk := range readInput(r) {
+	input, _ := readBlocking(r)
+	for chunk := range input {
 		chunks = append(chunks, chunk)
 	}
 	got := bytes.Join(chunks, nil)
@@ -445,11 +447,12 @@ func TestInputFeedEventsKeepTheirReadTime(t *testing.T) {
 	}
 }
 
-func TestReadInputReadsBigChunksAtOnce(t *testing.T) {
+func TestReadBlockingReadsBigChunksAtOnce(t *testing.T) {
 	data := strings.Repeat("w", 1000)
 
 	var chunks []int
-	for chunk := range readInput(strings.NewReader(data)) {
+	input, _ := readBlocking(strings.NewReader(data))
+	for chunk := range input {
 		chunks = append(chunks, len(chunk))
 	}
 	if len(chunks) != 1 || chunks[0] != 1000 {
@@ -458,7 +461,8 @@ func TestReadInputReadsBigChunksAtOnce(t *testing.T) {
 
 	big := strings.Repeat("w", 3*readBuffer+17)
 	total := 0
-	for chunk := range readInput(strings.NewReader(big)) {
+	input, _ = readBlocking(strings.NewReader(big))
+	for chunk := range input {
 		if len(chunk) > readBuffer {
 			t.Errorf("wanted chunks of at most %d bytes, got %d", readBuffer, len(chunk))
 		}
@@ -467,4 +471,24 @@ func TestReadInputReadsBigChunksAtOnce(t *testing.T) {
 	if total != len(big) {
 		t.Errorf("wanted %d bytes in all, got %d", len(big), total)
 	}
+}
+
+func TestReadBlockingStopFreesAChunkNobodyReceives(t *testing.T) {
+	r, w := io.Pipe()
+	input, stop := readBlocking(r)
+
+	go w.Write([]byte("x")) // read, then stuck handing it over
+	time.Sleep(50 * time.Millisecond)
+	stop()
+	stop() // safe to repeat
+
+	select {
+	case _, ok := <-input:
+		if ok {
+			t.Errorf("wanted the dropped chunk not to be delivered after stop")
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatalf("wanted the channel closed once stop released the pending chunk")
+	}
+	w.Close()
 }
