@@ -6,7 +6,7 @@ A terminal rendering engine for Go. Draw 2D, 3D, or both in the same frame, usin
 
 ## What it does
 
-- **2D:** cells with 256-color, lines, boxes, text, and sprites.
+- **2D:** cells with foreground and background colors (the 256-color palette or RGB) and text attributes (bold, dim, underline, reverse), lines, boxes, text, and sprites.
 - **3D:** wireframe or solid meshes through a perspective camera, with near-plane clipping. Solid meshes are flat-shaded by a directional light into an ASCII brightness ramp, hide each other by depth, and skip faces turned away.
 - **Models:** load OBJ files from any `io.Reader` (a file, `//go:embed`, a download), center and scale them, and draw them wireframe or shaded.
 - **Half blocks:** a pixel `Canvas` with two square-ish pixels per cell, drawn with `▀` and a background color, for twice the vertical detail and shading by color instead of by character.
@@ -74,7 +74,7 @@ if err != nil {
 ship = ship.Fit(2) // centered on the origin, longest side 2
 ship.Position = geometry.Vector3{Z: 6}
 
-ship.DrawShaded(fb, cam, light, 208) // or ship.Draw for a wireframe
+ship.DrawShaded(fb, cam, light, engine.Palette(208)) // or ship.Draw for a wireframe
 ```
 
 `LoadOBJ` reads any `io.Reader`, so a file, an embedded asset or a download all work. For input you do not control, use `LoadOBJLimit(r, maxBytes)`: it fails with `mesh.ErrOBJTooLarge` instead of reading without end (a plain `io.LimitReader` would quietly cut the model short).
@@ -109,8 +109,8 @@ func (g *game) Update(dt float64, in *engine.Input) error {
 }
 
 func (g *game) Draw(fb *engine.FrameBuffer) {
-	fb.DrawBox(0, 0, fb.Width(), fb.Height(), 0)
-	fb.Set(int(g.x)%fb.Width(), fb.Height()/2, engine.Cell{Character: '@', Color: 208})
+	fb.DrawBox(0, 0, fb.Width(), fb.Height(), engine.Color{}) // the default color
+	fb.Set(int(g.x)%fb.Width(), fb.Height()/2, engine.Cell{Character: '@', Foreground: engine.Palette(208)})
 }
 
 func main() {
@@ -142,8 +142,8 @@ Built to work in most terminals. The basics need only the alternate screen, curs
 - **Escape waits 50 ms, and Alt chords are ignored.** An Escape press and the start of an arrow key are the same byte, so the Escape key counts only after 50 ms with nothing following it. Alt+key arrives as Escape plus the key and is dropped rather than read as Escape.
 - **Ctrl-Z suspends, and some endings cannot be cleaned up.** Ctrl-Z restores the terminal, stops the program, and takes the terminal over again on `fg`; Windows has no suspend. `os.Exit`, `log.Fatal`, a panic in a goroutine you started, `kill -9` and `kill -QUIT` skip the cleanup and leave the terminal raw; type `reset` to repair it. After the first quit signal a second one kills a game that is stuck, unless your program catches those signals itself.
 - **Bad meshes and cameras draw nothing instead of failing.** Edges and faces that name a missing vertex are skipped (`Mesh.Validate` finds them), a `Camera` field left at 0 uses a default (a 90 degree FOV, a Near of 0.1), a nonsense FOV or Near sees nothing, and sprites at NaN or infinite positions are not drawn.
-- **One character is one column.** A cell holds a single character one column wide. Wide characters (CJK, most emoji) are drawn as `?`, combining marks and joiners are skipped by `DrawText`, and control characters, escape sequences in text included, are drawn as `?` too, so nothing a file name or a game contains can send commands to the terminal. A NUL character is shown as a space, so `Cell{Background: 4}` is a colored blank. Real wide-character support is planned with the redesign of `Cell`.
-- **Color is 256-color only.** `Cell.Color` 0 is the terminal default and 1 to 255 are palette indices.
+- **One character is one column.** A cell holds a single character one column wide. Wide characters (CJK, most emoji) are drawn as `?`, combining marks and joiners are skipped by `DrawText`, and control characters, escape sequences in text included, are drawn as `?` too, so nothing a file name or a game contains can send commands to the terminal. A NUL character is shown as a space, so `Cell{Background: engine.Palette(4)}` is a colored blank. Real wide-character support is planned with the redesign of `Cell`.
+- **RGB colors are shown as the nearest palette color for now.** A `Color` is the terminal default (the zero value), one of the 256 `Palette` colors, or an `RGB` color, and `Attrs` adds bold, dim, underline and reverse. Output is still 256-color, so an RGB color comes out as the closest of palette colors 16 to 255; true color output is planned. Palette colors 0 to 15 follow the user's terminal theme.
 - **Box drawing and half blocks need a Unicode font.** `DrawBox` uses `┌─┐│└┘` and the pixel canvas uses `▀▄`; nearly every monospace font has them. Character shading (`DrawShaded`) needs only ASCII and stays the default in the examples.
 - **Apple's Terminal draws a faint line along half-block edges.** Its block characters fall a little short of the cell. glonk detects it (`TERM_PROGRAM=Apple_Terminal`) and `Canvas.Compose` then draws solid cells instead of half blocks, so there is no line but silhouettes are a pixel blockier. Set `Canvas.Seamless` yourself to override, for instance inside tmux, which hides that variable.
 - **A fixed-size frame larger than the terminal is cut off.** Only the top-left part that fits is shown, and the screen is cleared when the window changes size. Leave `Width` and `Height` at 0 to fill the terminal.

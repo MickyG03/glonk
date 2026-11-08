@@ -10,8 +10,9 @@ There has been no release yet. The API is pre-1.0 and **will** change before v0.
 
 **engine**
 - `Run` drives a `Game` at a fixed frame rate (1 to 1000) and owns the terminal: alternate screen, raw mode, restored on return, on errors and on panics in game code. The frame fills the terminal and follows resizes, or has a fixed size and shows the part that fits.
-- `FrameBuffer` of `Cell`s with 256-color foreground and background; `DrawLine`, `DrawBox`, `DrawText`, and `FillTriangle` with a depth buffer.
-- `Canvas`: a pixel layer with two pixels per cell, composed into half-block characters, with a `Seamless` mode for terminals that draw seams. `Shade` maps a palette color to a brighter or darker one.
+- `FrameBuffer` of `Cell`s with a `Foreground` and `Background` `Color` and text `Attrs` (`Bold`, `Dim`, `Underline`, `Reverse`); `DrawLine`, `DrawBox`, `DrawText`, and `FillTriangle` with a depth buffer.
+- `Color` is a type: the terminal default (the zero value), `Palette(n)` for the 256-color palette, or `RGB(r, g, b)`. RGB is shown as the nearest palette color until true color output is added.
+- `Canvas`: a pixel layer with two pixels per cell, composed into half-block characters, with a `Seamless` mode for terminals that draw seams. `Shade` maps a color to a brighter or darker one.
 - Keyboard `Input` with held keys and one-shot presses. Terminals with the kitty keyboard protocol report real key releases, so several keys can be held at once; everywhere else held keys fall back to timing. Escape sequences split across reads are reassembled, a lone Escape counts after 50 ms, Alt chords are ignored, and keys typed while glonk starts up are kept.
 - Terminal safety: `SIGINT`, `SIGTERM` and `SIGHUP` end `Run` cleanly (a second signal kills a stuck game); Ctrl-Z suspends and `fg` resumes; `Run` leaves stdin alone once it returns; line wrapping is off while a program runs.
 - Output safety: every cell is checked before it is sent, so control characters and escape sequences become `?`, wide characters become `?`, combining marks are skipped by `DrawText`, and NUL is a space.

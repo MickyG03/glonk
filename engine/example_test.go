@@ -89,3 +89,41 @@ func ExampleShade() {
 	// Output:
 	// palette(196) palette(88) palette(16)
 }
+
+func ExamplePalette() {
+	orange := engine.Palette(208)
+	black := engine.Palette(0) // a real color; the default is the zero Color
+
+	fmt.Println(orange, black)
+	fmt.Println(black.IsDefault(), engine.Color{}.IsDefault())
+	// Output:
+	// palette(208) palette(0)
+	// false true
+}
+
+// An RGB color is shown as the nearest palette color until true color output is added,
+// but it keeps its exact value, and Shade scales it exactly.
+func ExampleRGB() {
+	c := engine.RGB(255, 135, 0)
+
+	fmt.Println(c)
+	fmt.Println(engine.Shade(c, 0.5))
+	// Output:
+	// #ff8700
+	// #804400
+}
+
+func ExampleCell() {
+	cell := engine.Cell{
+		Character:  'x',
+		Foreground: engine.RGB(255, 135, 0),
+		Background: engine.Palette(0),
+		Attrs:      engine.Bold | engine.Underline,
+	}
+
+	fmt.Println(cell.Foreground, cell.Background)
+	fmt.Println(cell.Attrs.Has(engine.Bold), cell.Attrs.Has(engine.Reverse))
+	// Output:
+	// #ff8700 palette(0)
+	// true false
+}

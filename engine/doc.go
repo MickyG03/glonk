@@ -7,7 +7,8 @@
 //
 // Draw writes [Cell] values into a [FrameBuffer], a grid with its origin at the top left,
 // x growing to the right and y growing down. Each cell is one character with a
-// color and a background color from the 256-color palette, so output works in
-// nearly any terminal. A [Canvas] gives the same frame a second layer of pixels,
-// two to a cell, drawn with half-block characters.
+// foreground and a background [Color] (the terminal's default, one of the 256
+// palette colors, or RGB) and text attributes such as [Bold]. Output is 256-color for
+// now, so it works in nearly any terminal. A [Canvas] gives the same frame a second
+// layer of pixels, two to a cell, drawn with half-block characters.
 package engine
