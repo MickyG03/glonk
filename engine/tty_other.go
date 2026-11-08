@@ -10,3 +10,9 @@ import "os"
 func readInput(f *os.File) (<-chan []byte, func()) {
 	return readBlocking(f)
 }
+
+// suspendSupported is false: there is no job control to hand the program to.
+const suspendSupported = false
+
+// stopProcess does nothing where there is no SIGTSTP.
+func stopProcess() {}

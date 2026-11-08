@@ -6,7 +6,9 @@ import (
 	"bytes"
 	"errors"
 	"os"
+	"os/signal"
 	"sync"
+	"syscall"
 	"time"
 
 	"golang.org/x/sys/unix"
@@ -103,4 +105,29 @@ func selectReady(n int, err error) (bool, error) {
 // first, or another reader of the same descriptor got there before us.
 func retryable(err error) bool {
 	return errors.Is(err, unix.EINTR) || errors.Is(err, unix.EAGAIN)
+}
+
+// suspendSupported says whether Ctrl-Z can stop the program on this system.
+const suspendSupported = true
+
+// stopWait is how long to wait for a continue after stopping. A process in an
+// orphaned process group is never stopped by SIGTSTP (nobody could continue it),
+// so no continue comes and the wait ends the suspend.
+const stopWait = 250 * time.Millisecond
+
+// stopProcess stops the whole process group, as a shell's Ctrl-Z would, and
+// returns once it is continued. Nothing here may catch SIGTSTP: once os/signal has
+// been asked for it, Go keeps a handler installed that swallows it for good.
+func stopProcess() {
+	cont := make(chan os.Signal, 1)
+	signal.Notify(cont, syscall.SIGCONT)
+	defer signal.Stop(cont)
+
+	if err := syscall.Kill(0, syscall.SIGTSTP); err != nil {
+		return
+	}
+	select {
+	case <-cont:
+	case <-time.After(stopWait):
+	}
 }

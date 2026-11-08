@@ -53,6 +53,19 @@ func resolveSize(cfgW, cfgH, termW, termH int) (int, int) {
 	return resW, resH
 }
 
+// handle carries out what the input asked for. done says Run should now return err.
+func handle(action inputAction, suspend func() error) (done bool, err error) {
+	switch action {
+	case actionQuit:
+		return true, nil
+	case actionSuspend:
+		if err := suspend(); err != nil {
+			return true, err
+		}
+	}
+	return false, nil
+}
+
 // Run takes over the terminal and calls game.Update and game.Draw cfg.FPS times
 // a second. It returns nil when ctx is cancelled, Update returns ErrQuit, or the
 // user presses Ctrl-C; any other Update error is returned. The terminal is
@@ -112,6 +125,26 @@ func Run(ctx context.Context, game Game, cfg Config) error {
 	keys := newInputFeed(in)
 	defer keys.stop()
 
+	// suspend hands the terminal back, stops the process until the shell continues
+	// it, then takes the terminal over again.
+	suspend := func() error {
+		keys.reset()
+		if err := tty.Teardown(); err != nil {
+			return err
+		}
+		stopProcess()
+		if err := tty.Setup(); err != nil {
+			return err
+		}
+		if exact {
+			if err := tty.EnableKeyboardProtocol(); err != nil {
+				return err
+			}
+		}
+		last = time.Now() // so the time spent stopped is not a frame
+		return nil
+	}
+
 	dynamic := cfg.Width == 0 || cfg.Height == 0
 	for {
 		select {
@@ -158,12 +191,12 @@ func Run(ctx context.Context, game Game, cfg Config) error {
 				input = nil
 				continue
 			}
-			if keys.feed(b, time.Now()) {
-				return nil
+			if done, err := handle(keys.feed(b, time.Now()), suspend); done {
+				return err
 			}
 		case <-keys.expired():
-			if keys.expire(time.Now()) {
-				return nil
+			if done, err := handle(keys.expire(time.Now()), suspend); done {
+				return err
 			}
 		}
 	}

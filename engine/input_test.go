@@ -283,7 +283,7 @@ func TestInputFeedLoneEscapeBecomesEscapeAfterTheWait(t *testing.T) {
 	f, in := newTestFeed(false)
 	t0 := time.Unix(0, 0)
 
-	if f.feed([]byte("\x1b"), t0) {
+	if f.feed([]byte("\x1b"), t0) != actionNone {
 		t.Fatalf("wanted a lone ESC not to quit")
 	}
 	if in.Pressed(KeyEscape) {
@@ -293,7 +293,7 @@ func TestInputFeedLoneEscapeBecomesEscapeAfterTheWait(t *testing.T) {
 		t.Fatalf("wanted the wait to end")
 	}
 
-	if f.expire(t0.Add(50 * time.Millisecond)) {
+	if f.expire(t0.Add(50*time.Millisecond)) != actionNone {
 		t.Fatalf("wanted Escape not to quit")
 	}
 	if !in.Pressed(KeyEscape) {
@@ -402,32 +402,32 @@ func TestInputFeedCtrlC(t *testing.T) {
 	tests := []struct {
 		name  string
 		chunk string
-		quit  bool
+		want  inputAction
 	}{
-		{"legacy ctrl-c", "\x03", true},
-		{"legacy ctrl-c among keys", "ab\x03cd", true},
-		{"kitty ctrl-c press", "\x1b[99;5u", true},
-		{"kitty ctrl-c repeat", "\x1b[99;5:2u", true},
-		{"kitty ctrl-c release", "\x1b[99;5:3u", false},
-		{"plain c", "c", false},
-		{"ctrl-w", "\x1b[119;5u", false},
+		{"legacy ctrl-c", "\x03", actionQuit},
+		{"legacy ctrl-c among keys", "ab\x03cd", actionQuit},
+		{"kitty ctrl-c press", "\x1b[99;5u", actionQuit},
+		{"kitty ctrl-c repeat", "\x1b[99;5:2u", actionQuit},
+		{"kitty ctrl-c release", "\x1b[99;5:3u", actionNone},
+		{"plain c", "c", actionNone},
+		{"ctrl-w", "\x1b[119;5u", actionNone},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			f, _ := newTestFeed(true)
-			if got := f.feed([]byte(tt.chunk), time.Unix(0, 0)); got != tt.quit {
-				t.Errorf("wanted quit=%v, got %v", tt.quit, got)
+			if got := f.feed([]byte(tt.chunk), time.Unix(0, 0)); got != tt.want {
+				t.Errorf("wanted action %v, got %v", tt.want, got)
 			}
 		})
 	}
 
 	// Ctrl-C split across reads still quits.
 	f, _ := newTestFeed(true)
-	if f.feed([]byte("\x1b[99;"), time.Unix(0, 0)) {
+	if f.feed([]byte("\x1b[99;"), time.Unix(0, 0)) != actionNone {
 		t.Fatalf("wanted no quit on half a sequence")
 	}
-	if !f.feed([]byte("5u"), time.Unix(0, 0)) {
+	if f.feed([]byte("5u"), time.Unix(0, 0)) != actionQuit {
 		t.Errorf("wanted quit once the sequence completed")
 	}
 }
@@ -491,4 +491,108 @@ func TestReadBlockingStopFreesAChunkNobodyReceives(t *testing.T) {
 		t.Fatalf("wanted the channel closed once stop released the pending chunk")
 	}
 	w.Close()
+}
+
+func TestInputFeedCtrlZ(t *testing.T) {
+	tests := []struct {
+		name  string
+		chunk string
+		want  inputAction
+	}{
+		{"legacy ctrl-z", "\x1a", actionSuspend},
+		{"kitty ctrl-z press", "\x1b[122;5u", actionSuspend},
+		{"kitty ctrl-z with caps lock", "\x1b[122;69u", actionSuspend},
+		{"kitty ctrl-z repeat", "\x1b[122;5:2u", actionNone},
+		{"kitty ctrl-z release", "\x1b[122;5:3u", actionNone},
+		{"plain z", "z", actionNone},
+		{"alt-z", "\x1bz", actionNone},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f, in := newTestFeed(true)
+			f.canSuspend = true
+			if got := f.feed([]byte(tt.chunk), time.Unix(0, 0)); got != tt.want {
+				t.Errorf("wanted action %v, got %v", tt.want, got)
+			}
+			if in.Pressed(keyCtrlZ) || in.IsDown(keyCtrlZ) {
+				t.Errorf("wanted Ctrl-Z to stay out of the game's input")
+			}
+		})
+	}
+
+	// Ctrl-Z split across reads still suspends.
+	f, _ := newTestFeed(true)
+	f.canSuspend = true
+	if f.feed([]byte("\x1b[122;"), time.Unix(0, 0)) != actionNone {
+		t.Fatalf("wanted nothing on half a sequence")
+	}
+	if f.feed([]byte("5u"), time.Unix(0, 0)) != actionSuspend {
+		t.Errorf("wanted a suspend once the sequence completed")
+	}
+}
+
+func TestInputFeedCtrlZIsIgnoredWhereSuspendingIsNotSupported(t *testing.T) {
+	f, in := newTestFeed(false)
+	f.canSuspend = false
+
+	if got := f.feed([]byte("a\x1ab"), time.Unix(0, 0)); got != actionNone {
+		t.Errorf("wanted no action, got %v", got)
+	}
+	if !in.Pressed('a') || !in.Pressed('b') {
+		t.Errorf("wanted the keys around Ctrl-Z to arrive, got a=%v b=%v", in.Pressed('a'), in.Pressed('b'))
+	}
+	if in.Pressed(keyCtrlZ) {
+		t.Errorf("wanted Ctrl-Z kept from the game")
+	}
+}
+
+func TestInputFeedDropsWhatFollowsCtrlZ(t *testing.T) {
+	f, in := newTestFeed(false)
+	f.canSuspend = true
+
+	if got := f.feed([]byte("a\x1ab"), time.Unix(0, 0)); got != actionSuspend {
+		t.Fatalf("wanted a suspend, got %v", got)
+	}
+	if !in.Pressed('a') {
+		t.Errorf("wanted the key before Ctrl-Z to arrive")
+	}
+	if in.Pressed('b') {
+		t.Errorf("wanted the key after Ctrl-Z dropped, it is stale once the program resumes")
+	}
+}
+
+func TestInputFeedResetForgetsHeldKeysAndHalfSequences(t *testing.T) {
+	f, in := newTestFeed(true)
+	t0 := time.Unix(0, 0)
+
+	f.feed([]byte("\x1b[119u"), t0) // w down, its release will never come
+	in.endFrame()                   // so the press itself no longer counts
+	f.feed([]byte("\x1b[1"), t0)    // half a sequence, with the timer running
+	in.beginFrame(t0)
+	if !in.IsDown('w') {
+		t.Fatalf("wanted w held before the reset")
+	}
+	if !f.parser.Pending() {
+		t.Fatalf("wanted half a sequence held before the reset")
+	}
+
+	f.reset()
+
+	if in.IsDown('w') {
+		t.Errorf("wanted w no longer held after a reset")
+	}
+	if f.parser.Pending() {
+		t.Errorf("wanted nothing held back after a reset")
+	}
+	if fired(f, 4*f.wait) {
+		t.Errorf("wanted the wait cancelled by a reset")
+	}
+
+	// What arrives next stands on its own instead of finishing the old sequence.
+	in.endFrame()
+	f.feed([]byte("A"), t0)
+	if !in.Pressed('A') || in.Pressed(KeyUp) {
+		t.Errorf("wanted a plain A after the reset, got A=%v up=%v", in.Pressed('A'), in.Pressed(KeyUp))
+	}
 }

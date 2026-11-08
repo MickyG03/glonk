@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strings"
 	"syscall"
 	"testing"
 	"time"
@@ -21,6 +22,23 @@ func TestSignalHelper(t *testing.T) {
 	mode := os.Getenv(helperEnv)
 	if mode == "" {
 		t.Skip("only runs as a child of the signal tests")
+	}
+
+	if mode == "suspend" {
+		fmt.Println("ready")
+		// A process sharing our group, like the `go run` that launched a game.
+		sibling := exec.Command("sleep", "60")
+		if err := sibling.Start(); err != nil {
+			t.Fatal(err)
+		}
+		fmt.Println("sibling", sibling.Process.Pid)
+		for i := 0; i < 2; i++ {
+			fmt.Println("suspending")
+			stopProcess()
+			fmt.Println("resumed")
+		}
+		time.Sleep(time.Minute)
+		return
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -50,6 +68,14 @@ type child struct {
 // with ignored, the way nohup does.
 func startChild(t *testing.T, mode string, ignore ...string) *child {
 	t.Helper()
+	// Its own process group: stopProcess stops the whole group, which must not
+	// include this test run.
+	return startChildIn(t, mode, &syscall.SysProcAttr{Setpgid: true}, ignore...)
+}
+
+// startChildIn is startChild with the child's process attributes given.
+func startChildIn(t *testing.T, mode string, attr *syscall.SysProcAttr, ignore ...string) *child {
+	t.Helper()
 
 	args := []string{os.Args[0], "-test.run=^TestSignalHelper$"}
 	cmd := exec.Command(args[0], args[1:]...)
@@ -62,6 +88,7 @@ func startChild(t *testing.T, mode string, ignore ...string) *child {
 		cmd = exec.Command("sh", append([]string{"-c", trap + `; exec "$0" "$@"`}, args...)...)
 	}
 	cmd.Env = append(os.Environ(), helperEnv+"="+mode)
+	cmd.SysProcAttr = attr
 
 	out, err := cmd.StdoutPipe()
 	if err != nil {
@@ -79,7 +106,7 @@ func startChild(t *testing.T, mode string, ignore ...string) *child {
 		}
 		c.done <- cmd.Wait()
 	}()
-	t.Cleanup(func() { cmd.Process.Kill() })
+	t.Cleanup(func() { syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL) })
 
 	c.expect(t, "ready")
 	return c
@@ -87,14 +114,43 @@ func startChild(t *testing.T, mode string, ignore ...string) *child {
 
 func (c *child) expect(t *testing.T, want string) {
 	t.Helper()
+	if got := c.next(t); got != want {
+		t.Fatalf("wanted the child to print %q, got %q", want, got)
+	}
+}
+
+// next returns the child's next line, failing the test if none comes.
+func (c *child) next(t *testing.T) string {
+	t.Helper()
 	select {
 	case got := <-c.lines:
-		if got != want {
-			t.Fatalf("wanted the child to print %q, got %q", want, got)
-		}
+		return got
 	case <-time.After(5 * time.Second):
-		t.Fatalf("wanted the child to print %q, got nothing in 5 s", want)
+		t.Fatalf("wanted the child to print a line, got nothing in 5 s")
+		return ""
 	}
+}
+
+// sibling reads the pid of the process the suspend helper started in its group.
+func (c *child) sibling(t *testing.T) int {
+	t.Helper()
+	var pid int
+	if _, err := fmt.Sscanf(c.next(t), "sibling %d", &pid); err != nil {
+		t.Fatalf("wanted the child to name its sibling: %v", err)
+	}
+	return pid
+}
+
+// waitStoppedState waits up to 3 s for ps to show pid stopped (or not stopped).
+func waitStoppedState(pid int, stopped bool) bool {
+	for end := time.Now().Add(3 * time.Second); time.Now().Before(end); time.Sleep(20 * time.Millisecond) {
+		out, _ := exec.Command("ps", "-o", "stat=", "-p", fmt.Sprint(pid)).Output()
+		state := strings.TrimSpace(string(out))
+		if state != "" && strings.HasPrefix(state, "T") == stopped {
+			return true
+		}
+	}
+	return false
 }
 
 // expectSilence fails if the child prints anything or exits within d.
@@ -180,5 +236,59 @@ func TestQuitSignalsStopWhenToldTo(t *testing.T) {
 	c.signal(t, syscall.SIGTERM)
 	if got := c.diedOf(t); got != syscall.SIGTERM {
 		t.Errorf("wanted SIGTERM to kill once stop was called, it died of %v", got)
+	}
+}
+
+// waitStopped waits until the child has been stopped by a job-control signal.
+func (c *child) waitStopped(t *testing.T) {
+	t.Helper()
+	got := make(chan syscall.WaitStatus, 1)
+	go func() {
+		var ws syscall.WaitStatus
+		syscall.Wait4(c.cmd.Process.Pid, &ws, syscall.WUNTRACED, nil)
+		got <- ws
+	}()
+	select {
+	case ws := <-got:
+		if !ws.Stopped() || ws.StopSignal() != syscall.SIGTSTP {
+			t.Fatalf("wanted the child stopped by SIGTSTP, got %v", ws)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatalf("wanted the child stopped, still running after 5 s")
+	}
+}
+
+func TestStopProcessStopsAndContinues(t *testing.T) {
+	c := startChild(t, "suspend")
+	sibling := c.sibling(t)
+
+	// Twice, because a second Ctrl-Z after fg must work as well as the first.
+	for round := 1; round <= 2; round++ {
+		c.expect(t, "suspending")
+		c.waitStopped(t)
+		if !waitStoppedState(sibling, true) {
+			t.Errorf("wanted the whole process group stopped, the sibling was not")
+		}
+
+		syscall.Kill(-c.cmd.Process.Pid, syscall.SIGCONT)
+		c.expect(t, "resumed")
+	}
+
+	// Only now: after the last round the helper stays running, where earlier it
+	// would already be stopping again.
+	if !waitStoppedState(sibling, false) {
+		t.Errorf("wanted the sibling continued with the group")
+	}
+}
+
+func TestStopProcessCarriesOnWhenNothingCanContinueIt(t *testing.T) {
+	// A new session makes the child's process group orphaned, where the kernel
+	// discards SIGTSTP. Nobody sends SIGCONT, so stopProcess must give up waiting.
+	c := startChildIn(t, "suspend", &syscall.SysProcAttr{Setsid: true})
+	c.sibling(t)
+
+	for round := 1; round <= 2; round++ {
+		c.expect(t, "suspending")
+		c.expect(t, "resumed")
 	}
 }

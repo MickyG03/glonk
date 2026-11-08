@@ -14,7 +14,7 @@ var seedInputs = []string{
 	"", "w", "wa", "\x1b", "\x1b[", "\x1b[A", "\x1b[D", "\x1bOB", "\x1bO", "\x1b[1;5C",
 	"\x1b[15~x", "\x1bx", "\x03\r\x7f\t", "\x08", "é", "\xff", "\x01",
 	"\x1b[119u", "\x1b[119;1:2u", "\x1b[119;1:3u", "\x1b[119;2u", "\x1b[27u", "\x1b[13;1:3u",
-	"\x1b[99;5u", "\x1b[99;69u", "\x1b[119;5u", "\x1b[1;1:3A", "\x1b[1;2:2D", "\x1b[57441;1u",
+	"\x1b[99;5u", "\x1b[99;69u", "\x1a", "\x1b[122;5u", "\x1b[122;5:3u", "\x1b[119;5u", "\x1b[1;1:3A", "\x1b[1;2:2D", "\x1b[57441;1u",
 	"\x1b[?0u", "\x1b[?11u\x1b[?62;4c", "\x1b[I", "\x1b[O", "\x1b[119u\x1b[O\x1b[119;1:3u",
 	"\x1b[;5u", "\x1b[1;u", "\x1b[99999999999999999999u", "\x1b[-5u", "\x1b[119;:3u",
 }
@@ -26,7 +26,7 @@ func FuzzParseEvents(f *testing.F) {
 
 	special := map[Key]bool{
 		KeyUnknown: true, KeyUp: true, KeyDown: true, KeyLeft: true, KeyRight: true,
-		KeyEscape: true, KeyEnter: true, KeyBackspace: true, KeyTab: true, KeyCtrlC: true,
+		KeyEscape: true, KeyEnter: true, KeyBackspace: true, KeyTab: true, KeyCtrlC: true, keyCtrlZ: true,
 	}
 
 	f.Fuzz(func(t *testing.T, b []byte) {

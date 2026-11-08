@@ -98,32 +98,43 @@ const escapeTimeout = 50 * time.Millisecond
 // bytes at a time, so a large buffer is only filled by pasting or a backlog.
 const readBuffer = 4096
 
+// inputAction is what Run must do once input has been handled.
+type inputAction uint8
+
+const (
+	actionNone    inputAction = iota
+	actionQuit                // Ctrl-C
+	actionSuspend             // Ctrl-Z
+)
+
 // inputFeed turns the raw bytes read from the terminal into Input updates. It holds
 // a keyParser, and a timer that gives up waiting for the rest of an unfinished
 // sequence.
 type inputFeed struct {
-	parser keyParser
-	in     *Input
-	wait   time.Duration
-	timer  *time.Timer
+	parser     keyParser
+	in         *Input
+	wait       time.Duration
+	timer      *time.Timer
+	canSuspend bool // whether Ctrl-Z may stop the program
 }
 
 func newInputFeed(in *Input) *inputFeed {
-	f := &inputFeed{in: in, wait: escapeTimeout}
+	f := &inputFeed{in: in, wait: escapeTimeout, canSuspend: suspendSupported}
 	f.timer = time.NewTimer(f.wait)
 	f.timer.Stop()
 	return f
 }
 
-// feed handles one chunk read from the terminal and reports whether it held Ctrl-C.
-func (f *inputFeed) feed(chunk []byte, now time.Time) (quit bool) {
-	quit = f.apply(f.parser.Feed(chunk), now)
+// feed handles one chunk read from the terminal and says whether it held Ctrl-C
+// or Ctrl-Z. What follows that key in the chunk is dropped.
+func (f *inputFeed) feed(chunk []byte, now time.Time) inputAction {
+	action := f.apply(f.parser.Feed(chunk), now)
 
 	f.stop()
 	if f.parser.Pending() {
 		f.timer.Reset(f.wait)
 	}
-	return quit
+	return action
 }
 
 // expired is the channel that fires when the wait for the rest of a sequence is over.
@@ -132,9 +143,17 @@ func (f *inputFeed) expired() <-chan time.Time {
 }
 
 // expire gives up waiting: whatever is held is taken as it stands, so a lone ESC
-// becomes the Escape key. It reports whether that produced Ctrl-C.
-func (f *inputFeed) expire(now time.Time) (quit bool) {
+// becomes the Escape key. It says whether that produced Ctrl-C or Ctrl-Z.
+func (f *inputFeed) expire(now time.Time) inputAction {
 	return f.apply(f.parser.Flush(), now)
+}
+
+// reset forgets every held key and any half-read sequence, for when input picks up
+// after a gap in which releases and the rest of a sequence were lost.
+func (f *inputFeed) reset() {
+	f.stop()
+	f.parser = keyParser{}
+	f.in.releaseAll()
 }
 
 // stop cancels the wait, draining the channel so a tick that was already on its way
@@ -148,14 +167,22 @@ func (f *inputFeed) stop() {
 	}
 }
 
-func (f *inputFeed) apply(events []keyEvent, now time.Time) (quit bool) {
+func (f *inputFeed) apply(events []keyEvent, now time.Time) inputAction {
 	for _, e := range events {
-		if e.key == KeyCtrlC && e.kind != kindRelease {
-			return true
+		switch {
+		case e.key == KeyCtrlC && e.kind != kindRelease:
+			return actionQuit
+		case e.key == keyCtrlZ:
+			// Only the press suspends: a repeat would suspend again the moment the
+			// program resumes with the key still down.
+			if e.kind == kindPress && f.canSuspend {
+				return actionSuspend
+			}
+		default:
+			f.in.event(e, now)
 		}
-		f.in.event(e, now)
 	}
-	return false
+	return actionNone
 }
 
 // readBlocking streams chunks read from r until it errors, then closes the channel.

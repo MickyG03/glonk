@@ -23,6 +23,8 @@ const (
 	// Raw mode turns off the terminal's signal handling, so Ctrl-C arrives
 	// as a byte instead of SIGINT.
 	KeyCtrlC
+	// keyCtrlZ asks Run to suspend. Like Ctrl-C it is Run's, never the game's.
+	keyCtrlZ
 )
 
 // keyKind says what happened to a key. Only terminals speaking the kitty
@@ -175,6 +177,9 @@ func parse(b []byte, final bool) (events []keyEvent, consumed int) {
 		case c == 0x03:
 			press(KeyCtrlC)
 			i++
+		case c == 0x1a:
+			press(keyCtrlZ)
+			i++
 		case c == '\r':
 			press(KeyEnter)
 			i++
@@ -282,6 +287,8 @@ func appendKitty(events []keyEvent, fields [][]int) []keyEvent {
 	switch {
 	case mods&shortcutMods == modCtrl && code == 'c':
 		key = KeyCtrlC
+	case mods&shortcutMods == modCtrl && code == 'z':
+		key = keyCtrlZ
 	case mods&shortcutMods != 0:
 		return events // a shortcut like ctrl+w is not a game key
 	case code == 27:

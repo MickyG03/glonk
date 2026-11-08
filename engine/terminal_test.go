@@ -3,7 +3,10 @@ package engine
 import (
 	"bytes"
 	"os"
+	"strings"
 	"testing"
+
+	"golang.org/x/term"
 )
 
 func TestKeyboardSequences(t *testing.T) {
@@ -86,5 +89,45 @@ func TestExitSequence(t *testing.T) {
 				t.Errorf("wanted %q, got %q", tt.want, got)
 			}
 		})
+	}
+}
+
+func TestTeardownBeforeSetupDoesNothing(t *testing.T) {
+	r, _, err := os.Pipe() // not a terminal, so touching it would fail loudly
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer r.Close()
+
+	var out bytes.Buffer
+	tty := newTerminal(r, &out)
+	if err := tty.Teardown(); err != nil || out.Len() != 0 {
+		t.Errorf("wanted no error and no output, got err=%v out=%q", err, out.String())
+	}
+}
+
+func TestTeardownTwiceWritesOnce(t *testing.T) {
+	r, _, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer r.Close()
+
+	var out bytes.Buffer
+	tty := newTerminal(r, &out)
+	tty.state = &term.State{} // as if Setup had worked
+	tty.keyboard = true
+
+	tty.Teardown() // the restore fails on a pipe; what matters is it is over
+	first := out.String()
+	if first == "" {
+		t.Fatalf("wanted the exit sequence written")
+	}
+	if tty.state != nil || tty.keyboard {
+		t.Errorf("wanted the terminal marked as torn down, got state=%v keyboard=%v", tty.state, tty.keyboard)
+	}
+
+	if err := tty.Teardown(); err != nil || out.String() != first {
+		t.Errorf("wanted a second Teardown to do nothing, got err=%v and %q more", err, strings.TrimPrefix(out.String(), first))
 	}
 }

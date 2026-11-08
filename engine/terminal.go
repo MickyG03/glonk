@@ -41,6 +41,7 @@ func (t *terminal) Setup() error {
 	if err != nil {
 		// ignoring the restore's error because we care about the flush error more
 		term.Restore(t.fd, t.state)
+		t.state = nil
 		return err
 	}
 	return nil
@@ -73,9 +74,15 @@ func (t *terminal) exitSequence() *sequenceBuilder {
 	return sb
 }
 
+// Teardown undoes Setup and anything enabled after it. It does nothing if the
+// terminal is not set up, so it is safe to call twice or after a Setup that failed.
 func (t *terminal) Teardown() error {
+	if t.state == nil {
+		return nil
+	}
 	flushErr := t.exitSequence().Flush(t.out)
 	restoreErr := term.Restore(t.fd, t.state)
+	t.state, t.keyboard = nil, false
 	return errors.Join(flushErr, restoreErr)
 }
 
