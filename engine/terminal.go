@@ -27,17 +27,26 @@ func newTerminal(in *os.File, out io.Writer) *terminal {
 	}
 }
 
+// enterSequence is what Setup writes: the alternate screen first, then what is set
+// on it. Autowrap is off so that a row too long for the window, or a character
+// wider than expected in the last column, is cut off rather than wrapped onto the
+// next line, which would scroll the whole screen.
+func (t *terminal) enterSequence() *sequenceBuilder {
+	sb := newSequenceBuilder()
+	sb.SwitchToAlternateScreen()
+	sb.DisableAutowrap()
+	sb.EraseInDisplay(2)
+	sb.HideCursor()
+	return sb
+}
+
 func (t *terminal) Setup() error {
 	var err error
 	t.state, err = term.MakeRaw(t.fd)
 	if err != nil {
 		return err
 	}
-	sb := newSequenceBuilder()
-	sb.SwitchToAlternateScreen()
-	sb.EraseInDisplay(2)
-	sb.HideCursor()
-	err = sb.Flush(t.out)
+	err = t.enterSequence().Flush(t.out)
 	if err != nil {
 		// ignoring the restore's error because we care about the flush error more
 		term.Restore(t.fd, t.state)
@@ -62,7 +71,8 @@ func (t *terminal) EnableKeyboardProtocol() error {
 }
 
 // exitSequence is what Teardown writes: flags are popped first because they were
-// pushed on the alternate screen, which has its own stack.
+// pushed on the alternate screen, which has its own stack. Autowrap goes back on
+// before the screen is left, where it was turned off.
 func (t *terminal) exitSequence() *sequenceBuilder {
 	sb := newSequenceBuilder()
 	if t.keyboard {
@@ -70,6 +80,7 @@ func (t *terminal) exitSequence() *sequenceBuilder {
 		sb.DisableFocusReporting()
 	}
 	sb.ShowCursor()
+	sb.EnableAutowrap()
 	sb.SwitchToMainScreen()
 	return sb
 }

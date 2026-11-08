@@ -27,6 +27,8 @@ func TestKeyboardSequences(t *testing.T) {
 		{"reset style", func(sb *sequenceBuilder) { sb.ResetStyle() }, "\x1b[0m"},
 		{"enable focus reporting", func(sb *sequenceBuilder) { sb.EnableFocusReporting() }, "\x1b[?1004h"},
 		{"disable focus reporting", func(sb *sequenceBuilder) { sb.DisableFocusReporting() }, "\x1b[?1004l"},
+		{"disable autowrap", func(sb *sequenceBuilder) { sb.DisableAutowrap() }, "\x1b[?7l"},
+		{"enable autowrap", func(sb *sequenceBuilder) { sb.EnableAutowrap() }, "\x1b[?7h"},
 	}
 
 	for _, tt := range tests {
@@ -75,9 +77,10 @@ func TestExitSequence(t *testing.T) {
 		keyboard bool
 		want     string
 	}{
-		{"without the protocol", false, "\x1b[?25h\x1b[?1049l"},
+		// Autowrap comes back before the alternate screen is left, where it was turned off.
+		{"without the protocol", false, "\x1b[?25h\x1b[?7h\x1b[?1049l"},
 		// Popped before leaving the alternate screen, where the flags were pushed.
-		{"with the protocol", true, "\x1b[<u\x1b[?1004l\x1b[?25h\x1b[?1049l"},
+		{"with the protocol", true, "\x1b[<u\x1b[?1004l\x1b[?25h\x1b[?7h\x1b[?1049l"},
 	}
 
 	for _, tt := range tests {
@@ -129,5 +132,15 @@ func TestTeardownTwiceWritesOnce(t *testing.T) {
 
 	if err := tty.Teardown(); err != nil || out.String() != first {
 		t.Errorf("wanted a second Teardown to do nothing, got err=%v and %q more", err, strings.TrimPrefix(out.String(), first))
+	}
+}
+
+func TestEnterSequence(t *testing.T) {
+	tty := newTerminal(os.Stdin, &bytes.Buffer{})
+
+	// The alternate screen first, so autowrap is turned off on it and back on there.
+	want := "\x1b[?1049h\x1b[?7l\x1b[2J\x1b[?25l"
+	if got := tty.enterSequence().sequence.String(); got != want {
+		t.Errorf("wanted %q, got %q", want, got)
 	}
 }

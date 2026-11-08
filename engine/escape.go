@@ -12,6 +12,8 @@ const (
 	showCursorSeq      = "\x1b[?25h"
 	alternateScreenSeq = "\x1b[?1049h"
 	mainScreenSeq      = "\x1b[?1049l"
+	disableWrapSeq     = "\x1b[?7l"
+	enableWrapSeq      = "\x1b[?7h"
 	resetSeq           = "\x1b[0m"
 	defaultForeSeq     = "\x1b[39m"
 	defaultBackSeq     = "\x1b[49m"
@@ -66,6 +68,17 @@ func (sb *sequenceBuilder) SwitchToAlternateScreen() {
 
 func (sb *sequenceBuilder) SwitchToMainScreen() {
 	sb.Print(mainScreenSeq)
+}
+
+// DisableAutowrap makes a character written in the last column stay there, so a row
+// that is too long is cut off at the edge instead of continuing on the next line.
+func (sb *sequenceBuilder) DisableAutowrap() {
+	sb.Print(disableWrapSeq)
+}
+
+// EnableAutowrap turns line wrapping back on, as the shell expects it.
+func (sb *sequenceBuilder) EnableAutowrap() {
+	sb.Print(enableWrapSeq)
 }
 
 func (sb *sequenceBuilder) HideCursor() {
