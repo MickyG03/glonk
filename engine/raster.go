@@ -94,7 +94,13 @@ func walkLine(w, h, x0, y0, x1, y1 int, plot func(x, y int)) {
 	}
 }
 
-// DrawText draws a text on the screen. Off-screen text is clipped.
+// DrawText draws text one cell per character, starting at (x, y). Off-screen text
+// is clipped.
+//
+// Only characters one column wide are drawn as they are. A control character
+// (tab, newline, escape) or a wide one (CJK, emoji) is drawn as '?', and NUL as a
+// space. Combining marks and joiners have no column of their own and are skipped,
+// so "e" followed by an accent draws a plain "e".
 func (fb *FrameBuffer) DrawText(x, y int, text string, color uint8) {
 	col := x
 
@@ -102,7 +108,10 @@ func (fb *FrameBuffer) DrawText(x, y int, text string, color uint8) {
 		if col >= fb.width {
 			break
 		}
-		fb.Set(col, y, Cell{Character: r, Color: color})
+		if runeWidth(r) == 0 {
+			continue
+		}
+		fb.Set(col, y, Cell{Character: safeRune(r), Color: color})
 		col++
 	}
 }

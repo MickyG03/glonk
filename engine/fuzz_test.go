@@ -347,3 +347,34 @@ func FuzzPresent(f *testing.F) {
 		}
 	})
 }
+
+func FuzzDrawText(f *testing.F) {
+	for _, s := range []string{
+		"", "hello", "\x1b[2J", "a\tb\nc", "e\u0301", "中文", "😀👍🏽", "\u202eevil", "a\x00b", "\xff\xfe", "\u009b31m",
+		"👨\u200d👩\u200d👧", "\ufe0f", "x\u0301\u0301\u0301y",
+	} {
+		f.Add(s, 0)
+		f.Add(s, -2)
+		f.Add(s, 5)
+	}
+
+	f.Fuzz(func(t *testing.T, text string, x int) {
+		fb, err := NewFrameBuffer(8, 1)
+		if err != nil {
+			t.Fatal(err)
+		}
+		fb.DrawText(x, 0, text, 7)
+
+		// Everything stored is already safe to send: no control, no zero-width, and
+		// a character is either what was asked for or the stand-in.
+		for col := range 8 {
+			c := fb.At(col, 0).Character
+			if c == 0 || unicode.IsControl(c) || unicode.In(c, unicode.Mn, unicode.Me, unicode.Cf) {
+				t.Fatalf("wanted a printable character at column %d, got %U from %q", col, c, text)
+			}
+			if c != ' ' && c != '?' && !strings.ContainsRune(text, c) {
+				t.Fatalf("wanted column %d to hold a character of %q or '?', got %U", col, text, c)
+			}
+		}
+	})
+}

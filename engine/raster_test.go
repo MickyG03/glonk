@@ -117,6 +117,50 @@ func TestDrawText(t *testing.T) {
 			"empty", 0, 0, "",
 			[]pointCell{},
 		},
+		{
+			"tab and newline are drawn as question marks", 0, 0, "a\tb\nc",
+			[]pointCell{{0, 0, 'a'}, {1, 0, '?'}, {2, 0, 'b'}, {3, 0, '?'}, {4, 0, 'c'}},
+		},
+		{
+			"an escape sequence is shown, not run", 0, 0, "\x1b[2Jx",
+			[]pointCell{{0, 0, '?'}, {1, 0, '['}, {2, 0, '2'}, {3, 0, 'J'}, {4, 0, 'x'}},
+		},
+		{
+			"c1 csi and delete", 0, 0, "\u009b\x7f",
+			[]pointCell{{0, 0, '?'}, {1, 0, '?'}},
+		},
+		{
+			"nul is a space", 0, 0, "a\x00b",
+			[]pointCell{{0, 0, 'a'}, {1, 0, ' '}, {2, 0, 'b'}},
+		},
+		{
+			"combining accent is skipped", 0, 0, "e\u0301x",
+			[]pointCell{{0, 0, 'e'}, {1, 0, 'x'}},
+		},
+		{
+			"joiner and variation selector are skipped", 0, 0, "a\u200db\ufe0fc",
+			[]pointCell{{0, 0, 'a'}, {1, 0, 'b'}, {2, 0, 'c'}},
+		},
+		{
+			"bidi override is skipped", 0, 0, "a\u202eb",
+			[]pointCell{{0, 0, 'a'}, {1, 0, 'b'}},
+		},
+		{
+			"wide characters are question marks", 0, 0, "a中b😀",
+			[]pointCell{{0, 0, 'a'}, {1, 0, '?'}, {2, 0, 'b'}, {3, 0, '?'}},
+		},
+		{
+			"a skipped mark off the left edge does not shift the rest", -1, 0, "\u0301ab",
+			[]pointCell{{0, 0, 'b'}},
+		},
+		{
+			"skipped marks do not count towards the right edge", 8, 0, "a\u0301\u0301b\u0301c",
+			[]pointCell{{8, 0, 'a'}, {9, 0, 'b'}},
+		},
+		{
+			"invalid utf-8 is the replacement character", 0, 0, "a\xffb",
+			[]pointCell{{0, 0, 'a'}, {1, 0, '\ufffd'}, {2, 0, 'b'}},
+		},
 	}
 
 	for _, tt := range tests {
