@@ -150,3 +150,88 @@ func TestLayerLaterSpritesDrawOverEarlierOnes(t *testing.T) {
 		t.Errorf("wanted b on top, got %q", got)
 	}
 }
+
+func TestSpriteCellArrivesWhole(t *testing.T) {
+	cell := engine.Cell{
+		Character:  'x',
+		Foreground: engine.Palette(208),
+		Background: engine.RGB(10, 20, 30),
+		Attrs:      engine.Bold | engine.Underline,
+	}
+	l := NewLayer()
+	l.Add(&Sprite{Position: geometry.Vector2{X: 3, Y: 2}, Cell: cell})
+	fb := newFrame(t)
+
+	l.Draw(fb)
+
+	if got := fb.At(3, 2); got != cell {
+		t.Errorf("wanted %+v, got %+v", cell, got)
+	}
+}
+
+func TestNewMakesAPlainCharacter(t *testing.T) {
+	s := New(geometry.Vector2{X: 1, Y: 2}, 'q')
+
+	if s.Cell != (engine.Cell{Character: 'q'}) || s.Position != (geometry.Vector2{X: 1, Y: 2}) {
+		t.Errorf("wanted a q in the default colors at (1, 2), got %+v", *s)
+	}
+}
+
+// A sprite is not see-through: the cell under it, background and attributes
+// included, is replaced by the sprite's.
+func TestSpriteReplacesTheWholeCellUnderIt(t *testing.T) {
+	fb := newFrame(t)
+	fb.Set(2, 2, engine.Cell{Character: '#', Foreground: engine.Palette(1), Background: engine.Palette(2), Attrs: engine.Reverse})
+	l := NewLayer()
+	l.Add(New(geometry.Vector2{X: 2, Y: 2}, 'x'))
+
+	l.Draw(fb)
+
+	if got, want := fb.At(2, 2), (engine.Cell{Character: 'x'}); got != want {
+		t.Errorf("wanted %+v, got %+v", want, got)
+	}
+}
+
+func TestSpriteWithOnlyABackgroundDrawsAColoredBlank(t *testing.T) {
+	blank := engine.Cell{Background: engine.Palette(4)}
+	l := NewLayer()
+	l.Add(&Sprite{Position: geometry.Vector2{X: 1, Y: 1}, Cell: blank})
+	l.Add(New(geometry.Vector2{X: 2, Y: 1}, 'a'))
+	fb := newFrame(t)
+
+	l.Draw(fb)
+
+	if got := fb.At(1, 1); got != blank {
+		t.Errorf("wanted %+v, got %+v", blank, got)
+	}
+	if got := fb.String(); got != "\n  a\n\n\n" {
+		t.Errorf("wanted the blank to show as a space before the a, got %q", got)
+	}
+}
+
+func TestLaterSpriteReplacesAnEarlierOneWhole(t *testing.T) {
+	l := NewLayer()
+	l.Add(&Sprite{Position: geometry.Vector2{X: 4, Y: 4}, Cell: engine.Cell{Character: 'a', Foreground: engine.Palette(1), Background: engine.Palette(2), Attrs: engine.Bold}})
+	l.Add(New(geometry.Vector2{X: 4, Y: 4}, 'b'))
+	fb := newFrame(t)
+
+	l.Draw(fb)
+
+	if got, want := fb.At(4, 4), (engine.Cell{Character: 'b'}); got != want {
+		t.Errorf("wanted %+v, got %+v", want, got)
+	}
+}
+
+// The zero Sprite is a blank cell at the top left, as it always was.
+func TestZeroSpriteIsABlankAtTheOrigin(t *testing.T) {
+	fb := newFrame(t)
+	fb.Set(0, 0, engine.Cell{Character: '#'})
+	l := NewLayer()
+	l.Add(&Sprite{})
+
+	l.Draw(fb)
+
+	if got := fb.At(0, 0); got != (engine.Cell{}) {
+		t.Errorf("wanted the zero Cell at the origin, got %+v", got)
+	}
+}

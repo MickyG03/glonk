@@ -24,7 +24,8 @@ func (l *Layer) Add(obj *Sprite) {
 	l.sprites = append(l.sprites, obj)
 }
 
-// Draw sets each sprite's cell in fb, clipping anything off screen. A sprite whose
+// Draw sets each sprite's Cell in fb, clipping anything off screen. A sprite replaces
+// the whole cell under it. A sprite whose
 // Position has a NaN or infinite X or Y is not drawn, like one that is off screen.
 func (l *Layer) Draw(fb *engine.FrameBuffer) {
 	w, h := float64(fb.Width()), float64(fb.Height())
@@ -37,6 +38,6 @@ func (l *Layer) Draw(fb *engine.FrameBuffer) {
 		if !(x >= 0 && x < w && y >= 0 && y < h) {
 			continue
 		}
-		fb.Set(int(x), int(y), engine.Cell{Character: sp.Value})
+		fb.Set(int(x), int(y), sp.Cell)
 	}
 }
