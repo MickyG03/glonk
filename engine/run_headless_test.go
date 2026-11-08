@@ -1,0 +1,275 @@
+package engine
+
+import (
+	"bytes"
+	"context"
+	"errors"
+	"io"
+	"strings"
+	"sync/atomic"
+	"testing"
+	"time"
+)
+
+// scriptedGame is a Game made of two functions, for driving Run in tests.
+type scriptedGame struct {
+	update func(dt float64, in *Input) error
+	draw   func(fb *FrameBuffer)
+}
+
+func (g scriptedGame) Update(dt float64, in *Input) error {
+	if g.update == nil {
+		return nil
+	}
+	return g.update(dt, in)
+}
+
+func (g scriptedGame) Draw(fb *FrameBuffer) {
+	if g.draw != nil {
+		g.draw(fb)
+	}
+}
+
+// startHeadless runs game on a 3x2 frame at the highest frame rate unless cfg says
+// otherwise, and delivers Run's result on the returned channel.
+func startHeadless(ctx context.Context, game Game, cfg Config) <-chan error {
+	if cfg.FPS == 0 {
+		cfg.FPS = maxFPS
+	}
+	if cfg.Width == 0 && cfg.Height == 0 {
+		cfg.Width, cfg.Height = 3, 2
+	}
+	done := make(chan error, 1)
+	go func() { done <- Run(ctx, game, cfg) }()
+	return done
+}
+
+// finished waits for a run to end, failing the test instead of hanging when it does not.
+func finished(t *testing.T, done <-chan error) error {
+	t.Helper()
+	select {
+	case err := <-done:
+		return err
+	case <-time.After(3 * time.Second):
+		t.Fatalf("wanted Run to return, but it was still going after 3s")
+		return nil
+	}
+}
+
+// runHeadless runs game to its end and returns what Run returned.
+func runHeadless(t *testing.T, game Game, cfg Config) error {
+	t.Helper()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	return finished(t, startHeadless(ctx, game, cfg))
+}
+
+// waitFor polls until cond holds, failing the test if it does not within two seconds.
+func waitFor(t *testing.T, what string, cond func() bool) {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	for !cond() {
+		if time.Now().After(deadline) {
+			t.Fatalf("wanted %s, but it never happened", what)
+		}
+		time.Sleep(time.Millisecond)
+	}
+}
+
+// frameOf is the bytes Run writes for one frame of the given size after draw.
+func frameOf(t *testing.T, w, h int, draw func(*FrameBuffer)) string {
+	t.Helper()
+	fb, err := NewFrameBuffer(w, h)
+	if err != nil {
+		t.Fatal(err)
+	}
+	draw(fb)
+	var b bytes.Buffer
+	if err := fb.presentClipped(&b, w, h); err != nil {
+		t.Fatal(err)
+	}
+	return b.String()
+}
+
+func TestRunHeadlessWritesNothingButFrames(t *testing.T) {
+	draw := func(fb *FrameBuffer) { fb.Set(1, 0, Cell{Character: 'X', Foreground: Palette(208)}) }
+	updates, draws := 0, 0
+	game := scriptedGame{
+		update: func(float64, *Input) error {
+			updates++
+			if updates == 4 {
+				return ErrQuit
+			}
+			return nil
+		},
+		draw: func(fb *FrameBuffer) { draws++; draw(fb) },
+	}
+
+	var out bytes.Buffer
+	err := runHeadless(t, game, Config{Input: strings.NewReader(""), Output: &out})
+
+	if err != nil {
+		t.Fatalf("wanted nil, got %v", err)
+	}
+	if draws != 3 {
+		t.Fatalf("wanted 3 frames drawn, got %d", draws)
+	}
+	// Equal to the frames alone: no screen or mode sequences, no keyboard probe, no clear.
+	want := strings.Repeat(frameOf(t, 3, 2, draw), draws)
+	if out.String() != want {
+		t.Errorf("wanted only the frames\n%q\ngot\n%q", want, out.String())
+	}
+}
+
+func TestRunHeadlessNeedsASize(t *testing.T) {
+	tests := []struct {
+		name          string
+		width, height int
+		wantNoTerm    bool
+	}{
+		{"neither", 0, 0, true},
+		{"width only", 5, 0, true},
+		{"height only", 0, 5, true},
+		{"negative width is the frame's error", -1, 5, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			called := false
+			game := scriptedGame{update: func(float64, *Input) error { called = true; return ErrQuit }}
+			var out bytes.Buffer
+			cfg := Config{FPS: 30, Width: tt.width, Height: tt.height, Input: strings.NewReader(""), Output: &out}
+
+			err := Run(context.Background(), game, cfg)
+
+			if err == nil {
+				t.Fatalf("wanted an error, got nil")
+			}
+			if got := errors.Is(err, errNoTerminal); got != tt.wantNoTerm {
+				t.Errorf("wanted errors.Is(err, errNoTerminal) = %v, got %v: %v", tt.wantNoTerm, got, err)
+			}
+			if called || out.Len() != 0 {
+				t.Errorf("wanted the game and the output left alone, got called=%v out=%q", called, out.String())
+			}
+		})
+	}
+}
+
+func TestRunHeadlessEnds(t *testing.T) {
+	boom := errors.New("boom")
+	tests := []struct {
+		name    string
+		input   string
+		update  func(float64, *Input) error
+		wantErr error
+	}{
+		{"update asks to quit", "", func(float64, *Input) error { return ErrQuit }, nil},
+		{"ctrl-c in the input", "\x03", func(float64, *Input) error { return nil }, nil},
+		{"kitty ctrl-c in the input", "\x1b[99;5u", func(float64, *Input) error { return nil }, nil},
+		{"update fails", "", func(float64, *Input) error { return boom }, boom},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var out bytes.Buffer
+			err := runHeadless(t, scriptedGame{update: tt.update}, Config{Input: strings.NewReader(tt.input), Output: &out})
+
+			if !errors.Is(err, tt.wantErr) || (tt.wantErr == nil && err != nil) {
+				t.Errorf("wanted %v, got %v", tt.wantErr, err)
+			}
+		})
+	}
+}
+
+func TestRunHeadlessReturnsAFailedWrite(t *testing.T) {
+	boom := errors.New("disk full")
+
+	err := runHeadless(t, scriptedGame{}, Config{Input: strings.NewReader(""), Output: errWriter{boom}})
+
+	if !errors.Is(err, boom) {
+		t.Errorf("wanted %v, got %v", boom, err)
+	}
+}
+
+func TestRunHeadlessKeepsGoingAtTheEndOfInput(t *testing.T) {
+	updates := 0
+	game := scriptedGame{update: func(float64, *Input) error {
+		updates++
+		if updates == 20 {
+			return ErrQuit
+		}
+		return nil
+	}}
+
+	err := runHeadless(t, game, Config{Input: strings.NewReader("a"), Output: io.Discard})
+
+	if err != nil || updates != 20 {
+		t.Errorf("wanted the game to run to its own end, got err=%v after %d updates", err, updates)
+	}
+}
+
+func TestRunHeadlessReadsExactKeys(t *testing.T) {
+	pr, pw := io.Pipe()
+	defer pw.Close()
+	var down, lapsed atomic.Bool
+	seen := false
+	game := scriptedGame{update: func(_ float64, in *Input) error {
+		d := in.IsDown('w')
+		seen = seen || d
+		if seen && !d {
+			lapsed.Store(true)
+		}
+		down.Store(d)
+		return nil
+	}}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := startHeadless(ctx, game, Config{Input: pr, Output: io.Discard})
+
+	pw.Write([]byte("\x1b[119u"))
+	waitFor(t, "w to be down", down.Load)
+	// A timing guess would let go of w after about 150ms with no repeat.
+	time.Sleep(2 * holdTimeout)
+	if lapsed.Load() {
+		t.Errorf("wanted w held until its release arrives")
+	}
+	pw.Write([]byte("\x1b[119;1:3u"))
+	waitFor(t, "w to be up after its release", func() bool { return !down.Load() })
+
+	cancel()
+	finished(t, done)
+}
+
+func TestRunHeadlessLegacyKeysTimeOut(t *testing.T) {
+	seen := false
+	game := scriptedGame{update: func(_ float64, in *Input) error {
+		d := in.IsDown('w')
+		seen = seen || d
+		if seen && !d {
+			return ErrQuit
+		}
+		return nil
+	}}
+
+	// No release ever comes for a plain letter; only the timing lets go of it.
+	err := runHeadless(t, game, Config{LegacyKeys: true, Input: strings.NewReader("w"), Output: io.Discard})
+
+	if err != nil || !seen {
+		t.Errorf("wanted w down and then up again, got err=%v seen=%v", err, seen)
+	}
+}
+
+func TestRunHeadlessDeliversAPlainKeyAsAPress(t *testing.T) {
+	pressed := false
+	game := scriptedGame{update: func(_ float64, in *Input) error {
+		if in.Pressed('w') {
+			pressed = true
+			return ErrQuit
+		}
+		return nil
+	}}
+
+	err := runHeadless(t, game, Config{Input: strings.NewReader("w"), Output: io.Discard})
+
+	if err != nil || !pressed {
+		t.Errorf("wanted a press of w, got err=%v pressed=%v", err, pressed)
+	}
+}

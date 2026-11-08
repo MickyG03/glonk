@@ -3,6 +3,7 @@ package engine
 import (
 	"bytes"
 	"io"
+	"os"
 	"sync"
 	"time"
 )
@@ -183,6 +184,15 @@ func (f *inputFeed) apply(events []keyEvent, now time.Time) inputAction {
 		}
 	}
 	return actionNone
+}
+
+// readFrom streams what r yields in chunks. A file gets the platform reader, which
+// can be stopped cleanly; anything else can only be read with blocking reads.
+func readFrom(r io.Reader) (chunks <-chan []byte, stop func()) {
+	if f, ok := r.(*os.File); ok {
+		return readInput(f)
+	}
+	return readBlocking(r)
 }
 
 // readBlocking streams chunks read from r until it errors, then closes the channel.

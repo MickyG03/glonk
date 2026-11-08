@@ -4,8 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"time"
+
+	"golang.org/x/term"
 )
 
 // maxDT caps the time step Update sees, in seconds. After a stall (the machine
@@ -41,6 +44,26 @@ type Config struct {
 	// LegacyKeys turns off the kitty keyboard protocol even where the terminal has
 	// it, and uses the timing-based key handling that every terminal supports.
 	LegacyKeys bool
+
+	// Input is where keys are read from; nil means os.Stdin.
+	//
+	// When Input and Output are both terminals, Run takes them over: raw mode, the
+	// alternate screen, the keyboard protocol, quit signals and Ctrl-Z. Opening
+	// /dev/tty for both lets a program draw on the terminal while its stdin is a
+	// pipe. When either is not a terminal, Run runs headless: see Output.
+	Input io.Reader
+
+	// Output is where frames are written; nil means os.Stdout.
+	//
+	// Run runs headless when Input or Output is not a terminal. It then needs a
+	// nonzero Width and Height, writes nothing but the frames (no screen or mode
+	// sequences), and leaves terminal settings and signals alone. Input is still
+	// read as keys; a key is held from its press until its release, as the kitty
+	// keyboard protocol reports them, unless LegacyKeys asks for the timing-based
+	// handling. Ctrl-C ends Run as usual, Ctrl-Z does nothing, and the end of Input
+	// does not end Run. That makes Run testable with a string of key bytes in and a
+	// buffer out.
+	Output io.Writer
 }
 
 // checkConfig rejects settings Run cannot honor.
@@ -49,6 +72,34 @@ func checkConfig(cfg Config) error {
 		return fmt.Errorf("fps must be between 1 and %d, got %d", maxFPS, cfg.FPS)
 	}
 	return nil
+}
+
+// errNoTerminal is what Run returns when input and output are not both terminals
+// and the frame size was not given.
+var errNoTerminal = errors.New("input and output are not both terminals: set Width and Height to run without one")
+
+// openTerminal picks how Run reaches the terminal: the real one when input and
+// output are both terminals, otherwise a headless one of the configured size. It
+// returns the reader to take keys from.
+func openTerminal(cfg Config) (*terminal, io.Reader, error) {
+	var in io.Reader = os.Stdin
+	if cfg.Input != nil {
+		in = cfg.Input
+	}
+	var out io.Writer = os.Stdout
+	if cfg.Output != nil {
+		out = cfg.Output
+	}
+
+	inFile, inOK := in.(*os.File)
+	outFile, outOK := out.(*os.File)
+	if inOK && outOK && term.IsTerminal(int(inFile.Fd())) && term.IsTerminal(int(outFile.Fd())) {
+		return newTerminal(inFile, out), in, nil
+	}
+	if cfg.Width == 0 || cfg.Height == 0 {
+		return nil, nil, errNoTerminal
+	}
+	return newHeadless(out, cfg.Width, cfg.Height), in, nil
 }
 
 // frameDT returns the seconds between two frames, capped at maxDT.
@@ -110,6 +161,10 @@ func handle(action inputAction, suspend func() error) (done bool, err error) {
 // from working. A signal the process was started ignoring (nohup does this to
 // SIGHUP) stays ignored.
 //
+// With a Config.Input or Config.Output that is not a terminal, Run runs headless:
+// none of what follows about the terminal, signals and Ctrl-Z applies, and the
+// frame size must be given.
+//
 // Ctrl-Z suspends the program: the terminal is restored, the process stops until
 // the shell continues it (fg), and Run takes the terminal over again. A stop sent
 // from outside (kill -TSTP) is not caught, so it leaves the terminal as it is.
@@ -127,7 +182,10 @@ func Run(ctx context.Context, game Game, cfg Config) (err error) {
 		return err
 	}
 
-	tty := newTerminal(os.Stdin, os.Stdout)
+	tty, src, err := openTerminal(cfg)
+	if err != nil {
+		return err
+	}
 	termW, termH, err := tty.Size()
 	if err != nil {
 		return err
@@ -144,19 +202,22 @@ func Run(ctx context.Context, game Game, cfg Config) (err error) {
 	// with the terminal still taken over.
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	defer notifyQuit(cancel)()
+	if !tty.headless { // signals belong to the process, which a headless Run does not own
+		defer notifyQuit(cancel)()
+	}
 
 	err = tty.Setup()
 	if err != nil {
 		return err
 	}
 	defer func() { err = finish(err, tty) }()
-	input, stopInput := readInput(os.Stdin)
+	input, stopInput := readFrom(src)
 	defer stopInput() // before Teardown: nothing may read the terminal once Run is over
 
-	exact := false
+	// A headless input is read as the protocol reports keys: there is no terminal to ask.
+	exact := tty.headless && !cfg.LegacyKeys
 	var typed []byte // keys pressed while the probe waited
-	if !cfg.LegacyKeys {
+	if !tty.headless && !cfg.LegacyKeys {
 		kitty, rest, err := probeKitty(input, tty.out, probeTimeout)
 		if err != nil {
 			return err
@@ -177,6 +238,7 @@ func Run(ctx context.Context, game Game, cfg Config) (err error) {
 
 	in := newInput(exact)
 	keys := newInputFeed(in)
+	keys.canSuspend = tty.canSuspend()
 	defer keys.stop()
 
 	// suspend hands the terminal back, stops the process until the shell continues

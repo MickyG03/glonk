@@ -2,6 +2,7 @@ package engine
 
 import (
 	"bytes"
+	"io"
 	"os"
 	"strings"
 	"testing"
@@ -142,5 +143,36 @@ func TestEnterSequence(t *testing.T) {
 	want := "\x1b[?1049h\x1b[?7l\x1b[2J\x1b[?25l"
 	if got := tty.enterSequence().sequence.String(); got != want {
 		t.Errorf("wanted %q, got %q", want, got)
+	}
+}
+
+func TestHeadlessTerminalWritesNothingAndKeepsItsSize(t *testing.T) {
+	var out bytes.Buffer
+	tty := newHeadless(&out, 7, 3)
+
+	for name, err := range map[string]error{
+		"Setup":                  tty.Setup(),
+		"EnableKeyboardProtocol": tty.EnableKeyboardProtocol(),
+		"Clear":                  tty.Clear(),
+		"Teardown":               tty.Teardown(),
+	} {
+		if err != nil {
+			t.Errorf("%s: wanted nil, got %v", name, err)
+		}
+	}
+	if out.Len() != 0 {
+		t.Errorf("wanted nothing written, got %q", out.String())
+	}
+	if w, h, err := tty.Size(); w != 7 || h != 3 || err != nil {
+		t.Errorf("wanted 7x3, got %dx%d (err %v)", w, h, err)
+	}
+}
+
+func TestOnlyARealTerminalCanSuspend(t *testing.T) {
+	if newHeadless(io.Discard, 1, 1).canSuspend() {
+		t.Errorf("wanted a headless terminal not to suspend")
+	}
+	if got := newTerminal(os.Stdin, io.Discard).canSuspend(); got != suspendSupported {
+		t.Errorf("wanted a terminal to suspend exactly where the system can, got %v", got)
 	}
 }

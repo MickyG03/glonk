@@ -18,6 +18,11 @@ type terminal struct {
 	state    *term.State
 	out      io.Writer
 	keyboard bool // whether we pushed protocol flags that Teardown must pop
+
+	// A headless terminal is no terminal at all: a fixed size, and nothing written
+	// to out but the frames.
+	headless bool
+	w, h     int
 }
 
 func newTerminal(in *os.File, out io.Writer) *terminal {
@@ -25,6 +30,18 @@ func newTerminal(in *os.File, out io.Writer) *terminal {
 		fd:  int(in.Fd()),
 		out: out,
 	}
+}
+
+// newHeadless returns a terminal that is a w x h window onto out, with no raw mode,
+// no mode sequences and nothing to restore.
+func newHeadless(out io.Writer, w, h int) *terminal {
+	return &terminal{out: out, headless: true, w: w, h: h}
+}
+
+// canSuspend says whether Ctrl-Z may stop the process: only where the system has
+// job control and the program owns a terminal that could be handed back.
+func (t *terminal) canSuspend() bool {
+	return suspendSupported && !t.headless
 }
 
 // enterSequence is what Setup writes: the alternate screen first, then what is set
@@ -41,6 +58,9 @@ func (t *terminal) enterSequence() *sequenceBuilder {
 }
 
 func (t *terminal) Setup() error {
+	if t.headless {
+		return nil
+	}
 	var err error
 	t.state, err = term.MakeRaw(t.fd)
 	if err != nil {
@@ -61,6 +81,9 @@ func (t *terminal) Setup() error {
 // so Input needs to know when to forget every held key. Call it only after a
 // probe says the terminal supports the protocol.
 func (t *terminal) EnableKeyboardProtocol() error {
+	if t.headless {
+		return nil
+	}
 	// Set first: if the write fails halfway, popping an unpushed flag is harmless
 	// (the protocol treats it as a reset) but leaving one pushed would not be.
 	t.keyboard = true
@@ -99,12 +122,18 @@ func (t *terminal) Teardown() error {
 
 // Size returns the terminal's width and height in cells.
 func (t *terminal) Size() (int, int, error) {
+	if t.headless {
+		return t.w, t.h, nil
+	}
 	return term.GetSize(t.fd)
 }
 
 // Clear erases the screen. Needed after a resize because present only writes
 // inside the frame, so stale cells outside a smaller frame would stay.
 func (t *terminal) Clear() error {
+	if t.headless {
+		return nil
+	}
 	sb := newSequenceBuilder()
 	sb.EraseInDisplay(2)
 	return sb.Flush(t.out)

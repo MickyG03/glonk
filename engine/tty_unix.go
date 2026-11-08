@@ -31,7 +31,8 @@ const selectLimit = 1024
 // no read is ever stuck holding input that belongs to someone else.
 func readInput(f *os.File) (<-chan []byte, func()) {
 	// shortcut: select watches one descriptor, which must be below FD_SETSIZE; fall
-	// back to the blocking reader above that, and revisit if A2 adds Config.Input.
+	// back to the blocking reader above that, which only a program with over a
+	// thousand open files reaches.
 	fd := int(f.Fd())
 	if fd >= selectLimit {
 		return readBlocking(f)
