@@ -106,10 +106,10 @@ type viewer struct {
 	color       int
 	fps         float64
 
-	// B flips the edge style of half-block pixels; see cube3d for the details.
-	edgesPending bool
-	edgesChosen  bool
-	edgesSolid   bool
+	// flipEdges is set when B is pressed. The next half-block frame then switches the
+	// pixel edges between exact and solid. The engine keeps that setting from frame to
+	// frame and across resizes. cube3d has the same few lines.
+	flipEdges bool
 }
 
 func newViewer(models []model) *viewer {
@@ -142,7 +142,7 @@ func (v *viewer) Update(dt float64, in *engine.Input) error {
 		v.color = (v.color + 1) % len(palette)
 	}
 	if v.halfBlocks && !v.wire && pressed('b', 'B') {
-		v.edgesPending = true
+		v.flipEdges = true
 	}
 
 	const (
@@ -202,12 +202,9 @@ func (v *viewer) Draw(fb *engine.FrameBuffer) {
 		m.Draw(fb, cam, engine.Cell{Character: '#', Color: color})
 	case v.halfBlocks:
 		canvas := fb.Canvas()
-		switch {
-		case v.edgesPending:
+		if v.flipEdges {
 			canvas.Seamless = !canvas.Seamless
-			v.edgesSolid, v.edgesChosen, v.edgesPending = canvas.Seamless, true, false
-		case v.edgesChosen:
-			canvas.Seamless = v.edgesSolid
+			v.flipEdges = false
 		}
 		mode = "half-blocks, exact edges"
 		if canvas.Seamless {

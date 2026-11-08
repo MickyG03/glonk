@@ -44,12 +44,11 @@ type cubeGame struct {
 	// are drawn one per cell, shaded by character. M toggles it.
 	halfBlocks bool
 
-	// B flips the edge style of the pixels. The library picks a default for the
-	// terminal; once B is pressed we keep our own choice, and reapply it when a
-	// resize gives us a fresh canvas.
-	edgesPending bool // B was pressed and the next half-block frame should flip
-	edgesChosen  bool
-	edgesSolid   bool
+	// flipEdges is set when B is pressed. The next half-block frame then switches the
+	// pixel edges between exact and solid. The library picks the default for the
+	// terminal and keeps the setting from frame to frame and across resizes. The
+	// viewer has the same few lines.
+	flipEdges bool
 }
 
 // newCube returns a cube of the given size resting on the floor at (x, z).
@@ -68,7 +67,7 @@ func (g *cubeGame) Update(dt float64, in *engine.Input) error {
 		g.halfBlocks = !g.halfBlocks
 	}
 	if g.halfBlocks && (in.Pressed('b') || in.Pressed('B')) {
-		g.edgesPending = true
+		g.flipEdges = true
 	}
 
 	const moveSpeed = 3.0
@@ -120,12 +119,9 @@ func (g *cubeGame) Draw(fb *engine.FrameBuffer) {
 	mode := "glyphs"
 	if g.halfBlocks {
 		canvas := fb.Canvas()
-		switch {
-		case g.edgesPending:
+		if g.flipEdges {
 			canvas.Seamless = !canvas.Seamless
-			g.edgesSolid, g.edgesChosen, g.edgesPending = canvas.Seamless, true, false
-		case g.edgesChosen:
-			canvas.Seamless = g.edgesSolid
+			g.flipEdges = false
 		}
 		mode = "half-blocks, exact edges"
 		if canvas.Seamless {
@@ -147,11 +143,13 @@ func (g *cubeGame) Draw(fb *engine.FrameBuffer) {
 	fb.DrawText(1, fb.Height()-2, "WASD move  arrows look  M mode  B edges  Esc quit", 0)
 }
 
-func main() {
+// newCubeGame returns the scene main runs: a floor and six cubes, seen from just
+// inside the south edge.
+func newCubeGame() *cubeGame {
 	floor := mesh.Grid(gridSize, gridDivisions)
 	floor.Position.Y = floorY
 
-	game := &cubeGame{
+	return &cubeGame{
 		cam:   mesh.Camera{Position: geometry.Vector3{Z: -4}, FOV: math.Pi / 2, Near: 0.1},
 		floor: floor,
 		cubes: []object{
@@ -164,8 +162,10 @@ func main() {
 		},
 		fps: 30,
 	}
+}
 
-	err := engine.Run(context.Background(), game, engine.Config{
+func main() {
+	err := engine.Run(context.Background(), newCubeGame(), engine.Config{
 		FPS: 30,
 	})
 	if err != nil {

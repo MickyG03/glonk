@@ -204,7 +204,7 @@ func TestEveryModelDrawsInEveryMode(t *testing.T) {
 		{"characters two-sided", func(v *viewer) { v.doubleSided = true }},
 		{"wireframe", func(v *viewer) { v.wire = true }},
 		{"half-blocks", func(v *viewer) { v.halfBlocks = true }},
-		{"half-blocks solid edges", func(v *viewer) { v.halfBlocks, v.edgesChosen, v.edgesSolid = true, true, true }},
+		{"half-blocks solid edges", func(v *viewer) { v.halfBlocks, v.flipEdges = true, true }},
 		{"half-blocks two-sided", func(v *viewer) { v.halfBlocks, v.doubleSided = true, true }},
 	}
 
@@ -428,4 +428,41 @@ func TestDefaultLimitSuitsTheSamplesAndIsGenerous(t *testing.T) {
 		t.Errorf("wanted the default limit to be 64 MiB, got %d", maxModelBytes)
 	}
 	loadSamples(t) // the bundled models are tiny and must load under it
+}
+
+// B flips the pixel edges once per press, and the setting then stays across frames.
+func TestEdgeKeyFlipsTheEdgeStyleOncePerPress(t *testing.T) {
+	t.Setenv("TERM_PROGRAM", "") // the default style depends on the terminal
+	v := newViewer(loadSamples(t))
+	v.halfBlocks = true
+
+	fb, err := engine.NewFrameBuffer(80, 24)
+	if err != nil {
+		t.Fatalf("unable to initialize frame buffer: %v", err)
+	}
+	draw := func() string {
+		fb.Clear()
+		v.Draw(fb)
+		return hudText(fb, 2)
+	}
+
+	if got := draw(); !strings.Contains(got, "exact edges") {
+		t.Fatalf("wanted exact edges to start with, got %q", got)
+	}
+
+	v.flipEdges = true
+	if got := draw(); !strings.Contains(got, "solid edges") {
+		t.Errorf("wanted solid edges after a press, got %q", got)
+	}
+	if v.flipEdges {
+		t.Errorf("wanted the press used up by the frame that applied it")
+	}
+	if got := draw(); !strings.Contains(got, "solid edges") {
+		t.Errorf("wanted solid edges kept on the next frame, got %q", got)
+	}
+
+	v.flipEdges = true
+	if got := draw(); !strings.Contains(got, "exact edges") {
+		t.Errorf("wanted a second press to switch back, got %q", got)
+	}
 }
