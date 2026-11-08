@@ -34,18 +34,90 @@ const maxOBJLine = 1 << 20
 // wound the other way in the file; set Mesh.DoubleSided to draw it anyway.
 //
 // The input is not trusted. Malformed numbers, bad indices and the like return an
-// error naming the line, and a file with no faces and no lines is an error.
+// error naming the line, and a file with no faces and no lines is an error. The
+// time taken grows in step with the size of the input. Memory use is roughly 25
+// times the input size (a 3.7 MB file of quads used 97 MB), and LoadOBJ reads until
+// the reader ends, so for a source you do not control use LoadOBJLimit.
 func LoadOBJ(r io.Reader) (Mesh, error) {
+	return readOBJ(r, 0)
+}
+
+// ErrOBJTooLarge is wrapped by the error LoadOBJLimit returns when its input is
+// longer than the limit.
+var ErrOBJTooLarge = errors.New("obj: input too large")
+
+// LoadOBJLimit is LoadOBJ for input you do not control. It reads at most maxBytes
+// bytes; if the reader has more it returns an error wrapping ErrOBJTooLarge rather
+// than a half-loaded model, which wrapping the reader in io.LimitReader would
+// produce. maxBytes must be positive. As a guide, the memory used is roughly 25
+// times maxBytes in the worst case.
+//
+// An over-long input always fails. Usually the error wraps ErrOBJTooLarge, but a
+// malformed statement found before the limit is reached is reported as itself.
+func LoadOBJLimit(r io.Reader, maxBytes int64) (Mesh, error) {
+	if maxBytes <= 0 {
+		return Mesh{}, fmt.Errorf("obj: limit must be positive, got %d", maxBytes)
+	}
+	return readOBJ(r, maxBytes)
+}
+
+// limitReader passes through at most limit bytes and fails on the first byte past
+// that, instead of ending the stream quietly the way io.LimitReader does.
+type limitReader struct {
+	r    io.Reader
+	left int64 // bytes still allowed
+	over bool  // the source had more than the limit
+}
+
+func (l *limitReader) Read(p []byte) (int, error) {
+	if l.over {
+		return 0, ErrOBJTooLarge
+	}
+
+	// Ask for one byte more than allowed: receiving it is how we know the input is
+	// too long, as opposed to exactly as long as the limit.
+	if l.left < math.MaxInt64 && int64(len(p)) > l.left+1 {
+		p = p[:l.left+1]
+	}
+	n, err := l.r.Read(p)
+	if int64(n) > l.left {
+		l.over = true
+		return 0, ErrOBJTooLarge
+	}
+	l.left -= int64(n)
+	return n, err
+}
+
+// readOBJ is LoadOBJ and LoadOBJLimit; a limit of 0 means none.
+func readOBJ(r io.Reader, limit int64) (Mesh, error) {
 	var (
 		m          Mesh
 		seen       = map[[2]int]bool{}
-		sc         = bufio.NewScanner(r)
 		lineNo     int             // the line being read
 		startLine  int             // the line a continued statement began on
 		continued  strings.Builder // the text of a statement carried over from lines ending in \
 		hasPending bool
 	)
+
+	// The scanner reads through lr. When the limit is hit it sees a read error, which
+	// it treats as the end of the input, so it first hands over the cut-off last
+	// line. That line can fail to parse, and the parse error would hide the real
+	// reason. fail puts the right error back wherever one is returned.
+	var lr *limitReader
+	if limit > 0 {
+		lr = &limitReader{r: r, left: limit}
+		r = lr
+	}
+	sc := bufio.NewScanner(r)
 	sc.Buffer(make([]byte, 0, 64*1024), maxOBJLine)
+	// Both checks after the loop run only when the scanner reported no error, so
+	// the limit cannot have been hit there and they return their errors as they are.
+	fail := func(err error) (Mesh, error) {
+		if lr != nil && lr.over {
+			return Mesh{}, fmt.Errorf("obj: input larger than %d bytes: %w", limit, ErrOBJTooLarge)
+		}
+		return Mesh{}, err
+	}
 
 	addEdge := func(a, b int) {
 		if a == b {
@@ -124,7 +196,7 @@ func LoadOBJ(r io.Reader) (Mesh, error) {
 			continued.WriteByte(' ')
 			hasPending = true
 			if continued.Len() > maxOBJLine {
-				return Mesh{}, fmt.Errorf("obj line %d: %w", startLine, bufio.ErrTooLong)
+				return fail(fmt.Errorf("obj line %d: %w", startLine, bufio.ErrTooLong))
 			}
 			continue
 		}
@@ -134,11 +206,11 @@ func LoadOBJ(r io.Reader) (Mesh, error) {
 		continued.Reset()
 		hasPending = false
 		if err != nil {
-			return Mesh{}, err
+			return fail(err)
 		}
 	}
 	if err := sc.Err(); err != nil {
-		return Mesh{}, fmt.Errorf("obj line %d: %w", lineNo+1, err)
+		return fail(fmt.Errorf("obj line %d: %w", lineNo+1, err))
 	}
 	if hasPending { // the file ended on a backslash
 		if err := statement(startLine, continued.String()); err != nil {

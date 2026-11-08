@@ -212,6 +212,11 @@ func FuzzLoadOBJ(f *testing.F) {
 			if len(m.Vertices) != 0 || len(m.Faces) != 0 || len(m.Edges) != 0 {
 				t.Fatalf("wanted an empty mesh alongside an error, got %d vertices, %d faces, %d edges", len(m.Vertices), len(m.Faces), len(m.Edges))
 			}
+			if len(text) > 0 {
+				if _, limErr := LoadOBJLimit(strings.NewReader(text), int64(len(text))); limErr == nil || limErr.Error() != err.Error() {
+					t.Fatalf("wanted LoadOBJLimit at the exact size to fail the same way, got %v vs %v", limErr, err)
+				}
+			}
 			return
 		}
 
@@ -245,6 +250,17 @@ func FuzzLoadOBJ(f *testing.F) {
 		again, err := LoadOBJ(strings.NewReader(text))
 		if err != nil || !slices.Equal(again.Vertices, m.Vertices) || !slices.Equal(again.Faces, m.Faces) || !slices.Equal(again.Edges, m.Edges) {
 			t.Fatalf("wanted loading twice to give the same mesh")
+		}
+
+		// The limit variant agrees with the unlimited one at the exact size, and one
+		// byte under it never succeeds.
+		if exact, exactErr := LoadOBJLimit(strings.NewReader(text), int64(len(text))); exactErr != nil || !slices.Equal(exact.Vertices, m.Vertices) || !slices.Equal(exact.Faces, m.Faces) || !slices.Equal(exact.Edges, m.Edges) {
+			t.Fatalf("wanted LoadOBJLimit at the exact size to match LoadOBJ, got err %v", exactErr)
+		}
+		if len(text) >= 2 {
+			if _, underErr := LoadOBJLimit(strings.NewReader(text), int64(len(text)-1)); underErr == nil {
+				t.Fatalf("wanted a limit one byte under the size to fail")
+			}
 		}
 
 		// A loaded model must be safe to fit and draw.

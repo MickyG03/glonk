@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"testing/iotest"
 	"time"
 
 	"github.com/kyrokohan/glonk/engine"
@@ -399,6 +400,210 @@ func TestLoadOBJLongContinuedPolygon(t *testing.T) {
 	}
 	if want := [][2]int{{0, 1}, {1, 2}, {0, 2}}; !slices.Equal(m.Edges, want) {
 		t.Errorf("wanted the three distinct edges %v, got %v", want, m.Edges)
+	}
+}
+
+func loadLimit(t *testing.T, text string, limit int64) (Mesh, error) {
+	t.Helper()
+	return LoadOBJLimit(strings.NewReader(text), limit)
+}
+
+func TestLoadOBJLimitAtAndAroundTheLimit(t *testing.T) {
+	size := int64(len(objCube))
+	want := loadOBJ(t, objCube)
+
+	for _, limit := range []int64{size, size + 1, size + 1000, math.MaxInt64} {
+		m, err := loadLimit(t, objCube, limit)
+		if err != nil {
+			t.Fatalf("limit %d: wanted the model to load, got %v", limit, err)
+		}
+		if !slices.Equal(m.Vertices, want.Vertices) || !slices.Equal(m.Faces, want.Faces) || !slices.Equal(m.Edges, want.Edges) {
+			t.Errorf("limit %d: wanted the same mesh as LoadOBJ", limit)
+		}
+	}
+
+	for _, limit := range []int64{size - 1, size / 2, 1} {
+		m, err := loadLimit(t, objCube, limit)
+		if !errors.Is(err, ErrOBJTooLarge) {
+			t.Errorf("limit %d: wanted ErrOBJTooLarge, got %v", limit, err)
+		}
+		if err != nil && !strings.Contains(err.Error(), fmt.Sprintf("larger than %d bytes", limit)) {
+			t.Errorf("limit %d: wanted the message to name the limit, got %q", limit, err)
+		}
+		if len(m.Vertices) != 0 || len(m.Faces) != 0 || len(m.Edges) != 0 {
+			t.Errorf("limit %d: wanted no partial mesh with the error, got %+v", limit, m)
+		}
+	}
+}
+
+// Cutting the input anywhere must say the input is too large. The cut-off last
+// line (half a number, half a face) must never be reported as a parse error.
+func TestLoadOBJLimitReportsTooLargeWhereverTheCutFalls(t *testing.T) {
+	for _, text := range []string{
+		"v 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\n",
+		"v 0 0 0\r\nv 1 0 0\r\nv 0 1 0\r\nf 1 2 \\\r\n 3\r\n",
+		"# a comment\nv 1.5e3 -2 3\nv 1 0 0\nv 0 1 0\nl 1 2\nf 1/1/1 2//2 3\n",
+		objCube,
+	} {
+		for limit := int64(1); limit < int64(len(text)); limit++ {
+			_, err := loadLimit(t, text, limit)
+			if !errors.Is(err, ErrOBJTooLarge) {
+				t.Fatalf("%q cut at %d: wanted ErrOBJTooLarge, got %v", text, limit, err)
+			}
+		}
+		if _, err := loadLimit(t, text, int64(len(text))); err != nil {
+			t.Fatalf("%q at its own length: wanted it to load, got %v", text, err)
+		}
+	}
+}
+
+// The scanner reads in chunks. When the limit falls in a later chunk, the loader
+// already holds the start of a line from the earlier one, and hands it over as if it
+// were complete. Here that start is "f 1 2", which alone is a malformed face; the
+// error must still say the input was too large.
+func TestLoadOBJLimitHidesTheCutOffLineBehindTheRealReason(t *testing.T) {
+	const chunk = 64 * 1024 // the loader's first read
+
+	prefix := "v 0 0 0\nv 1 0 0\nv 0 1 0\n"
+	padding := "#" + strings.Repeat("x", chunk-len(prefix)-len("#")-len("\n")-len("f 1 2")) + "\n"
+	text := prefix + padding + "f 1 2" + " 3\n" + strings.Repeat("# more\n", 100)
+	if text[chunk-5:chunk] != "f 1 2" {
+		t.Fatalf("test setup: wanted the first chunk to end in \"f 1 2\", got %q", text[chunk-5:chunk])
+	}
+
+	// Allow the first chunk plus a few bytes: the limit lands in the second read.
+	_, err := loadLimit(t, text, chunk+4)
+	if !errors.Is(err, ErrOBJTooLarge) {
+		t.Errorf("wanted ErrOBJTooLarge, got %v", err)
+	}
+	if err != nil && strings.Contains(err.Error(), "at least 3 corners") {
+		t.Errorf("wanted the cut-off face not to be reported, got %v", err)
+	}
+
+	// Without a limit the same text is just a valid model.
+	m, err := LoadOBJ(strings.NewReader(text))
+	if err != nil || len(m.Faces) != 1 {
+		t.Errorf("wanted the text to be a valid model without a limit, got %v", err)
+	}
+}
+
+func TestLimitReaderStaysFailedOnceOver(t *testing.T) {
+	r := &limitReader{r: strings.NewReader("0123456789"), left: 4}
+	buf := make([]byte, 8)
+
+	n, err := r.Read(buf)
+	if n != 0 || !errors.Is(err, ErrOBJTooLarge) {
+		t.Fatalf("wanted the first read past the limit to fail, got %d, %v", n, err)
+	}
+	for range 3 {
+		if n, err := r.Read(buf); n != 0 || !errors.Is(err, ErrOBJTooLarge) {
+			t.Errorf("wanted every later read to fail too, got %d, %v", n, err)
+		}
+	}
+}
+
+func TestLoadOBJLimitMustBePositive(t *testing.T) {
+	for _, limit := range []int64{0, -1, math.MinInt64} {
+		src := &countingReader{r: strings.NewReader(objCube)}
+
+		_, err := LoadOBJLimit(src, limit)
+		if err == nil || errors.Is(err, ErrOBJTooLarge) || !strings.Contains(err.Error(), "positive") {
+			t.Errorf("limit %d: wanted a limit error, got %v", limit, err)
+		}
+		if src.n != 0 {
+			t.Errorf("limit %d: wanted nothing read from the source, got %d bytes", limit, src.n)
+		}
+	}
+}
+
+type countingReader struct {
+	r io.Reader
+	n int
+}
+
+func (c *countingReader) Read(p []byte) (int, error) {
+	n, err := c.r.Read(p)
+	c.n += n
+	return n, err
+}
+
+func TestLoadOBJLimitPullsNoMoreThanLimitPlusOne(t *testing.T) {
+	huge := strings.Repeat("# padding padding padding\n", 100000) // 2.6 MB
+
+	for _, limit := range []int64{10, 1000, 70000} {
+		src := &countingReader{r: strings.NewReader(huge)}
+
+		_, err := LoadOBJLimit(src, limit)
+		if !errors.Is(err, ErrOBJTooLarge) {
+			t.Fatalf("limit %d: wanted ErrOBJTooLarge, got %v", limit, err)
+		}
+		if int64(src.n) > limit+1 {
+			t.Errorf("limit %d: wanted at most %d bytes read from the source, got %d", limit, limit+1, src.n)
+		}
+	}
+}
+
+func TestLoadOBJLimitCountsManySmallLines(t *testing.T) {
+	text := strings.Repeat("# c\n", 5000) + "v 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\n"
+	size := int64(len(text))
+
+	if _, err := loadLimit(t, text, size); err != nil {
+		t.Errorf("wanted the file to load at exactly its size, got %v", err)
+	}
+	if _, err := loadLimit(t, text, size-1); !errors.Is(err, ErrOBJTooLarge) {
+		t.Errorf("wanted ErrOBJTooLarge one byte under, got %v", err)
+	}
+}
+
+func TestLoadOBJLimitKeepsSourceErrors(t *testing.T) {
+	// Under the limit, a failing source is still reported as itself.
+	_, err := LoadOBJLimit(&brokenReader{after: "v 0 0 0\nv 1 0 0\n"}, 1000)
+	if !errors.Is(err, errBroken) || errors.Is(err, ErrOBJTooLarge) {
+		t.Errorf("wanted the source's error, got %v", err)
+	}
+
+	// A source that returns its last bytes together with the end-of-file marker.
+	m, err := LoadOBJLimit(iotest.DataErrReader(strings.NewReader(objCube)), int64(len(objCube)))
+	if err != nil || len(m.Faces) != 12 {
+		t.Errorf("wanted the cube loaded from a DataErrReader, got %v and %d faces", err, len(m.Faces))
+	}
+
+	// One byte at a time still counts every byte.
+	_, err = LoadOBJLimit(iotest.OneByteReader(strings.NewReader(objCube)), int64(len(objCube)-1))
+	if !errors.Is(err, ErrOBJTooLarge) {
+		t.Errorf("wanted ErrOBJTooLarge from a one-byte reader, got %v", err)
+	}
+}
+
+// A file over the limit always fails. Which error comes back depends on how far the
+// loader had read: usually ErrOBJTooLarge, but a malformed statement found before the
+// limit is reached is reported as itself, so a caller should treat any error as a
+// failed load and use errors.Is only to tell the two apart.
+func TestLoadOBJLimitOverTheLimitAlwaysFails(t *testing.T) {
+	padding := strings.Repeat("# padding\n", 100000)
+	for _, text := range []string{
+		"v 0 0 0\nv oops 0 0\n" + padding,
+		"v 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\n" + padding,
+	} {
+		for _, limit := range []int64{100, 1000, 100000} {
+			_, err := loadLimit(t, text, limit)
+			if err == nil {
+				t.Fatalf("limit %d: wanted an error for a %d byte file", limit, len(text))
+			}
+			if !errors.Is(err, ErrOBJTooLarge) && !strings.Contains(err.Error(), `obj line 2: bad number "oops"`) {
+				t.Errorf("limit %d: wanted too large or the parse error on line 2, got %v", limit, err)
+			}
+		}
+	}
+}
+
+func TestLoadOBJIsUnlimited(t *testing.T) {
+	// More than any limit a test would pick, to show LoadOBJ has none of its own.
+	text := strings.Repeat("# padding padding\n", 200000) + "v 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\n"
+
+	m, err := loadWithin(t, text, 5*time.Second)
+	if err != nil || len(m.Faces) != 1 {
+		t.Errorf("wanted a %d byte file to load, got %v", len(text), err)
 	}
 }
 
