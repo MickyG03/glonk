@@ -110,10 +110,10 @@ func FuzzDraw(f *testing.F) {
 		go func() {
 			defer close(done)
 			cube.Draw(fb, cam, engine.Cell{Character: '#'})
-			cube.DrawShaded(fb, cam, light, engine.Palette(1))
+			cube.withColor(engine.Palette(1)).DrawShaded(fb, cam, light)
 			cube.DoubleSided = true
-			cube.DrawShaded(fb, cam, light, engine.Palette(1))
-			cube.DrawShadedPixels(fb.Canvas(), cam, light, engine.Palette(1))
+			cube.withColor(engine.Palette(1)).DrawShaded(fb, cam, light)
+			cube.withColor(engine.Palette(1)).DrawShadedPixels(fb.Canvas(), cam, light)
 			fb.Canvas().Compose()
 		}()
 
@@ -155,8 +155,8 @@ func FuzzDrawTransform(f *testing.F) {
 		go func() {
 			defer close(done)
 			cube.Draw(fb, cam, engine.Cell{Character: '#'})
-			cube.DrawShaded(fb, cam, light, engine.Palette(1))
-			cube.DrawShadedPixels(fb.Canvas(), cam, light, engine.Palette(1))
+			cube.withColor(engine.Palette(1)).DrawShaded(fb, cam, light)
+			cube.withColor(engine.Palette(1)).DrawShadedPixels(fb.Canvas(), cam, light)
 			fb.Canvas().Compose()
 		}()
 
@@ -171,6 +171,38 @@ func FuzzDrawTransform(f *testing.F) {
 		}
 		if (cube.Validate() == nil) != cube.Transform.valid() {
 			t.Fatalf("wanted Validate to agree with valid() for %+v", cube.Transform)
+		}
+	})
+}
+
+// Shading with any ramp must not panic, and every character it draws is one of the
+// ramp's.
+func FuzzMaterialRamp(f *testing.F) {
+	f.Add("")
+	f.Add("#")
+	f.Add(".:-=+*#%@")
+	f.Add(" ░▒▓█")
+	f.Add("a\xffb")
+	f.Add("\x1b[2J\x00\t")
+	f.Add("中日")
+	f.Add(strings.Repeat("ab", 5000))
+
+	f.Fuzz(func(t *testing.T, ramp string) {
+		cube := Cube(2)
+		cube.Transform = Transform{Position: geometry.Vector3{Z: 5}, Yaw: 0.6, Pitch: -0.4}
+		cube.Material = Material{Color: engine.Palette(1), Ramp: ramp}
+		fb, err := engine.NewFrameBuffer(20, 8)
+		if err != nil {
+			t.Fatalf("unable to initialize frame buffer: %v", err)
+		}
+
+		cube.DrawShaded(fb, Camera{}, Light{Direction: geometry.Vector3{X: 0.4, Y: -1, Z: 0.6}, Ambient: 0.2})
+
+		allowed := cube.Material.ramp()
+		for _, c := range drawn(fb) {
+			if got := fb.At(c[0], c[1]).Character; !slices.Contains(allowed, got) {
+				t.Fatalf("wanted a character of the ramp %q, got %q", ramp, got)
+			}
 		}
 	})
 }
@@ -326,8 +358,8 @@ func FuzzLoadOBJ(f *testing.F) {
 		}
 		cam := Camera{Position: geometry.Vector3{Z: -5}, FOV: math.Pi / 2, Near: 0.1}
 		fitted.Draw(fb, cam, engine.Cell{Character: '#'})
-		fitted.DrawShaded(fb, cam, Light{Direction: geometry.Vector3{Y: -1}, Ambient: 0.2}, engine.Palette(1))
-		fitted.DrawShadedPixels(fb.Canvas(), cam, Light{Direction: geometry.Vector3{Y: -1}, Ambient: 0.2}, engine.Palette(1))
+		fitted.withColor(engine.Palette(1)).DrawShaded(fb, cam, Light{Direction: geometry.Vector3{Y: -1}, Ambient: 0.2})
+		fitted.withColor(engine.Palette(1)).DrawShadedPixels(fb.Canvas(), cam, Light{Direction: geometry.Vector3{Y: -1}, Ambient: 0.2})
 	})
 }
 
@@ -366,10 +398,10 @@ func FuzzDrawBadMesh(f *testing.F) {
 		go func() {
 			defer close(done)
 			m.Draw(fb, cam, engine.Cell{Character: '#'})
-			m.DrawShaded(fb, cam, light, engine.Palette(1))
+			m.withColor(engine.Palette(1)).DrawShaded(fb, cam, light)
 			m.DoubleSided = true
-			m.DrawShaded(fb, cam, light, engine.Palette(1))
-			m.DrawShadedPixels(fb.Canvas(), cam, light, engine.Palette(1))
+			m.withColor(engine.Palette(1)).DrawShaded(fb, cam, light)
+			m.withColor(engine.Palette(1)).DrawShadedPixels(fb.Canvas(), cam, light)
 			fb.Canvas().Compose()
 		}()
 

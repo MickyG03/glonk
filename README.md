@@ -75,13 +75,14 @@ if err != nil {
 ship = ship.Fit(2) // centered on the origin, longest side 2
 ship.Transform.Position = geometry.Vector3{Z: 6}
 
-ship.DrawShaded(fb, cam, light, engine.Palette(208)) // or ship.Draw for a wireframe
+ship.Material.Color = engine.Palette(208)
+ship.DrawShaded(fb, cam, light) // or ship.Draw for a wireframe
 ```
 
 `LoadOBJ` reads any `io.Reader`, so a file, an embedded asset or a download all work. For input you do not control, use `LoadOBJLimit(r, maxBytes)`: it fails with `mesh.ErrOBJTooLarge` instead of reading without end (a plain `io.LimitReader` would quietly cut the model short).
 
 - **Understood:** vertices (`v`), faces (`f`, with or without texture and normal indices, any number of corners, negative indices) and lines (`l`). Faces with more than three corners are split into triangles for shading, and the wireframe shows the original polygons.
-- **Skipped:** materials and colors, texture coordinates, normals, groups and curves. Everything in the file becomes one mesh, flat shaded, in the color you pass to `DrawShaded`.
+- **Skipped:** materials and colors, texture coordinates, normals, groups and curves. Everything in the file becomes one mesh, flat shaded, in the color of its `Material`.
 - **Orientation:** OBJ files are right-handed and look down -Z; glonk looks down +Z. `LoadOBJ` flips Z and reverses each face so a model keeps its outside and is not mirrored left to right. Its front faces a camera placed on the -Z side.
 - **Inside out or invisible?** Some exporters wind faces the other way. Set `Mesh.DoubleSided = true` to draw both sides.
 - **Untrusted files:** malformed input returns an error naming the line, never a panic, and the time taken grows in step with the input size. Memory use is roughly 25 times the input size, so bound the input with `LoadOBJLimit` when you do not trust the source.

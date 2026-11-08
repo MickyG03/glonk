@@ -30,15 +30,10 @@ const (
 // sun lights the cubes from above, to one side and slightly ahead of the start.
 var sun = mesh.Light{Direction: geometry.Vector3{X: 0.4, Y: -1, Z: 0.6}, Ambient: 0.2}
 
-type object struct {
-	mesh  mesh.Mesh
-	color engine.Color
-}
-
 type cubeGame struct {
 	cam   mesh.Camera
 	floor mesh.Mesh
-	cubes []object
+	cubes []mesh.Mesh
 	fps   float64
 
 	// halfBlocks draws the cubes as pixels, two per cell, shaded by color. Off, they
@@ -60,10 +55,11 @@ func keyDown(held func(engine.Key) bool, letter rune) bool {
 }
 
 // newCube returns a cube of the given size resting on the floor at (x, z).
-func newCube(size, x, z float64, color engine.Color) object {
+func newCube(size, x, z float64, color engine.Color) mesh.Mesh {
 	m := mesh.Cube(size)
 	m.Transform.Position = geometry.Vector3{X: x, Y: floorY + size/2, Z: z}
-	return object{mesh: m, color: color}
+	m.Material.Color = color
+	return m
 }
 
 func (g *cubeGame) Update(dt float64, in *engine.Input) error {
@@ -135,13 +131,13 @@ func (g *cubeGame) Draw(fb *engine.FrameBuffer) {
 			mode = "half-blocks, solid edges"
 		}
 		for _, o := range g.cubes {
-			o.mesh.DrawShadedPixels(canvas, g.cam, sun, o.color)
+			o.DrawShadedPixels(canvas, g.cam, sun)
 		}
 		// Compose before the HUD so the HUD lands on top of the pixels.
 		canvas.Compose()
 	} else {
 		for _, o := range g.cubes {
-			o.mesh.DrawShaded(fb, g.cam, sun, o.color)
+			o.DrawShaded(fb, g.cam, sun)
 		}
 	}
 
@@ -160,7 +156,7 @@ func newCubeGame() *cubeGame {
 	return &cubeGame{
 		cam:   mesh.Camera{Position: geometry.Vector3{Z: -4}, FOV: math.Pi / 2, Near: 0.1},
 		floor: floor,
-		cubes: []object{
+		cubes: []mesh.Mesh{
 			newCube(2, 0, 6, engine.Palette(208)),
 			newCube(1, -4, 4, engine.Palette(39)),
 			newCube(3, 6, 10, engine.Palette(118)),

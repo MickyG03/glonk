@@ -1,15 +1,9 @@
 package mesh
 
 import (
-	"math"
-
 	"github.com/kyrokohan/glonk/engine"
 	"github.com/kyrokohan/glonk/geometry"
 )
-
-// shadeRamp runs from dark to bright. Plain ASCII so it renders in any terminal,
-// and no space, so a lit face never vanishes into the background.
-const shadeRamp = ".:-=+*#%@"
 
 // Light is a directional light with a little ambient fill.
 type Light struct {
@@ -26,16 +20,6 @@ func (l Light) intensity(normal geometry.Vector3) float64 {
 	ambient := min(max(l.Ambient, 0), 1)
 	facing := max(0, normal.Dot(l.Direction.Normalize().Neg()))
 	return ambient + (1-ambient)*facing
-}
-
-// shadeChar maps an intensity from 0 (darkest) to 1 (brightest) onto the ramp.
-// Out-of-range values clamp; NaN is treated as dark.
-func shadeChar(intensity float64) rune {
-	if math.IsNaN(intensity) {
-		intensity = 0
-	}
-	i := int(math.Round(min(max(intensity, 0), 1) * float64(len(shadeRamp)-1)))
-	return rune(shadeRamp[i])
 }
 
 // frontFacing reports whether a face is turned toward the camera. normal points
@@ -101,28 +85,29 @@ func (m Mesh) eachShadedTriangle(cam Camera, light Light, w, h int, fn func(corn
 	}
 }
 
-// DrawShaded renders the mesh's faces as solid triangles, flat shaded by light
-// and drawn in color. Nearer surfaces hide farther ones, faces turned away from
-// the camera are skipped (unless the mesh is DoubleSided), and faces crossing the
-// near plane are cut where they cross it. A mesh without Faces draws nothing; use
+// DrawShaded renders the mesh's faces as solid triangles, flat shaded by light and
+// drawn in the mesh's Material. Nearer surfaces hide farther ones, faces turned away
+// from the camera are skipped (unless the mesh is DoubleSided), and faces crossing
+// the near plane are cut where they cross it. A mesh without Faces draws nothing; use
 // Draw for wireframes.
 //
-// Brightness is shown by the character: a ramp from dim to bright.
-func (m Mesh) DrawShaded(fb *engine.FrameBuffer, cam Camera, light Light, color engine.Color) {
+// Brightness is shown by the character: a ramp from dim to bright, Material.Ramp.
+func (m Mesh) DrawShaded(fb *engine.FrameBuffer, cam Camera, light Light) {
+	ramp := m.Material.ramp()
 	m.eachShadedTriangle(cam, light, fb.Width(), fb.Height(), func(c [3]screenPoint, intensity float64) {
-		cell := engine.Cell{Character: shadeChar(intensity), Foreground: color}
+		cell := engine.Cell{Character: shadeChar(ramp, intensity), Foreground: m.Material.Color}
 		fb.FillTriangle(c[0].x, c[0].y, c[0].z, c[1].x, c[1].y, c[1].z, c[2].x, c[2].y, c[2].z, cell)
 	})
 }
 
 // DrawShadedPixels is DrawShaded for a pixel Canvas: the same faces, culling,
 // clipping and depth rules, but brightness is shown by the color (a darker or
-// lighter shade of color) and there are twice as many rows, so edges are finer.
-// Call Canvas.Compose afterwards to put the pixels into the FrameBuffer.
-func (m Mesh) DrawShadedPixels(c *engine.Canvas, cam Camera, light Light, color engine.Color) {
+// lighter shade of Material.Color) and there are twice as many rows, so edges are
+// finer. Call Canvas.Compose afterwards to put the pixels into the FrameBuffer.
+func (m Mesh) DrawShadedPixels(c *engine.Canvas, cam Camera, light Light) {
 	// Project onto the cell grid the canvas belongs to, then stretch y to pixel rows.
 	m.eachShadedTriangle(cam, light, c.Width(), c.Height()/2, func(p [3]screenPoint, intensity float64) {
-		shade := engine.Shade(color, intensity)
+		shade := engine.Shade(m.Material.Color, intensity)
 		c.FillTriangle(p[0].x, 2*p[0].y, p[0].z, p[1].x, 2*p[1].y, p[1].z, p[2].x, 2*p[2].y, p[2].z, shade)
 	})
 }

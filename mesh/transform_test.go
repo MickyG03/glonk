@@ -148,8 +148,8 @@ func TestMeshWithAnInvalidTransformDrawsNothing(t *testing.T) {
 			canvas := fb.Canvas()
 
 			cube.Draw(fb, shadeCam(), engine.Cell{Character: '#'})
-			cube.DrawShaded(fb, shadeCam(), goldenSun, engine.Palette(1))
-			cube.DrawShadedPixels(canvas, shadeCam(), goldenSun, engine.Palette(1))
+			cube.withColor(engine.Palette(1)).DrawShaded(fb, shadeCam(), goldenSun)
+			cube.withColor(engine.Palette(1)).DrawShadedPixels(canvas, shadeCam(), goldenSun)
 			canvas.Compose()
 
 			if n := len(drawn(fb)); n != 0 {
@@ -172,8 +172,8 @@ func TestScaledMeshDrawsLikeALargerOne(t *testing.T) {
 	a, b := newShadeBuffer(t), newShadeBuffer(t)
 	small.Draw(a, shadeCam(), engine.Cell{Character: '#'})
 	large.Draw(b, shadeCam(), engine.Cell{Character: '#'})
-	small.DrawShaded(a, shadeCam(), goldenSun, engine.Palette(1))
-	large.DrawShaded(b, shadeCam(), goldenSun, engine.Palette(1))
+	small.withColor(engine.Palette(1)).DrawShaded(a, shadeCam(), goldenSun)
+	large.withColor(engine.Palette(1)).DrawShaded(b, shadeCam(), goldenSun)
 
 	if picture(a) != picture(b) {
 		t.Errorf("wanted a scaled Cube(1) to draw like Cube(2), got\n%s\nwanted\n%s", picture(a), picture(b))

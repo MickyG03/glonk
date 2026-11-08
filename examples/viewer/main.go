@@ -197,6 +197,7 @@ func (v *viewer) Draw(fb *engine.FrameBuffer) {
 	m := v.models[v.current].mesh
 	m.DoubleSided = v.doubleSided
 	color := palette[v.color]
+	m.Material.Color = color
 
 	mode := "characters"
 	switch {
@@ -213,10 +214,10 @@ func (v *viewer) Draw(fb *engine.FrameBuffer) {
 		if canvas.Seamless {
 			mode = "half-blocks, solid edges"
 		}
-		m.DrawShadedPixels(canvas, cam, sun, color)
+		m.DrawShadedPixels(canvas, cam, sun)
 		canvas.Compose()
 	default:
-		m.DrawShaded(fb, cam, sun, color)
+		m.DrawShaded(fb, cam, sun)
 	}
 
 	if v.doubleSided {

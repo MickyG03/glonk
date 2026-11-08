@@ -94,7 +94,7 @@ var goldenScenes = []struct {
 		cube := Cube(2)
 		cube.Transform.Position = geometry.Vector3{Z: 5}
 		cube.Transform.Yaw, cube.Transform.Pitch = 0.6, -0.4
-		cube.DrawShaded(fb, shadeCam(), goldenSun, engine.Palette(208))
+		cube.withColor(engine.Palette(208)).DrawShaded(fb, shadeCam(), goldenSun)
 		return fb
 	}},
 	{"shaded-two-cubes-and-floor", func(t *testing.T) *engine.FrameBuffer {
@@ -108,8 +108,8 @@ var goldenScenes = []struct {
 		far.Transform.Position = geometry.Vector3{X: 1, Z: 7}
 		far.Transform.Yaw, far.Transform.Pitch = -0.4, -0.2
 		floor.Draw(fb, cam, engine.Cell{Character: ':', Foreground: engine.Palette(240)})
-		far.DrawShaded(fb, cam, goldenSun, engine.Palette(33))
-		near.DrawShaded(fb, cam, goldenSun, engine.Palette(196))
+		far.withColor(engine.Palette(33)).DrawShaded(fb, cam, goldenSun)
+		near.withColor(engine.Palette(196)).DrawShaded(fb, cam, goldenSun)
 		return fb
 	}},
 	{"pixels-cube", func(t *testing.T) *engine.FrameBuffer {
@@ -119,7 +119,7 @@ var goldenScenes = []struct {
 		cube.Transform.Position = geometry.Vector3{Z: 5}
 		cube.Transform.Yaw, cube.Transform.Pitch = 0.6, -0.4
 		canvas := fb.Canvas()
-		cube.DrawShadedPixels(canvas, shadeCam(), goldenSun, engine.Palette(208))
+		cube.withColor(engine.Palette(208)).DrawShadedPixels(canvas, shadeCam(), goldenSun)
 		canvas.Compose()
 		return fb
 	}},
@@ -128,7 +128,7 @@ var goldenScenes = []struct {
 		cube := Cube(2)
 		cube.Transform.Position = geometry.Vector3{X: 2, Z: 1} // its side face runs from the camera's plane to beyond the near plane
 		cube.Transform.Yaw = 0.1
-		cube.DrawShaded(fb, Camera{FOV: 1.4, Near: 0.5}, goldenSun, engine.Palette(46))
+		cube.withColor(engine.Palette(46)).DrawShaded(fb, Camera{FOV: 1.4, Near: 0.5}, goldenSun)
 		return fb
 	}},
 	{"double-sided-quad", func(t *testing.T) *engine.FrameBuffer {
@@ -140,7 +140,7 @@ var goldenScenes = []struct {
 		}
 		quad.Transform.Position = geometry.Vector3{Z: 5}
 		quad.Transform.Yaw = 2.6 // seen from behind
-		quad.DrawShaded(fb, shadeCam(), goldenSun, engine.Palette(135))
+		quad.withColor(engine.Palette(135)).DrawShaded(fb, shadeCam(), goldenSun)
 		return fb
 	}},
 	{"ambient-only", func(t *testing.T) *engine.FrameBuffer {
@@ -148,7 +148,7 @@ var goldenScenes = []struct {
 		cube := Cube(2)
 		cube.Transform.Position = geometry.Vector3{Z: 5}
 		cube.Transform.Yaw = 0.6
-		cube.DrawShaded(fb, shadeCam(), goldenAmbientOnly, engine.Palette(208))
+		cube.withColor(engine.Palette(208)).DrawShaded(fb, shadeCam(), goldenAmbientOnly)
 		return fb
 	}},
 }

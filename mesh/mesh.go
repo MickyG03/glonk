@@ -9,8 +9,8 @@ import (
 )
 
 // Mesh describes an object that holds
-// model-space vertices, edges between them, triangle faces
-// and its placement in the world.
+// model-space vertices, edges between them, triangle faces,
+// its placement in the world and its look.
 //
 // Edges drive wireframe drawing and Faces drive shaded drawing; a mesh can have
 // either or both. Faces index into Vertices and are wound so the face normal,
@@ -29,6 +29,9 @@ type Mesh struct {
 
 	// Transform places the model in the world.
 	Transform Transform
+
+	// Material is how the model looks when it is drawn shaded.
+	Material Material
 
 	// DoubleSided draws faces from behind as well as from the front, lit as the
 	// side the camera sees. Use it for models wound the wrong way round (they
