@@ -4,7 +4,7 @@ All notable changes to glonk are written here. The format follows [Keep a Change
 
 ## Unreleased
 
-There has been no release yet. The API is pre-1.0 and **will** change before v0.1.0: the 2D API (sprites) is still planned to be reshaped. `Cell` and its colors, `Game` and `Run`, the 3D API and the test helpers have been. The README lists the known limits of what exists today.
+There has been no release yet. The API is pre-1.0 and may still change. The reshaping planned before v0.1.0 (`Cell` and its colors, `Game` and `Run`, the 3D API, the test helpers and the 2D API) is done. The README lists the known limits of what exists today.
 
 ### Added
 
@@ -30,7 +30,7 @@ There has been no release yet. The API is pre-1.0 and **will** change before v0.
 - Drawing does not panic on bad meshes, transforms or cameras: edges and faces that name a missing vertex are skipped, and a camera with nonsense values sees nothing.
 
 **sprite**, **geometry**
-- Single-cell `Sprite`s in drawing `Layer`s; `Vector2` and `Vector3`.
+- `Sprite` is an `engine.Cell` (character, colors, attributes) at a `geometry.Vector2` position, drawn in a `Layer` that can `Add`, `Remove`, `Clear` and count (`Len`) its sprites; a sprite replaces the whole cell under it. `Vector2` and `Vector3`.
 
 **Everything else**
 - Three example programs (`bounce2d`, `cube3d` and a model `viewer`), runnable examples in the package documentation, fuzz tests for the parsers, rasterizers and clipping, and a test that keeps the documentation complete.

@@ -171,7 +171,7 @@ To test a whole run (start-up, key bytes in, frames out), give `Config.Input` an
 | `engine` | The loop, `FrameBuffer`, pixel `Canvas`, drawing helpers, keyboard `Input` |
 | `geometry` | 2D and 3D vector math |
 | `mesh` | 3D meshes (wireframe and shaded), OBJ loading, lights, and the perspective `Camera` |
-| `sprite` | Single-cell sprites drawn in layers |
+| `sprite` | Sprites (a `Cell` at a position) drawn in layers |
 
 ## Compatibility and limits
 
