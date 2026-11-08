@@ -40,15 +40,24 @@ func TestCanvasIsSharedAndStable(t *testing.T) {
 	}
 }
 
+// pix is the Color for the small numbers these tests use as pixel colors: 0 is empty
+// (the zero Color) and any other number n is Palette(n).
+func pix(n uint8) Color {
+	if n == 0 {
+		return Color{}
+	}
+	return Palette(n)
+}
+
 func TestCanvasSetAndAt(t *testing.T) {
 	_, c := newTestCanvas(t, 3, 2)
 
-	c.Set(2, 3, 42)
+	c.Set(2, 3, pix(42))
 
-	if got := c.At(2, 3); got != 42 {
+	if got := c.At(2, 3); got != pix(42) {
 		t.Errorf("wanted 42, got %d", got)
 	}
-	if got := c.At(1, 3); got != 0 {
+	if got := c.At(1, 3); got != pix(0) {
 		t.Errorf("wanted an untouched pixel empty, got %d", got)
 	}
 }
@@ -57,18 +66,18 @@ func TestCanvasBounds(t *testing.T) {
 	_, c := newTestCanvas(t, 2, 2)
 
 	for _, p := range [][2]int{{-1, 0}, {0, -1}, {2, 0}, {0, 4}, {2, 4}} {
-		c.Set(p[0], p[1], 9)
-		if c.SetDepth(p[0], p[1], 1, 9) {
+		c.Set(p[0], p[1], pix(9))
+		if c.SetDepth(p[0], p[1], 1, pix(9)) {
 			t.Errorf("wanted SetDepth at %v to be ignored, got landed", p)
 		}
-		if got := c.At(p[0], p[1]); got != 0 {
+		if got := c.At(p[0], p[1]); got != pix(0) {
 			t.Errorf("wanted At%v to be empty, got %d", p, got)
 		}
 	}
 	for y := range c.Height() {
 		for x := range c.Width() {
-			if c.At(x, y) != 0 {
-				t.Errorf("wanted every pixel still empty, got %d at (%d,%d)", c.At(x, y), x, y)
+			if c.At(x, y) != pix(0) {
+				t.Errorf("wanted every pixel still empty, got %v at (%d,%d)", c.At(x, y), x, y)
 			}
 		}
 	}
@@ -92,13 +101,13 @@ func TestCanvasSetDepth(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			_, c := newTestCanvas(t, 2, 2)
 
-			if !c.SetDepth(1, 1, tt.first, 1) {
+			if !c.SetDepth(1, 1, tt.first, pix(1)) {
 				t.Fatalf("wanted the first write to an empty pixel to land")
 			}
-			if got := c.SetDepth(1, 1, tt.second, 2); got != tt.wantWrote {
+			if got := c.SetDepth(1, 1, tt.second, pix(2)); got != tt.wantWrote {
 				t.Errorf("wanted second write landed=%v, got %v", tt.wantWrote, got)
 			}
-			if got := c.At(1, 1); got != tt.want {
+			if got := c.At(1, 1); got != pix(tt.want) {
 				t.Errorf("wanted %d, got %d", tt.want, got)
 			}
 		})
@@ -108,13 +117,13 @@ func TestCanvasSetDepth(t *testing.T) {
 func TestCanvasSetDepthEdgeCases(t *testing.T) {
 	_, c := newTestCanvas(t, 1, 1)
 
-	if c.SetDepth(0, 0, math.NaN(), 7) {
+	if c.SetDepth(0, 0, math.NaN(), pix(7)) {
 		t.Errorf("wanted a NaN depth to be rejected, got landed")
 	}
-	if got := c.At(0, 0); got != 0 {
+	if got := c.At(0, 0); got != pix(0) {
 		t.Errorf("wanted the pixel to stay empty, got %d", got)
 	}
-	if !c.SetDepth(0, 0, math.MaxFloat64, 7) {
+	if !c.SetDepth(0, 0, math.MaxFloat64, pix(7)) {
 		t.Errorf("wanted any finite depth to beat an empty pixel, got rejected")
 	}
 }
@@ -122,16 +131,16 @@ func TestCanvasSetDepthEdgeCases(t *testing.T) {
 func TestCanvasSetIgnoresDepth(t *testing.T) {
 	_, c := newTestCanvas(t, 1, 1)
 
-	c.SetDepth(0, 0, 1, 1)
-	c.Set(0, 0, 2)
-	if got := c.At(0, 0); got != 2 {
+	c.SetDepth(0, 0, 1, pix(1))
+	c.Set(0, 0, pix(2))
+	if got := c.At(0, 0); got != pix(2) {
 		t.Errorf("wanted Set to overwrite regardless of depth, got %d", got)
 	}
 
-	if c.SetDepth(0, 0, 2, 3) {
+	if c.SetDepth(0, 0, 2, pix(3)) {
 		t.Errorf("wanted Set to leave depth at 1, but a farther write landed")
 	}
-	if !c.SetDepth(0, 0, 0.5, 4) {
+	if !c.SetDepth(0, 0, 0.5, pix(4)) {
 		t.Errorf("wanted Set to leave depth at 1, but a nearer write was rejected")
 	}
 }
@@ -139,13 +148,13 @@ func TestCanvasSetIgnoresDepth(t *testing.T) {
 func TestCanvasClear(t *testing.T) {
 	_, c := newTestCanvas(t, 2, 2)
 
-	c.SetDepth(1, 2, 1, 5)
+	c.SetDepth(1, 2, 1, pix(5))
 	c.Clear()
 
-	if got := c.At(1, 2); got != 0 {
+	if got := c.At(1, 2); got != pix(0) {
 		t.Errorf("wanted an empty pixel after Clear, got %d", got)
 	}
-	if !c.SetDepth(1, 2, 100, 6) {
+	if !c.SetDepth(1, 2, 100, pix(6)) {
 		t.Errorf("wanted a farther write to land after Clear, got rejected")
 	}
 }
@@ -153,13 +162,13 @@ func TestCanvasClear(t *testing.T) {
 func TestFrameBufferClearClearsCanvas(t *testing.T) {
 	fb, c := newTestCanvas(t, 2, 2)
 
-	c.SetDepth(0, 0, 1, 5)
+	c.SetDepth(0, 0, 1, pix(5))
 	fb.Clear()
 
-	if got := c.At(0, 0); got != 0 {
+	if got := c.At(0, 0); got != pix(0) {
 		t.Errorf("wanted FrameBuffer.Clear to empty the canvas, got %d", got)
 	}
-	if !c.SetDepth(0, 0, 100, 6) {
+	if !c.SetDepth(0, 0, 100, pix(6)) {
 		t.Errorf("wanted FrameBuffer.Clear to reset canvas depth, got rejected")
 	}
 }
@@ -170,18 +179,18 @@ func TestCanvasCompose(t *testing.T) {
 		top, bottom uint8
 		want        Cell
 	}{
-		{"both empty leaves the cell alone", 0, 0, Cell{Character: 'x', Color: 9, Background: 8}},
-		{"equal pixels are a solid background", 5, 5, Cell{Character: ' ', Background: 5}},
-		{"two colors", 5, 6, Cell{Character: '▀', Color: 5, Background: 6}},
-		{"two colors, other way round", 6, 5, Cell{Character: '▀', Color: 6, Background: 5}},
-		{"top only", 5, 0, Cell{Character: '▀', Color: 5}},
-		{"bottom only", 0, 6, Cell{Character: '▄', Color: 6}},
+		{"both empty leaves the cell alone", 0, 0, Cell{Character: 'x', Foreground: pix(9), Background: pix(8)}},
+		{"equal pixels are a solid background", 5, 5, Cell{Character: ' ', Background: pix(5)}},
+		{"two colors", 5, 6, Cell{Character: '▀', Foreground: pix(5), Background: pix(6)}},
+		{"two colors, other way round", 6, 5, Cell{Character: '▀', Foreground: pix(6), Background: pix(5)}},
+		{"top only", 5, 0, Cell{Character: '▀', Foreground: pix(5)}},
+		{"bottom only", 0, 6, Cell{Character: '▄', Foreground: pix(6)}},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			fb, c := newTestCanvas(t, 3, 2)
-			sentinel := Cell{Character: 'x', Color: 9, Background: 8}
+			sentinel := Cell{Character: 'x', Foreground: pix(9), Background: pix(8)}
 			for y := range 2 {
 				for x := range 3 {
 					fb.Set(x, y, sentinel)
@@ -189,8 +198,8 @@ func TestCanvasCompose(t *testing.T) {
 			}
 
 			// Cell (1,1) covers pixel rows 2 and 3.
-			c.Set(1, 2, tt.top)
-			c.Set(1, 3, tt.bottom)
+			c.Set(1, 2, pix(tt.top))
+			c.Set(1, 3, pix(tt.bottom))
 			c.Compose()
 
 			if got := fb.At(1, 1); got != tt.want {
@@ -209,24 +218,24 @@ func TestCanvasComposeMapsPixelRowsToCells(t *testing.T) {
 	fb, c := newTestCanvas(t, 2, 3)
 
 	// One pixel per cell row, always on the top line of the cell.
-	c.Set(0, 0, 1)
-	c.Set(0, 2, 2)
-	c.Set(0, 4, 3)
+	c.Set(0, 0, pix(1))
+	c.Set(0, 2, pix(2))
+	c.Set(0, 4, pix(3))
 	// And one on the bottom line only.
-	c.Set(1, 5, 4)
+	c.Set(1, 5, pix(4))
 	c.Compose()
 
 	want := []Cell{
-		{Character: '▀', Color: 1},
-		{Character: '▀', Color: 2},
-		{Character: '▀', Color: 3},
+		{Character: '▀', Foreground: pix(1)},
+		{Character: '▀', Foreground: pix(2)},
+		{Character: '▀', Foreground: pix(3)},
 	}
 	for row, w := range want {
 		if got := fb.At(0, row); got != w {
 			t.Errorf("wanted %+v at (0,%d), got %+v", w, row, got)
 		}
 	}
-	if got, w := fb.At(1, 2), (Cell{Character: '▄', Color: 4}); got != w {
+	if got, w := fb.At(1, 2), (Cell{Character: '▄', Foreground: pix(4)}); got != w {
 		t.Errorf("wanted %+v at (1,2), got %+v", w, got)
 	}
 	if got := fb.At(1, 0); got != BlankCell {
@@ -240,7 +249,7 @@ func TestCanvasComposeLayering(t *testing.T) {
 
 	fb.Set(0, 0, Cell{Character: 'a'})
 	fb.Set(1, 0, Cell{Character: 'b'})
-	c.Set(0, 0, 5)
+	c.Set(0, 0, pix(5))
 	c.Compose()
 	fb.Set(1, 0, Cell{Character: 'h'})
 
@@ -256,7 +265,7 @@ func TestCanvasFillTriangleUsesPixelRows(t *testing.T) {
 	fb, c := newTestCanvas(t, 4, 2)
 
 	// A pixel triangle covering the left half of every pixel row.
-	c.FillTriangle(0, 0, 1, 2, 0, 1, 0, 4, 1, 7)
+	c.FillTriangle(0, 0, 1, 2, 0, 1, 0, 4, 1, pix(7))
 
 	// Row 0 of pixels is 2 wide, row 1 is 1 wide, then 1 wide, then none.
 	want := [][]uint8{
@@ -267,14 +276,14 @@ func TestCanvasFillTriangleUsesPixelRows(t *testing.T) {
 	}
 	for y, row := range want {
 		for x, w := range row {
-			if got := c.At(x, y); got != w {
+			if got := c.At(x, y); got != pix(w) {
 				t.Errorf("wanted pixel (%d,%d)=%d, got %d", x, y, w, got)
 			}
 		}
 	}
 
 	c.Compose()
-	if got := fb.At(0, 0); got != (Cell{Character: ' ', Background: 7}) {
+	if got := fb.At(0, 0); got != (Cell{Character: ' ', Background: pix(7)}) {
 		t.Errorf("wanted cell (0,0) solid after compose, got %+v", got)
 	}
 }
@@ -283,13 +292,13 @@ func TestCanvasFillTriangleDepth(t *testing.T) {
 	_, c := newTestCanvas(t, 2, 2)
 	big := [6]float64{-100, -100, 300, -100, -100, 300}
 
-	c.FillTriangle(big[0], big[1], 5, big[2], big[3], 5, big[4], big[5], 5, 1)
-	c.FillTriangle(big[0], big[1], 2, big[2], big[3], 2, big[4], big[5], 2, 2)
-	c.FillTriangle(big[0], big[1], 9, big[2], big[3], 9, big[4], big[5], 9, 3)
+	c.FillTriangle(big[0], big[1], 5, big[2], big[3], 5, big[4], big[5], 5, pix(1))
+	c.FillTriangle(big[0], big[1], 2, big[2], big[3], 2, big[4], big[5], 2, pix(2))
+	c.FillTriangle(big[0], big[1], 9, big[2], big[3], 9, big[4], big[5], 9, pix(3))
 
 	for y := range c.Height() {
 		for x := range c.Width() {
-			if got := c.At(x, y); got != 2 {
+			if got := c.At(x, y); got != pix(2) {
 				t.Errorf("wanted the nearest triangle at (%d,%d), got %d", x, y, got)
 			}
 		}
@@ -334,10 +343,10 @@ func TestCanvasSeamlessOverridesDetection(t *testing.T) {
 	}
 	c := fb.Canvas()
 	c.Seamless = false
-	c.Set(0, 0, 5)
+	c.Set(0, 0, pix(5))
 	c.Compose()
 
-	if got := fb.At(0, 0); got != (Cell{Character: '▀', Color: 5}) {
+	if got := fb.At(0, 0); got != (Cell{Character: '▀', Foreground: pix(5)}) {
 		t.Errorf("wanted exact mode after turning Seamless off, got %+v", got)
 	}
 }
@@ -351,9 +360,9 @@ func TestCanvasComposeSeamless(t *testing.T) {
 		switch {
 		case p.color == 0:
 		case p.depth == 0:
-			c.Set(x, y, p.color)
+			c.Set(x, y, pix(p.color))
 		default:
-			c.SetDepth(x, y, p.depth, p.color)
+			c.SetDepth(x, y, p.depth, pix(p.color))
 		}
 	}
 
@@ -362,23 +371,23 @@ func TestCanvasComposeSeamless(t *testing.T) {
 		top, bottom px
 		want        Cell
 	}{
-		{"both empty leaves the cell alone", px{}, px{}, Cell{Character: 'x', Color: 9, Background: 8}},
-		{"top only", px{5, 3}, px{}, Cell{Character: ' ', Background: 5}},
-		{"bottom only", px{}, px{6, 3}, Cell{Character: ' ', Background: 6}},
-		{"equal colors", px{5, 3}, px{5, 4}, Cell{Character: ' ', Background: 5}},
-		{"top is nearer", px{5, 2}, px{6, 3}, Cell{Character: ' ', Background: 5}},
-		{"bottom is nearer", px{5, 3}, px{6, 2}, Cell{Character: ' ', Background: 6}},
-		{"equal depth goes to the top", px{5, 3}, px{6, 3}, Cell{Character: ' ', Background: 5}},
-		{"depthless pixels go to the top", px{5, 0}, px{6, 0}, Cell{Character: ' ', Background: 5}},
-		{"a depth beats a depthless pixel below", px{5, 0}, px{6, 9}, Cell{Character: ' ', Background: 6}},
-		{"a depth beats a depthless pixel above", px{5, 9}, px{6, 0}, Cell{Character: ' ', Background: 5}},
+		{"both empty leaves the cell alone", px{}, px{}, Cell{Character: 'x', Foreground: pix(9), Background: pix(8)}},
+		{"top only", px{5, 3}, px{}, Cell{Character: ' ', Background: pix(5)}},
+		{"bottom only", px{}, px{6, 3}, Cell{Character: ' ', Background: pix(6)}},
+		{"equal colors", px{5, 3}, px{5, 4}, Cell{Character: ' ', Background: pix(5)}},
+		{"top is nearer", px{5, 2}, px{6, 3}, Cell{Character: ' ', Background: pix(5)}},
+		{"bottom is nearer", px{5, 3}, px{6, 2}, Cell{Character: ' ', Background: pix(6)}},
+		{"equal depth goes to the top", px{5, 3}, px{6, 3}, Cell{Character: ' ', Background: pix(5)}},
+		{"depthless pixels go to the top", px{5, 0}, px{6, 0}, Cell{Character: ' ', Background: pix(5)}},
+		{"a depth beats a depthless pixel below", px{5, 0}, px{6, 9}, Cell{Character: ' ', Background: pix(6)}},
+		{"a depth beats a depthless pixel above", px{5, 9}, px{6, 0}, Cell{Character: ' ', Background: pix(5)}},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			fb, c := newTestCanvas(t, 3, 2)
 			c.Seamless = true
-			sentinel := Cell{Character: 'x', Color: 9, Background: 8}
+			sentinel := Cell{Character: 'x', Foreground: pix(9), Background: pix(8)}
 			for y := range 2 {
 				for x := range 3 {
 					fb.Set(x, y, sentinel)
@@ -409,7 +418,7 @@ func TestCanvasComposeSeamlessNeverUsesBlockCharacters(t *testing.T) {
 	for y := range c.Height() {
 		for x := range c.Width() {
 			if (x+y)%3 != 0 {
-				c.Set(x, y, uint8(1+(x*7+y*3)%200))
+				c.Set(x, y, pix(uint8(1+(x*7+y*3)%200)))
 			}
 		}
 	}
@@ -417,7 +426,7 @@ func TestCanvasComposeSeamlessNeverUsesBlockCharacters(t *testing.T) {
 
 	for y := range fb.Height() {
 		for x := range fb.Width() {
-			if got := fb.At(x, y); got.Character == '▀' || got.Character == '▄' || got.Color != 0 {
+			if got := fb.At(x, y); got.Character == '▀' || got.Character == '▄' || !got.Foreground.IsDefault() {
 				t.Fatalf("wanted only solid cells, got %+v at (%d,%d)", got, x, y)
 			}
 		}
@@ -429,12 +438,12 @@ func TestCanvasComposeSeamlessIgnoresErasedPixelDepth(t *testing.T) {
 	fb, c := newTestCanvas(t, 1, 1)
 	c.Seamless = true
 
-	c.SetDepth(0, 0, 5, 3)
-	c.SetDepth(0, 1, 1, 6)
-	c.Set(0, 1, 0)
+	c.SetDepth(0, 0, 5, pix(3))
+	c.SetDepth(0, 1, 1, pix(6))
+	c.Set(0, 1, pix(0))
 	c.Compose()
 
-	if got, want := fb.At(0, 0), (Cell{Character: ' ', Background: 3}); got != want {
+	if got, want := fb.At(0, 0), (Cell{Character: ' ', Background: pix(3)}); got != want {
 		t.Errorf("wanted %+v, got %+v", want, got)
 	}
 }
@@ -509,13 +518,79 @@ func TestResizedStartsBlank(t *testing.T) {
 		t.Fatal(err)
 	}
 	old.Set(1, 1, Cell{Character: 'x'})
-	old.Canvas().Set(1, 1, 5)
+	old.Canvas().Set(1, 1, Palette(5))
 
 	got, err := old.resized(4, 2)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.At(1, 1) != BlankCell || got.Canvas().At(1, 1) != 0 {
-		t.Errorf("wanted a blank frame and canvas, got %v and %d", got.At(1, 1), got.Canvas().At(1, 1))
+	if got.At(1, 1) != BlankCell || !got.Canvas().At(1, 1).IsDefault() {
+		t.Errorf("wanted a blank frame and canvas, got %v and %v", got.At(1, 1), got.Canvas().At(1, 1))
+	}
+}
+
+func TestCanvasBlackIsARealPixel(t *testing.T) {
+	fb, err := NewFrameBuffer(2, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := fb.Canvas()
+	c.Set(0, 0, Palette(0))
+	c.Set(1, 0, RGB(0, 0, 0))
+
+	if got := c.At(0, 0); got != Palette(0) || got.IsDefault() {
+		t.Errorf("wanted palette black kept as a pixel, got %v", got)
+	}
+	if got := c.At(1, 0); got != RGB(0, 0, 0) || got.IsDefault() {
+		t.Errorf("wanted RGB black kept as a pixel, got %v", got)
+	}
+
+	c.Compose()
+	if got := fb.At(0, 0); got != (Cell{Character: '▀', Foreground: Palette(0)}) {
+		t.Errorf("wanted a black upper half block, got %+v", got)
+	}
+	if got := fb.At(1, 0); got != (Cell{Character: '▀', Foreground: RGB(0, 0, 0)}) {
+		t.Errorf("wanted an RGB black upper half block, got %+v", got)
+	}
+}
+
+func TestCanvasComposesRGBPixels(t *testing.T) {
+	fb, err := NewFrameBuffer(3, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := fb.Canvas()
+	c.Set(0, 0, RGB(10, 20, 30))
+	c.Set(0, 1, Palette(7))
+	c.Set(1, 0, RGB(1, 2, 3))
+	c.Set(1, 1, RGB(1, 2, 3))
+	c.Set(2, 1, RGB(9, 9, 9))
+	c.Compose()
+
+	if got, want := fb.At(0, 0), (Cell{Character: '▀', Foreground: RGB(10, 20, 30), Background: Palette(7)}); got != want {
+		t.Errorf("wanted %+v, got %+v", want, got)
+	}
+	if got, want := fb.At(1, 0), (Cell{Character: ' ', Background: RGB(1, 2, 3)}); got != want {
+		t.Errorf("wanted a solid cell for equal RGB pixels, got %+v", got)
+	}
+	if got, want := fb.At(2, 0), (Cell{Character: '▄', Foreground: RGB(9, 9, 9)}); got != want {
+		t.Errorf("wanted a lower half block, got %+v", got)
+	}
+}
+
+// An RGB pixel and the palette pixel that looks like it are different colors, so they
+// do not merge into one solid cell.
+func TestCanvasKeepsRGBAndPaletteApart(t *testing.T) {
+	fb, err := NewFrameBuffer(1, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := fb.Canvas()
+	c.Set(0, 0, Palette(196))
+	c.Set(0, 1, RGB(255, 0, 0))
+	c.Compose()
+
+	if got := fb.At(0, 0); got.Character != '▀' {
+		t.Errorf("wanted a half block for two different colors, got %+v", got)
 	}
 }

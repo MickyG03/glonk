@@ -90,7 +90,7 @@ type pointCell struct {
 func TestDrawText(t *testing.T) {
 	width := 10
 	height := 10
-	var color uint8 = 7
+	color := Palette(7)
 
 	var tests = []struct {
 		name string
@@ -175,7 +175,7 @@ func TestDrawText(t *testing.T) {
 
 			wantCells := map[int]Cell{}
 			for _, p := range tt.want {
-				wantCells[getIndex(p.X, p.Y, width)] = Cell{Character: p.Value, Color: color}
+				wantCells[getIndex(p.X, p.Y, width)] = Cell{Character: p.Value, Foreground: color}
 			}
 
 			assertFrameEquals(t, wantCells, nfb)
@@ -183,7 +183,7 @@ func TestDrawText(t *testing.T) {
 	}
 }
 
-func assertRows(t *testing.T, fb *FrameBuffer, rows []string, color uint8) {
+func assertRows(t *testing.T, fb *FrameBuffer, rows []string, color Color) {
 	t.Helper()
 
 	if len(rows) != fb.Height() {
@@ -208,8 +208,8 @@ func assertRows(t *testing.T, fb *FrameBuffer, rows []string, color uint8) {
 					t.Errorf("wanted %v at (%d,%d), got %v", r, x, y, got.Character)
 				}
 
-				if color != got.Color {
-					t.Errorf("wanted %v at (%d,%d), got %v", color, x, y, got.Color)
+				if color != got.Foreground {
+					t.Errorf("wanted %v at (%d,%d), got %v", color, x, y, got.Foreground)
 				}
 			}
 		}
@@ -253,9 +253,9 @@ func TestDrawBox(t *testing.T) {
 				t.Fatalf("failed to initialize framebuffer: %v", err)
 			}
 
-			nfb.DrawBox(tt.x, tt.y, tt.w, tt.h, tt.color)
+			nfb.DrawBox(tt.x, tt.y, tt.w, tt.h, pix(tt.color))
 
-			assertRows(t, nfb, tt.want, tt.color)
+			assertRows(t, nfb, tt.want, pix(tt.color))
 		})
 	}
 }
@@ -362,7 +362,7 @@ func TestFillTriangle(t *testing.T) {
 			c := tt.c
 			fb.FillTriangle(c[0], c[1], 1, c[2], c[3], 1, c[4], c[5], 1, mark)
 
-			assertRows(t, fb, tt.want, 0)
+			assertRows(t, fb, tt.want, Color{})
 		})
 	}
 }
@@ -442,7 +442,7 @@ func TestFillTriangleOnlyHidesWhereCovered(t *testing.T) {
 	fb.FillTriangle(0, 0, 9, 4, 4, 9, 0, 4, 9, Cell{Character: 'f'})
 	fb.FillTriangle(0, 0, 1, 4, 0, 1, 0, 4, 1, Cell{Character: 'n'})
 
-	assertRows(t, fb, []string{"nnnn", "nnnf", "nnff", "nfff"}, 0)
+	assertRows(t, fb, []string{"nnnn", "nnnf", "nnff", "nfff"}, Color{})
 }
 
 // 1/z, not z, varies linearly on screen; interpolating z would give 1.375 here.
@@ -470,7 +470,7 @@ func TestFillTriangleRejectsBadDepth(t *testing.T) {
 
 		fb.FillTriangle(-100, -100, z, 300, -100, 1, -100, 300, 1, Cell{Character: '#'})
 
-		assertRows(t, fb, []string{"    ", "    ", "    ", "    "}, 0)
+		assertRows(t, fb, []string{"    ", "    ", "    ", "    "}, Color{})
 	}
 }
 

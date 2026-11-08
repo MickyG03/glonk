@@ -45,11 +45,12 @@ var attrCodes = [...]struct {
 // paletteIndex returns the palette color to write for c. An RGB color is written as
 // the nearest palette color until true color is supported. ok is false for the default.
 func (c Color) paletteIndex() (index uint8, ok bool) {
-	switch c.kind {
+	switch c.kind() {
 	case colorPalette:
-		return c.a, true
+		return uint8(c.bits), true
 	case colorRGB:
-		return nearestPalette(float64(c.a), float64(c.b), float64(c.c)), true
+		r, g, b := c.rgb()
+		return nearestPalette(float64(r), float64(g), float64(b)), true
 	}
 	return 0, false
 }
@@ -71,9 +72,11 @@ func (sb *sequenceBuilder) SetStyle(from, to style) {
 		from = style{}
 	}
 
-	for _, a := range attrCodes {
-		if to.attrs&a.attr != 0 && from.attrs&a.attr == 0 {
-			sb.Print(a.code)
+	if added := to.attrs &^ from.attrs; added != 0 {
+		for _, a := range attrCodes {
+			if added&a.attr != 0 {
+				sb.Print(a.code)
+			}
 		}
 	}
 	if to.fg != from.fg {

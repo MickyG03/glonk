@@ -332,8 +332,8 @@ func TestColorAndDrawStyleReachTheScreen(t *testing.T) {
 
 		fb := drawAll(t, v)
 		for _, c := range modelCells(fb) {
-			if got := fb.At(c[0], c[1]).Color; got != want {
-				t.Fatalf("color %d: wanted palette color %d, got %d at %v", i, want, got, c)
+			if got := fb.At(c[0], c[1]).Foreground; got != want {
+				t.Fatalf("color %d: wanted %v, got %v at %v", i, want, got, c)
 			}
 		}
 	}
@@ -375,15 +375,15 @@ func TestTwoSidedShowsABackwardsModel(t *testing.T) {
 func TestColorReachesHalfBlockPixels(t *testing.T) {
 	models := loadSamples(t)
 
-	shades := func(color int) map[uint8]bool {
+	shades := func(color int) map[engine.Color]bool {
 		v := newViewer(models)
 		v.halfBlocks, v.color = true, color
 		fb := drawAll(t, v)
 
-		seen := map[uint8]bool{}
+		seen := map[engine.Color]bool{}
 		for _, c := range modelCells(fb) {
 			cell := fb.At(c[0], c[1])
-			seen[cell.Color] = true
+			seen[cell.Foreground] = true
 			seen[cell.Background] = true
 		}
 		return seen

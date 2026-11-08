@@ -75,13 +75,13 @@ func (bg *bounceGame) Update(dt float64, in *engine.Input) error {
 func (bg *bounceGame) Draw(fb *engine.FrameBuffer) {
 	bg.width, bg.height = fb.Width(), fb.Height()
 
-	fb.DrawBox(0, 0, fb.Width(), fb.Height(), 0)
+	fb.DrawBox(0, 0, fb.Width(), fb.Height(), engine.Color{})
 	bg.layer.Draw(fb)
 
 	// On the bottom border, where the ball never goes. Skipped when it would run into
 	// the corners.
 	if fb.Width() >= len(hint)+4 {
-		fb.DrawText(2, fb.Height()-1, hint, 0)
+		fb.DrawText(2, fb.Height()-1, hint, engine.Color{})
 	}
 }
 

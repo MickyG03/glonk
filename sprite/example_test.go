@@ -14,7 +14,7 @@ func ExampleLayer() {
 	if err != nil {
 		panic(err)
 	}
-	fb.DrawBox(0, 0, fb.Width(), fb.Height(), 0)
+	fb.DrawBox(0, 0, fb.Width(), fb.Height(), engine.Color{})
 
 	layer := sprite.NewLayer()
 	layer.Add(sprite.New(1.9, 1, 'a')) // a fraction is floored: column 1

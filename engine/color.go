@@ -21,35 +21,39 @@ const (
 // Colors compare with ==. Until truecolor output is supported, an RGB color is shown
 // as the closest of the palette colors 16 to 255.
 type Color struct {
-	kind colorKind
-	// a is the palette index; a, b and c are red, green and blue for an RGB color.
-	a, b, c uint8
+	// bits holds the kind in the top byte, and below it the palette index, or the red,
+	// green and blue. One word, so that comparing two colors is one comparison, which
+	// matters when every cell of a frame is compared with the one before it.
+	bits uint32
 }
+
+// kind says what c holds.
+func (c Color) kind() colorKind { return colorKind(c.bits >> 24) }
 
 // Palette returns the palette color with the given index: 0 to 7 are the standard
 // colors, 8 to 15 their bright versions, 16 to 231 a 6x6x6 color cube, and 232 to 255
 // a gray ramp. Colors 0 to 15 are whatever the user's theme says; the rest are fixed.
 func Palette(index uint8) Color {
-	return Color{kind: colorPalette, a: index}
+	return Color{bits: uint32(colorPalette)<<24 | uint32(index)}
 }
 
 // RGB returns the color with the given red, green and blue, each 0 to 255.
 func RGB(r, g, b uint8) Color {
-	return Color{kind: colorRGB, a: r, b: g, c: b}
+	return Color{bits: uint32(colorRGB)<<24 | uint32(r)<<16 | uint32(g)<<8 | uint32(b)}
 }
 
 // IsDefault reports whether c is the terminal's default color.
 func (c Color) IsDefault() bool {
-	return c.kind == colorDefault
+	return c.kind() == colorDefault
 }
 
 // String describes c: "default", "palette(208)" or "#ff8700".
 func (c Color) String() string {
-	switch c.kind {
+	switch c.kind() {
 	case colorPalette:
-		return fmt.Sprintf("palette(%d)", c.a)
+		return fmt.Sprintf("palette(%d)", uint8(c.bits))
 	case colorRGB:
-		return fmt.Sprintf("#%02x%02x%02x", c.a, c.b, c.c)
+		return fmt.Sprintf("#%02x%02x%02x", uint8(c.bits>>16), uint8(c.bits>>8), uint8(c.bits))
 	}
 	return "default"
 }
@@ -57,12 +61,12 @@ func (c Color) String() string {
 // rgb returns the red, green and blue of c. A palette color is read as xterm
 // defines it, and the default, which is whatever the terminal likes, as black.
 func (c Color) rgb() (r, g, b uint8) {
-	switch c.kind {
+	switch c.kind() {
 	case colorPalette:
-		p := paletteRGB[c.a]
+		p := paletteRGB[uint8(c.bits)]
 		return uint8(p[0]), uint8(p[1]), uint8(p[2])
 	case colorRGB:
-		return c.a, c.b, c.c
+		return uint8(c.bits >> 16), uint8(c.bits >> 8), uint8(c.bits)
 	}
 	return 0, 0, 0
 }
@@ -136,21 +140,23 @@ func nearestPalette(r, g, b float64) uint8 {
 	return uint8(cube)
 }
 
-// Shade returns the palette color closest to color scaled to the given brightness:
-// 1 is color as it is, 0 is black. Intensity outside 0 to 1 is clamped and NaN is
-// treated as 0. Colors 0 to 15 vary with the user's theme, so they are read as
-// xterm's defaults, and color 0 is read as black. The result is always in 16 to 255,
-// never 0, so a shaded pixel stays visible; black comes out as 16.
-func Shade(color uint8, intensity float64) uint8 {
+// Shade returns color scaled to the given brightness: 1 is color as it is, 0 is
+// black. Intensity outside 0 to 1 is clamped and NaN is treated as 0.
+//
+// A palette color gives the palette color from 16 to 255 closest to the scaled color,
+// never colors 0 to 15, which vary with the user's theme (they are read as xterm's
+// defaults). An RGB color gives the RGB color scaled exactly. The default color is
+// read as black. Black comes out as Palette(16), or RGB(0, 0, 0) for an RGB color.
+func Shade(color Color, intensity float64) Color {
 	if math.IsNaN(intensity) {
 		intensity = 0
 	}
 	intensity = min(max(intensity, 0), 1)
 
-	base := paletteRGB[color]
-	return nearestPalette(
-		float64(base[0])*intensity,
-		float64(base[1])*intensity,
-		float64(base[2])*intensity,
-	)
+	r, g, b := color.rgb()
+	if color.kind() == colorRGB {
+		scale := func(v uint8) uint8 { return uint8(math.Round(float64(v) * intensity)) }
+		return RGB(scale(r), scale(g), scale(b))
+	}
+	return Palette(nearestPalette(float64(r)*intensity, float64(g)*intensity, float64(b)*intensity))
 }

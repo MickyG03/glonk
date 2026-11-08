@@ -686,7 +686,7 @@ func TestLoadOBJFrontFacesTheCamera(t *testing.T) {
 
 	front := Camera{Position: geometry.Vector3{Z: -5}, FOV: math.Pi / 2, Near: 0.1}
 	fb := newShadeBuffer(t)
-	m.DrawShaded(fb, front, light, 1)
+	m.DrawShaded(fb, front, light, engine.Palette(1))
 	cells := drawn(fb)
 	if len(cells) == 0 {
 		t.Fatalf("wanted the front of the model visible from the -Z side")
@@ -700,7 +700,7 @@ func TestLoadOBJFrontFacesTheCamera(t *testing.T) {
 	// From the other side it is the back, and is culled.
 	back := Camera{Position: geometry.Vector3{Z: 5}, Yaw: math.Pi, FOV: math.Pi / 2, Near: 0.1}
 	fb = newShadeBuffer(t)
-	m.DrawShaded(fb, back, light, 1)
+	m.DrawShaded(fb, back, light, engine.Palette(1))
 	if cells := drawn(fb); len(cells) != 0 {
 		t.Errorf("wanted the back of the model culled, got %d cells", len(cells))
 	}

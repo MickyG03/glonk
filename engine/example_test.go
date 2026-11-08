@@ -32,8 +32,8 @@ func (w *walker) Update(dt float64, in *engine.Input) error {
 }
 
 func (w *walker) Draw(fb *engine.FrameBuffer) {
-	fb.DrawBox(0, 0, fb.Width(), fb.Height(), 0)
-	fb.Set(int(w.x)%fb.Width(), fb.Height()/2, engine.Cell{Character: '@', Color: 208})
+	fb.DrawBox(0, 0, fb.Width(), fb.Height(), engine.Color{})
+	fb.Set(int(w.x)%fb.Width(), fb.Height()/2, engine.Cell{Character: '@', Foreground: engine.Palette(208)})
 }
 
 // Run takes over the terminal until the game quits, the user presses Ctrl-C, or the
@@ -53,8 +53,8 @@ func ExampleFrameBuffer_DrawText() {
 		panic(err)
 	}
 
-	fb.DrawBox(0, 0, fb.Width(), fb.Height(), 0)
-	fb.DrawText(2, 1, "hello, glonk", 0)
+	fb.DrawBox(0, 0, fb.Width(), fb.Height(), engine.Color{})
+	fb.DrawText(2, 1, "hello, glonk", engine.Color{})
 
 	printFrame(fb)
 	// Output:
@@ -73,7 +73,7 @@ func ExampleCanvas() {
 
 	canvas := fb.Canvas()
 	for x := range canvas.Width() {
-		canvas.Set(x, x%canvas.Height(), 196) // a zigzag in palette color 196
+		canvas.Set(x, x%canvas.Height(), engine.Palette(196)) // a zigzag in palette color 196
 	}
 	canvas.Compose()
 
@@ -84,8 +84,8 @@ func ExampleCanvas() {
 }
 
 func ExampleShade() {
-	const red = 196
+	red := engine.Palette(196)
 	fmt.Println(engine.Shade(red, 1), engine.Shade(red, 0.5), engine.Shade(red, 0))
 	// Output:
-	// 196 88 16
+	// palette(196) palette(88) palette(16)
 }

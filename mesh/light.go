@@ -107,9 +107,9 @@ func (m Mesh) eachShadedTriangle(cam Camera, light Light, w, h int, fn func(corn
 // Draw for wireframes.
 //
 // Brightness is shown by the character: a ramp from dim to bright.
-func (m Mesh) DrawShaded(fb *engine.FrameBuffer, cam Camera, light Light, color uint8) {
+func (m Mesh) DrawShaded(fb *engine.FrameBuffer, cam Camera, light Light, color engine.Color) {
 	m.eachShadedTriangle(cam, light, fb.Width(), fb.Height(), func(c [3]screenPoint, intensity float64) {
-		cell := engine.Cell{Character: shadeChar(intensity), Color: color}
+		cell := engine.Cell{Character: shadeChar(intensity), Foreground: color}
 		fb.FillTriangle(c[0].x, c[0].y, c[0].z, c[1].x, c[1].y, c[1].z, c[2].x, c[2].y, c[2].z, cell)
 	})
 }
@@ -118,7 +118,7 @@ func (m Mesh) DrawShaded(fb *engine.FrameBuffer, cam Camera, light Light, color 
 // clipping and depth rules, but brightness is shown by the color (a darker or
 // lighter shade of color) and there are twice as many rows, so edges are finer.
 // Call Canvas.Compose afterwards to put the pixels into the FrameBuffer.
-func (m Mesh) DrawShadedPixels(c *engine.Canvas, cam Camera, light Light, color uint8) {
+func (m Mesh) DrawShadedPixels(c *engine.Canvas, cam Camera, light Light, color engine.Color) {
 	// Project onto the cell grid the canvas belongs to, then stretch y to pixel rows.
 	m.eachShadedTriangle(cam, light, c.Width(), c.Height()/2, func(p [3]screenPoint, intensity float64) {
 		shade := engine.Shade(color, intensity)

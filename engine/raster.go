@@ -110,7 +110,7 @@ func walkLine(w, h, x0, y0, x1, y1 int, plot func(x, y int)) {
 // (tab, newline, escape) or a wide one (CJK, emoji) is drawn as '?', and NUL as a
 // space. Combining marks and joiners have no column of their own and are skipped,
 // so "e" followed by an accent draws a plain "e".
-func (fb *FrameBuffer) DrawText(x, y int, text string, color uint8) {
+func (fb *FrameBuffer) DrawText(x, y int, text string, color Color) {
 	col := x
 
 	for _, r := range text {
@@ -120,27 +120,27 @@ func (fb *FrameBuffer) DrawText(x, y int, text string, color uint8) {
 		if runeWidth(r) == 0 {
 			continue
 		}
-		fb.Set(col, y, Cell{Character: safeRune(r), Color: color})
+		fb.Set(col, y, Cell{Character: safeRune(r), Foreground: color})
 		col++
 	}
 }
 
 // DrawBox draws a w x h border at (x, y). A box smaller than 2x2 draws nothing.
-func (fb *FrameBuffer) DrawBox(x, y, w, h int, color uint8) {
+func (fb *FrameBuffer) DrawBox(x, y, w, h int, color Color) {
 	if w < 2 || h < 2 {
 		return
 	}
 	x1 := x + w - 1
 	y1 := y + h - 1
 
-	fb.DrawLine(x, y, x1, y, Cell{Character: '─', Color: color})
-	fb.DrawLine(x, y1, x1, y1, Cell{Character: '─', Color: color})
-	fb.DrawLine(x, y, x, y1, Cell{Character: '│', Color: color})
-	fb.DrawLine(x1, y, x1, y1, Cell{Character: '│', Color: color})
-	fb.Set(x, y, Cell{Character: '┌', Color: color})
-	fb.Set(x1, y, Cell{Character: '┐', Color: color})
-	fb.Set(x, y1, Cell{Character: '└', Color: color})
-	fb.Set(x1, y1, Cell{Character: '┘', Color: color})
+	fb.DrawLine(x, y, x1, y, Cell{Character: '─', Foreground: color})
+	fb.DrawLine(x, y1, x1, y1, Cell{Character: '─', Foreground: color})
+	fb.DrawLine(x, y, x, y1, Cell{Character: '│', Foreground: color})
+	fb.DrawLine(x1, y, x1, y1, Cell{Character: '│', Foreground: color})
+	fb.Set(x, y, Cell{Character: '┌', Foreground: color})
+	fb.Set(x1, y, Cell{Character: '┐', Foreground: color})
+	fb.Set(x, y1, Cell{Character: '└', Foreground: color})
+	fb.Set(x1, y1, Cell{Character: '┘', Foreground: color})
 }
 
 // triangleEps lets a cell centre that sits exactly on an edge count as inside

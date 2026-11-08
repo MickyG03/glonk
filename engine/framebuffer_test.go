@@ -232,17 +232,17 @@ func TestPresentColor(t *testing.T) {
 	}{
 		{
 			"same color across",
-			[][]Cell{{{Character: 'a', Color: 1}, {Character: 'b', Color: 1}, {Character: 'c', Color: 0}}},
+			[][]Cell{{{Character: 'a', Foreground: pix(1)}, {Character: 'b', Foreground: pix(1)}, {Character: 'c', Foreground: pix(0)}}},
 			"\x1b[1;1H\x1b[38;5;1mab\x1b[0mc",
 		},
 		{
 			"color changes",
-			[][]Cell{{{Character: 'a', Color: 1}, {Character: 'b', Color: 2}}},
+			[][]Cell{{{Character: 'a', Foreground: pix(1)}, {Character: 'b', Foreground: pix(2)}}},
 			"\x1b[1;1H\x1b[38;5;1ma\x1b[38;5;2mb\x1b[0m",
 		},
 		{
 			"row ends colored",
-			[][]Cell{{{Character: 'a', Color: 2}}, {{Character: 'b', Color: 2}}},
+			[][]Cell{{{Character: 'a', Foreground: pix(2)}}, {{Character: 'b', Foreground: pix(2)}}},
 			"\x1b[1;1H\x1b[38;5;2ma\x1b[0m\x1b[2;1H\x1b[38;5;2mb\x1b[0m",
 		},
 	}
@@ -391,7 +391,7 @@ func TestSetIgnoresDepth(t *testing.T) {
 }
 
 func TestPresentBackground(t *testing.T) {
-	c := func(r rune, fg, bg uint8) Cell { return Cell{Character: r, Color: fg, Background: bg} }
+	c := func(r rune, fg, bg uint8) Cell { return Cell{Character: r, Foreground: pix(fg), Background: pix(bg)} }
 
 	tests := []struct {
 		name string
@@ -539,7 +539,7 @@ func TestPresentColouredCellWithoutCharacterKeepsItsColumn(t *testing.T) {
 		t.Fatalf("unable to initialize frame buffer: %v", err)
 	}
 	fb.Set(0, 0, Cell{Character: 'a'})
-	fb.Set(1, 0, Cell{Background: 4})
+	fb.Set(1, 0, Cell{Background: pix(4)})
 	fb.Set(2, 0, Cell{Character: 'b'})
 
 	buf := bytes.Buffer{}
@@ -564,7 +564,7 @@ func BenchmarkPresent(b *testing.B) {
 				for x := range size.w {
 					c := Cell{Character: rune('a' + (x+y)%26)}
 					if x%7 == 0 {
-						c.Color = uint8(1 + x%200)
+						c.Foreground = pix(uint8(1 + x%200))
 					}
 					fb.Set(x, y, c)
 				}
@@ -589,7 +589,7 @@ func BenchmarkPresentBlocks(b *testing.B) {
 	}
 	for y := range 60 {
 		for x := range 200 {
-			c := Cell{Character: '▀', Color: uint8(1 + (x+y)%200), Background: uint8(1 + (x*y)%200)}
+			c := Cell{Character: '▀', Foreground: pix(uint8(1 + (x+y)%200)), Background: pix(uint8(1 + (x*y)%200))}
 			if (x+y)%3 == 0 {
 				c.Character = '▄'
 			}
@@ -650,7 +650,7 @@ func TestPresentClipped(t *testing.T) {
 
 func TestPresentIsPresentClippedToTheWholeFrame(t *testing.T) {
 	fb := lettered(t)
-	fb.Set(1, 1, Cell{Character: 'x', Color: 3, Background: 4})
+	fb.Set(1, 1, Cell{Character: 'x', Foreground: pix(3), Background: pix(4)})
 
 	var a, b bytes.Buffer
 	if err := fb.present(&a); err != nil {
@@ -667,8 +667,8 @@ func TestPresentIsPresentClippedToTheWholeFrame(t *testing.T) {
 // A colour set before the cut must be reset at the end of the row, as for a full row.
 func TestPresentClippedResetsColoursAtTheCut(t *testing.T) {
 	fb := lettered(t)
-	fb.Set(0, 0, Cell{Character: 'a', Color: 5})
-	fb.Set(1, 0, Cell{Character: 'b', Color: 5})
+	fb.Set(0, 0, Cell{Character: 'a', Foreground: pix(5)})
+	fb.Set(1, 0, Cell{Character: 'b', Foreground: pix(5)})
 
 	var buf bytes.Buffer
 	if err := fb.presentClipped(&buf, 2, 1); err != nil {
@@ -687,5 +687,105 @@ func TestPresentClippedReadsRowsAtTheFullWidth(t *testing.T) {
 	}
 	if want := "\x1b[1;1Ha\x1b[2;1He\x1b[3;1Hi"; buf.String() != want {
 		t.Errorf("wanted %q, got %q", want, buf.String())
+	}
+}
+
+func presented(t *testing.T, w, h int, cells map[[2]int]Cell) string {
+	t.Helper()
+	fb, err := NewFrameBuffer(w, h)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for p, c := range cells {
+		fb.Set(p[0], p[1], c)
+	}
+	var buf bytes.Buffer
+	if err := fb.present(&buf); err != nil {
+		t.Fatal(err)
+	}
+	return buf.String()
+}
+
+func TestPresentWritesAttributes(t *testing.T) {
+	tests := []struct {
+		name  string
+		cells map[[2]int]Cell
+		want  string
+	}{
+		{"bold run then plain", map[[2]int]Cell{{0, 0}: {Character: 'a', Attrs: Bold}, {1, 0}: {Character: 'b', Attrs: Bold}}, "\x1b[1;1H\x1b[1mab\x1b[0m "},
+		{"bold in the middle", map[[2]int]Cell{{1, 0}: {Character: 'b', Attrs: Bold}}, "\x1b[1;1H \x1b[1mb\x1b[0m "},
+		{"underline", map[[2]int]Cell{{0, 0}: {Character: 'a', Attrs: Underline}}, "\x1b[1;1H\x1b[4ma\x1b[0m  "},
+		{"dim", map[[2]int]Cell{{0, 0}: {Character: 'a', Attrs: Dim}}, "\x1b[1;1H\x1b[2ma\x1b[0m  "},
+		{"reverse", map[[2]int]Cell{{0, 0}: {Character: 'a', Attrs: Reverse}}, "\x1b[1;1H\x1b[7ma\x1b[0m  "},
+		{"bold and underline", map[[2]int]Cell{{0, 0}: {Character: 'a', Attrs: Bold | Underline}}, "\x1b[1;1H\x1b[1m\x1b[4ma\x1b[0m  "},
+		{"attribute with color", map[[2]int]Cell{{0, 0}: {Character: 'a', Foreground: Palette(1), Attrs: Bold}}, "\x1b[1;1H\x1b[1m\x1b[38;5;1ma\x1b[0m  "},
+		{"one attribute off starts over", map[[2]int]Cell{{0, 0}: {Character: 'a', Attrs: Bold | Underline}, {1, 0}: {Character: 'b', Attrs: Bold}}, "\x1b[1;1H\x1b[1m\x1b[4ma\x1b[0m\x1b[1mb\x1b[0m "},
+		{"attributes reset at the end of the row", map[[2]int]Cell{{2, 0}: {Character: 'c', Attrs: Bold}, {0, 1}: {Character: 'x'}}, "\x1b[1;1H  \x1b[1mc\x1b[0m\x1b[2;1Hx  "},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rows := 1
+			if len(tt.cells) > 0 {
+				for p := range tt.cells {
+					rows = max(rows, p[1]+1)
+				}
+			}
+			// Blank cells in the table are spaces; fill the rest of the row to 3 wide.
+			if got := presented(t, 3, rows, tt.cells); got != tt.want {
+				t.Errorf("wanted %q, got %q", tt.want, got)
+			}
+		})
+	}
+}
+
+func TestPresentWritesRGBAsTheNearestPaletteColor(t *testing.T) {
+	got := presented(t, 2, 1, map[[2]int]Cell{{0, 0}: {Character: 'a', Foreground: RGB(255, 135, 0), Background: RGB(0, 0, 0)}})
+	if want := "\x1b[1;1H\x1b[38;5;208m\x1b[48;5;16ma\x1b[0m "; got != want {
+		t.Errorf("wanted %q, got %q", want, got)
+	}
+}
+
+func TestPresentBlackIsAColorAndNotTheDefault(t *testing.T) {
+	got := presented(t, 2, 1, map[[2]int]Cell{{0, 0}: {Character: 'a', Foreground: Palette(0), Background: Palette(0)}})
+	if want := "\x1b[1;1H\x1b[38;5;0m\x1b[48;5;0ma\x1b[0m "; got != want {
+		t.Errorf("wanted %q, got %q", want, got)
+	}
+}
+
+func TestCellKeepsItsColorsAndAttributes(t *testing.T) {
+	fb, err := NewFrameBuffer(2, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := Cell{Character: 'q', Foreground: RGB(1, 2, 3), Background: Palette(9), Attrs: Bold | Reverse}
+	fb.Set(1, 0, want)
+
+	if got := fb.At(1, 0); got != want {
+		t.Errorf("wanted %+v, got %+v", want, got)
+	}
+	if !fb.At(1, 0).Attrs.Has(Reverse) || fb.At(1, 0).Attrs.Has(Underline) {
+		t.Errorf("wanted exactly Bold and Reverse kept")
+	}
+}
+
+func TestDrawTextAndBoxUseTheColorGiven(t *testing.T) {
+	fb, err := NewFrameBuffer(6, 3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fb.DrawBox(0, 0, 6, 3, RGB(9, 8, 7))
+	fb.DrawText(1, 1, "hi", Palette(5))
+
+	if got := fb.At(0, 0).Foreground; got != RGB(9, 8, 7) {
+		t.Errorf("wanted the box corner in the RGB color, got %v", got)
+	}
+	if got := fb.At(1, 1); got.Foreground != Palette(5) || got.Background != (Color{}) || got.Attrs != 0 {
+		t.Errorf("wanted text in palette 5 on the default background, plain, got %+v", got)
+	}
+
+	fb.DrawText(1, 1, "hi", Color{})
+	if got := fb.At(1, 1).Foreground; !got.IsDefault() {
+		t.Errorf("wanted the zero Color to give the default color, got %v", got)
 	}
 }

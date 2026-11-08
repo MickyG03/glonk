@@ -180,7 +180,7 @@ func FuzzFillTriangle(f *testing.F) {
 		fb.FillTriangle(x0, y0, z0, x1, y1, z1, x2, y2, z2, mark)
 
 		_, c := fb.Canvas().Width(), fb.Canvas()
-		c.FillTriangle(x0, y0, z0, x1, y1, z1, x2, y2, z2, 7)
+		c.FillTriangle(x0, y0, z0, x1, y1, z1, x2, y2, z2, Palette(7))
 
 		// Bad depths must draw nothing at all.
 		if !(z0 > 0 && z1 > 0 && z2 > 0) {
@@ -193,7 +193,7 @@ func FuzzFillTriangle(f *testing.F) {
 			}
 			for y := range c.Height() {
 				for x := range w {
-					if c.At(x, y) != 0 {
+					if !c.At(x, y).IsDefault() {
 						t.Fatalf("wanted a bad depth to draw nothing on the canvas, got a pixel at (%d,%d)", x, y)
 					}
 				}
@@ -225,13 +225,13 @@ func FuzzShade(f *testing.F) {
 	f.Add(uint8(9), -1e300)
 
 	f.Fuzz(func(t *testing.T, color uint8, intensity float64) {
-		got := Shade(color, intensity)
+		got := Shade(Palette(color), intensity)
 
-		if got < 16 {
-			t.Fatalf("wanted a color in 16..255, got %d for color %d at %v", got, color, intensity)
+		if index, ok := got.paletteIndex(); !ok || got.kind() != colorPalette || index < 16 {
+			t.Fatalf("wanted a palette color in 16..255, got %v for color %d at %v", got, color, intensity)
 		}
-		if again := Shade(color, intensity); again != got {
-			t.Fatalf("wanted Shade to be deterministic, got %d then %d", got, again)
+		if again := Shade(Palette(color), intensity); again != got {
+			t.Fatalf("wanted Shade to be deterministic, got %v then %v", got, again)
 		}
 	})
 }
@@ -318,7 +318,7 @@ func FuzzPresent(f *testing.F) {
 			if 4*i+4 <= len(data) {
 				r = rune(int32(binary.LittleEndian.Uint32(data[4*i:])))
 			}
-			fb.Set(i%w, i/w, Cell{Character: r, Color: uint8(i * 17), Background: uint8(i * 29)})
+			fb.Set(i%w, i/w, Cell{Character: r, Foreground: Palette(uint8(i * 17)), Background: Palette(uint8(i * 29))})
 		}
 
 		var buf bytes.Buffer
@@ -363,7 +363,7 @@ func FuzzDrawText(f *testing.F) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		fb.DrawText(x, 0, text, 7)
+		fb.DrawText(x, 0, text, Palette(7))
 
 		// Everything stored is already safe to send: no control, no zero-width, and
 		// a character is either what was asked for or the stand-in.

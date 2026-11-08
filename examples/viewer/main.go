@@ -25,7 +25,10 @@ var samples embed.FS
 const modelSize = 2
 
 // palette is the colors C cycles through.
-var palette = []uint8{208, 39, 118, 201, 226, 255}
+var palette = []engine.Color{
+	engine.Palette(208), engine.Palette(39), engine.Palette(118),
+	engine.Palette(201), engine.Palette(226), engine.Palette(255),
+}
 
 // sun lights the model from above, to one side and slightly ahead.
 var sun = mesh.Light{Direction: geometry.Vector3{X: 0.4, Y: -1, Z: 0.6}, Ambient: 0.2}
@@ -199,7 +202,7 @@ func (v *viewer) Draw(fb *engine.FrameBuffer) {
 	switch {
 	case v.wire:
 		mode = "wireframe"
-		m.Draw(fb, cam, engine.Cell{Character: '#', Color: color})
+		m.Draw(fb, cam, engine.Cell{Character: '#', Foreground: color})
 	case v.halfBlocks:
 		canvas := fb.Canvas()
 		if v.flipEdges {
@@ -221,11 +224,11 @@ func (v *viewer) Draw(fb *engine.FrameBuffer) {
 	}
 
 	cur := v.models[v.current]
-	fb.DrawBox(0, 0, fb.Width(), fb.Height(), 0)
-	fb.DrawText(1, 1, fmt.Sprintf("%s (%d/%d)  %d vertices, %d faces", cur.name, v.current+1, len(v.models), cur.verts, cur.faces), 0)
-	fb.DrawText(1, 2, fmt.Sprintf("%.0f fps  %s", v.fps, mode), 0)
-	fb.DrawText(1, fb.Height()-3, "arrows orbit  +/- zoom  R spin  N next model  Esc quit", 0)
-	fb.DrawText(1, fb.Height()-2, "V wire/solid  M blocks  B edges  D two-sided  C color", 0)
+	fb.DrawBox(0, 0, fb.Width(), fb.Height(), engine.Color{})
+	fb.DrawText(1, 1, fmt.Sprintf("%s (%d/%d)  %d vertices, %d faces", cur.name, v.current+1, len(v.models), cur.verts, cur.faces), engine.Color{})
+	fb.DrawText(1, 2, fmt.Sprintf("%.0f fps  %s", v.fps, mode), engine.Color{})
+	fb.DrawText(1, fb.Height()-3, "arrows orbit  +/- zoom  R spin  N next model  Esc quit", engine.Color{})
+	fb.DrawText(1, fb.Height()-2, "V wire/solid  M blocks  B edges  D two-sided  C color", engine.Color{})
 }
 
 func main() {

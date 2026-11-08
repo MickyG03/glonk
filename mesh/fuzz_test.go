@@ -110,10 +110,10 @@ func FuzzDraw(f *testing.F) {
 		go func() {
 			defer close(done)
 			cube.Draw(fb, cam, engine.Cell{Character: '#'})
-			cube.DrawShaded(fb, cam, light, 1)
+			cube.DrawShaded(fb, cam, light, engine.Palette(1))
 			cube.DoubleSided = true
-			cube.DrawShaded(fb, cam, light, 1)
-			cube.DrawShadedPixels(fb.Canvas(), cam, light, 1)
+			cube.DrawShaded(fb, cam, light, engine.Palette(1))
+			cube.DrawShadedPixels(fb.Canvas(), cam, light, engine.Palette(1))
 			fb.Canvas().Compose()
 		}()
 
@@ -276,8 +276,8 @@ func FuzzLoadOBJ(f *testing.F) {
 		}
 		cam := Camera{Position: geometry.Vector3{Z: -5}, FOV: math.Pi / 2, Near: 0.1}
 		fitted.Draw(fb, cam, engine.Cell{Character: '#'})
-		fitted.DrawShaded(fb, cam, Light{Direction: geometry.Vector3{Y: -1}, Ambient: 0.2}, 1)
-		fitted.DrawShadedPixels(fb.Canvas(), cam, Light{Direction: geometry.Vector3{Y: -1}, Ambient: 0.2}, 1)
+		fitted.DrawShaded(fb, cam, Light{Direction: geometry.Vector3{Y: -1}, Ambient: 0.2}, engine.Palette(1))
+		fitted.DrawShadedPixels(fb.Canvas(), cam, Light{Direction: geometry.Vector3{Y: -1}, Ambient: 0.2}, engine.Palette(1))
 	})
 }
 
@@ -316,10 +316,10 @@ func FuzzDrawBadMesh(f *testing.F) {
 		go func() {
 			defer close(done)
 			m.Draw(fb, cam, engine.Cell{Character: '#'})
-			m.DrawShaded(fb, cam, light, 1)
+			m.DrawShaded(fb, cam, light, engine.Palette(1))
 			m.DoubleSided = true
-			m.DrawShaded(fb, cam, light, 1)
-			m.DrawShadedPixels(fb.Canvas(), cam, light, 1)
+			m.DrawShaded(fb, cam, light, engine.Palette(1))
+			m.DrawShadedPixels(fb.Canvas(), cam, light, engine.Palette(1))
 			fb.Canvas().Compose()
 		}()
 

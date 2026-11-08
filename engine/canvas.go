@@ -15,7 +15,8 @@ const (
 // Canvas is a grid of pixels twice as tall as the FrameBuffer it belongs to: each
 // terminal cell holds two stacked pixels, which Compose turns into half-block
 // characters. Cells are about twice as tall as wide, so the pixels come out roughly
-// square. A pixel is a palette color, with 0 meaning empty, so black must be 16.
+// square. A pixel is a Color, and the zero Color means empty, so every other color, black
+// included, is a pixel.
 //
 // Get one with FrameBuffer.Canvas. It keeps its own depth per pixel, separate from
 // the FrameBuffer's, so solids drawn on a Canvas hide each other but not the cells.
@@ -30,7 +31,7 @@ type Canvas struct {
 
 	fb            *FrameBuffer
 	width, height int
-	pixels        []uint8
+	pixels        []Color
 	depth         []float64
 }
 
@@ -46,7 +47,7 @@ func newCanvas(fb *FrameBuffer) *Canvas {
 		fb:       fb,
 		width:    fb.width,
 		height:   fb.height * 2,
-		pixels:   make([]uint8, fb.width*fb.height*2),
+		pixels:   make([]Color, fb.width*fb.height*2),
 		depth:    make([]float64, fb.width*fb.height*2),
 	}
 	c.Clear()
@@ -85,17 +86,17 @@ func (c *Canvas) inBounds(x, y int) bool {
 }
 
 // Set stores color at pixel (x, y). Writes outside the canvas are ignored.
-func (c *Canvas) Set(x, y int, color uint8) {
+func (c *Canvas) Set(x, y int, color Color) {
 	if !c.inBounds(x, y) {
 		return
 	}
 	c.pixels[y*c.width+x] = color
 }
 
-// At returns the color at pixel (x, y), or 0 (empty) outside the canvas.
-func (c *Canvas) At(x, y int) uint8 {
+// At returns the color at pixel (x, y), or the zero Color (empty) outside the canvas.
+func (c *Canvas) At(x, y int) Color {
 	if !c.inBounds(x, y) {
-		return 0
+		return Color{}
 	}
 	return c.pixels[y*c.width+x]
 }
@@ -104,7 +105,7 @@ func (c *Canvas) At(x, y int) uint8 {
 // there, and reports whether it did. Smaller z is nearer; a tie keeps the existing
 // pixel. Writes outside the canvas, and a NaN z, are ignored. Set never reads or
 // writes depth.
-func (c *Canvas) SetDepth(x, y int, z float64, color uint8) bool {
+func (c *Canvas) SetDepth(x, y int, z float64, color Color) bool {
 	if !c.inBounds(x, y) {
 		return false
 	}
@@ -123,7 +124,7 @@ func (c *Canvas) SetDepth(x, y int, z float64, color uint8) bool {
 // FillTriangle fills the triangle with corners (x0, y0), (x1, y1), (x2, y2) in
 // pixel coordinates, like FrameBuffer.FillTriangle but into pixels. The z values
 // are the corners' distances from the camera and must be positive.
-func (c *Canvas) FillTriangle(x0, y0, z0, x1, y1, z1, x2, y2, z2 float64, color uint8) {
+func (c *Canvas) FillTriangle(x0, y0, z0, x1, y1, z1, x2, y2, z2 float64, color Color) {
 	scanTriangle(c.width, c.height, x0, y0, z0, x1, y1, z1, x2, y2, z2, func(x, y int, z float64) {
 		c.SetDepth(x, y, z, color)
 	})
@@ -141,10 +142,10 @@ func (c *Canvas) Compose() {
 			topIdx, bottomIdx := (2*row)*c.width+x, (2*row+1)*c.width+x
 			top, bottom := c.pixels[topIdx], c.pixels[bottomIdx]
 
-			if c.Seamless && (top != 0 || bottom != 0) {
+			if c.Seamless && (!top.IsDefault() || !bottom.IsDefault()) {
 				// One color for the whole cell: the nearer pixel, or the only one set.
 				color := top
-				if top == 0 || (bottom != 0 && c.depth[bottomIdx] < c.depth[topIdx]) {
+				if top.IsDefault() || (!bottom.IsDefault() && c.depth[bottomIdx] < c.depth[topIdx]) {
 					color = bottom
 				}
 				fb.frame[row*fb.width+x] = Cell{Character: ' ', Background: color}
@@ -153,17 +154,17 @@ func (c *Canvas) Compose() {
 
 			var cell Cell
 			switch {
-			case top == 0 && bottom == 0:
+			case top.IsDefault() && bottom.IsDefault():
 				continue
 			case top == bottom:
 				// A space on a background is solid however the font draws blocks.
 				cell = Cell{Character: ' ', Background: top}
-			case top != 0 && bottom != 0:
-				cell = Cell{Character: upperHalfBlock, Color: top, Background: bottom}
-			case top != 0:
-				cell = Cell{Character: upperHalfBlock, Color: top}
+			case !top.IsDefault() && !bottom.IsDefault():
+				cell = Cell{Character: upperHalfBlock, Foreground: top, Background: bottom}
+			case !top.IsDefault():
+				cell = Cell{Character: upperHalfBlock, Foreground: top}
 			default:
-				cell = Cell{Character: lowerHalfBlock, Color: bottom}
+				cell = Cell{Character: lowerHalfBlock, Foreground: bottom}
 			}
 			fb.frame[row*fb.width+x] = cell
 		}

@@ -131,31 +131,15 @@ func (fb *FrameBuffer) presentClipped(w io.Writer, maxW, maxH int) error {
 
 	for y := range height {
 		sb.MoveTo(y+1, 1)
-		var fg, bg uint8
+		var current style
 		for x := range width {
 			cell := fb.frame[y*fb.width+x]
 
-			if cell.Color != fg || cell.Background != bg {
-				if cell.Color == 0 && cell.Background == 0 {
-					// One short reset beats two separate "back to default" codes.
-					sb.ResetStyle()
-				} else {
-					if cell.Color != fg {
-						if cell.Color == 0 {
-							sb.DefaultForeground()
-						} else {
-							sb.SetForeground(cell.Color)
-						}
-					}
-					if cell.Background != bg {
-						if cell.Background == 0 {
-							sb.DefaultBackground()
-						} else {
-							sb.SetBackground(cell.Background)
-						}
-					}
-				}
-				fg, bg = cell.Color, cell.Background
+			// Most cells share the style of the one before; only a change costs a call.
+			if cell.Foreground != current.fg || cell.Background != current.bg || cell.Attrs != current.attrs {
+				next := cell.style()
+				sb.SetStyle(current, next)
+				current = next
 			}
 
 			// Nothing but a character one column wide may reach the terminal; the
@@ -168,7 +152,7 @@ func (fb *FrameBuffer) presentClipped(w io.Writer, maxW, maxH int) error {
 		}
 
 		// Leave nothing set at the end of a row, so a later row or the shell starts clean.
-		if fg != 0 || bg != 0 {
+		if current != (style{}) {
 			sb.ResetStyle()
 		}
 	}

@@ -62,29 +62,70 @@ func TestShade(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			if got := Shade(Palette(tt.color), tt.intensity); got != Palette(tt.want) {
+				t.Errorf("wanted %v, got %v", Palette(tt.want), got)
+			}
+		})
+	}
+}
+
+func TestShadeOfTheDefaultColorIsReadAsBlack(t *testing.T) {
+	for _, intensity := range []float64{0, 0.5, 1} {
+		if got := Shade(Color{}, intensity); got != Palette(16) {
+			t.Errorf("wanted black (palette 16) at intensity %v, got %v", intensity, got)
+		}
+	}
+}
+
+func TestShadeOfAnRGBColorScalesItExactly(t *testing.T) {
+	tests := []struct {
+		name      string
+		color     Color
+		intensity float64
+		want      Color
+	}{
+		{"full intensity keeps it", RGB(200, 100, 50), 1, RGB(200, 100, 50)},
+		{"half", RGB(200, 100, 50), 0.5, RGB(100, 50, 25)},
+		{"zero is black", RGB(200, 100, 50), 0, RGB(0, 0, 0)},
+		{"rounds to the nearest", RGB(101, 3, 255), 0.5, RGB(51, 2, 128)},
+		{"clamps above one", RGB(200, 100, 50), 9, RGB(200, 100, 50)},
+		{"clamps below zero", RGB(200, 100, 50), -9, RGB(0, 0, 0)},
+		{"NaN is black", RGB(200, 100, 50), math.NaN(), RGB(0, 0, 0)},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
 			if got := Shade(tt.color, tt.intensity); got != tt.want {
-				t.Errorf("wanted %d, got %d", tt.want, got)
+				t.Errorf("wanted %v, got %v", tt.want, got)
 			}
 		})
 	}
 }
 
 func TestShadeEveryColor(t *testing.T) {
-	brightest := func(c uint8) int {
-		p := paletteRGB[c]
+	// shaded is Shade of palette color c, as a palette index.
+	shaded := func(c uint8, intensity float64) int {
+		got := Shade(Palette(c), intensity)
+		index, ok := got.paletteIndex()
+		if !ok || got.kind() != colorPalette {
+			t.Fatalf("color %d at %v: wanted a palette color, got %v", c, intensity, got)
+		}
+		return int(index)
+	}
+	brightest := func(index int) int {
+		p := paletteRGB[index]
 		return max(p[0], p[1], p[2])
 	}
 
 	for c := range 256 {
 		color := uint8(c)
 
-		if got := Shade(color, 0); got != 16 {
+		if got := shaded(color, 0); got != 16 {
 			t.Errorf("color %d: wanted black (16) at intensity 0, got %d", c, got)
 		}
 
 		// Cube and gray colors are exact; the theme-dependent ones snap to the nearest.
 		if c >= 16 {
-			if got := Shade(color, 1); got != color {
+			if got := shaded(color, 1); got != c {
 				t.Errorf("color %d: wanted itself at intensity 1, got %d", c, got)
 			}
 		}
@@ -92,15 +133,15 @@ func TestShadeEveryColor(t *testing.T) {
 		// Nearest-color matching can wobble between neighboring steps, but a quarter
 		// of the range apart a brighter request must not give a dimmer color.
 		for _, lo := range []float64{0, 0.25, 0.5, 0.75} {
-			dim, bright := Shade(color, lo), Shade(color, lo+0.25)
+			dim, bright := shaded(color, lo), shaded(color, lo+0.25)
 			if brightest(dim) > brightest(bright) {
 				t.Errorf("color %d: wanted %v to be no brighter than %v, got %d vs %d", c, lo, lo+0.25, dim, bright)
 			}
 		}
 
 		for _, i := range []float64{0, 0.001, 0.3, 0.7, 1} {
-			if Shade(color, i) < 16 {
-				t.Errorf("color %d at %v: wanted a color in 16..255, got %d", c, i, Shade(color, i))
+			if got := shaded(color, i); got < 16 {
+				t.Errorf("color %d at %v: wanted a color in 16..255, got %d", c, i, got)
 			}
 		}
 	}
@@ -296,7 +337,8 @@ func TestShadeMatchesTheScan(t *testing.T) {
 			base := paletteRGB[c]
 			want := nearestPaletteScan(float64(base[0])*intensity, float64(base[1])*intensity, float64(base[2])*intensity)
 			r, g, b := float64(base[0])*intensity, float64(base[1])*intensity, float64(base[2])*intensity
-			if got := Shade(uint8(c), intensity); !sameNearest(r, g, b, got, want) {
+			got, _ := Shade(Palette(uint8(c)), intensity).paletteIndex()
+			if !sameNearest(r, g, b, got, want) {
 				t.Fatalf("wanted Shade(%d, %v) = %d (or as near), got %d", c, intensity, want, got)
 			}
 		}

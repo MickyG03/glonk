@@ -151,7 +151,7 @@ func TestDrawShadedCullsBackFaces(t *testing.T) {
 			fb := newShadeBuffer(t)
 			m := Mesh{Vertices: verts, Faces: [][3]int{tt.face}}
 
-			m.DrawShaded(fb, shadeCam(), light, 7)
+			m.DrawShaded(fb, shadeCam(), light, engine.Palette(7))
 
 			if got := len(drawn(fb)) > 0; got != tt.want {
 				t.Errorf("wanted drawn=%v, got %v", tt.want, got)
@@ -167,7 +167,7 @@ func TestDrawShadedUsesColorAndShade(t *testing.T) {
 	// The light travels along +z, straight into the face that looks back at the camera.
 	light := Light{Direction: geometry.Vector3{Z: 1}}
 
-	cube.DrawShaded(fb, shadeCam(), light, 208)
+	cube.DrawShaded(fb, shadeCam(), light, engine.Palette(208))
 
 	cells := drawn(fb)
 	if len(cells) == 0 {
@@ -175,8 +175,8 @@ func TestDrawShadedUsesColorAndShade(t *testing.T) {
 	}
 	for _, c := range cells {
 		got := fb.At(c[0], c[1])
-		if got.Color != 208 {
-			t.Errorf("wanted color 208 at %v, got %v", c, got.Color)
+		if got.Foreground != engine.Palette(208) {
+			t.Errorf("wanted palette 208 at %v, got %v", c, got.Foreground)
 		}
 		// Seen head on, only the front face shows, lit at full strength.
 		if got.Character != '@' {
@@ -192,7 +192,7 @@ func TestDrawShadedFacesDiffer(t *testing.T) {
 	cube.Yaw, cube.Pitch = 0.6, 0.4
 	light := Light{Direction: geometry.Vector3{X: 0.3, Y: -1, Z: 0.5}, Ambient: 0.1}
 
-	cube.DrawShaded(fb, shadeCam(), light, 1)
+	cube.DrawShaded(fb, shadeCam(), light, engine.Palette(1))
 
 	shades := map[rune]bool{}
 	for _, c := range drawn(fb) {
@@ -214,19 +214,19 @@ func TestDrawShadedDepthOrder(t *testing.T) {
 	for _, nearFirst := range []bool{true, false} {
 		fb := newShadeBuffer(t)
 		if nearFirst {
-			near.DrawShaded(fb, shadeCam(), light, 1)
-			far.DrawShaded(fb, shadeCam(), light, 2)
+			near.DrawShaded(fb, shadeCam(), light, engine.Palette(1))
+			far.DrawShaded(fb, shadeCam(), light, engine.Palette(2))
 		} else {
-			far.DrawShaded(fb, shadeCam(), light, 2)
-			near.DrawShaded(fb, shadeCam(), light, 1)
+			far.DrawShaded(fb, shadeCam(), light, engine.Palette(2))
+			near.DrawShaded(fb, shadeCam(), light, engine.Palette(1))
 		}
 
 		// The far cube sits entirely behind the near one on screen.
-		if got := fb.At(shadeW/2, shadeH/2).Color; got != 1 {
+		if got := fb.At(shadeW/2, shadeH/2).Foreground; got != engine.Palette(1) {
 			t.Errorf("nearFirst=%v: wanted the near cube at the centre, got color %d", nearFirst, got)
 		}
 		for _, c := range drawn(fb) {
-			if got := fb.At(c[0], c[1]).Color; got != 1 {
+			if got := fb.At(c[0], c[1]).Foreground; got != engine.Palette(1) {
 				t.Fatalf("nearFirst=%v: wanted only the near cube, got color %d at %v", nearFirst, got, c)
 			}
 		}
@@ -249,7 +249,7 @@ func TestDrawShadedPlacement(t *testing.T) {
 			cube := Cube(1)
 			cube.Position = geometry.Vector3{X: tt.x, Z: 5}
 
-			cube.DrawShaded(fb, shadeCam(), light, 1)
+			cube.DrawShaded(fb, shadeCam(), light, engine.Palette(1))
 
 			cells := drawn(fb)
 			if len(cells) == 0 {
@@ -269,7 +269,7 @@ func TestDrawShadedBehindCamera(t *testing.T) {
 	cube := Cube(2)
 	cube.Position = geometry.Vector3{Z: -5}
 
-	cube.DrawShaded(fb, shadeCam(), Light{Direction: geometry.Vector3{Z: 1}}, 1)
+	cube.DrawShaded(fb, shadeCam(), Light{Direction: geometry.Vector3{Z: 1}}, engine.Palette(1))
 
 	if cells := drawn(fb); len(cells) != 0 {
 		t.Errorf("wanted a blank frame, got %d cells", len(cells))
@@ -288,7 +288,7 @@ func TestDrawShadedFloorCrossingTheNearPlane(t *testing.T) {
 		Faces: [][3]int{{0, 1, 2}, {0, 2, 3}},
 	}
 
-	floor.DrawShaded(fb, shadeCam(), Light{Direction: geometry.Vector3{Y: -1}}, 1)
+	floor.DrawShaded(fb, shadeCam(), Light{Direction: geometry.Vector3{Y: -1}}, engine.Palette(1))
 
 	// The far edge is at z=10: 1.5/10 below the horizon, so row 13 and down.
 	for y := range 13 {
@@ -311,7 +311,7 @@ func TestDrawShadedWithoutFaces(t *testing.T) {
 	grid := Grid(10, 5)
 	grid.Position = geometry.Vector3{Y: -1, Z: 5}
 
-	grid.DrawShaded(fb, shadeCam(), Light{Direction: geometry.Vector3{Y: -1}}, 1)
+	grid.DrawShaded(fb, shadeCam(), Light{Direction: geometry.Vector3{Y: -1}}, engine.Palette(1))
 
 	if cells := drawn(fb); len(cells) != 0 {
 		t.Errorf("wanted a mesh without faces to draw nothing, got %d cells", len(cells))
@@ -344,11 +344,11 @@ func TestDrawShadedDepthVariesAcrossAFace(t *testing.T) {
 	for _, floorFirst := range []bool{true, false} {
 		fb := newShadeBuffer(t)
 		if floorFirst {
-			floor.DrawShaded(fb, shadeCam(), light, 1)
-			wall.DrawShaded(fb, shadeCam(), light, 2)
+			floor.DrawShaded(fb, shadeCam(), light, engine.Palette(1))
+			wall.DrawShaded(fb, shadeCam(), light, engine.Palette(2))
 		} else {
-			wall.DrawShaded(fb, shadeCam(), light, 2)
-			floor.DrawShaded(fb, shadeCam(), light, 1)
+			wall.DrawShaded(fb, shadeCam(), light, engine.Palette(2))
+			floor.DrawShaded(fb, shadeCam(), light, engine.Palette(1))
 		}
 
 		// Row 14 on the wall's face: the floor there lies at z of about 7, behind the wall.
@@ -385,7 +385,7 @@ func BenchmarkDrawShaded(b *testing.B) {
 			for b.Loop() {
 				fb.Clear()
 				for _, c := range cubes {
-					c.DrawShaded(fb, cam, light, 1)
+					c.DrawShaded(fb, cam, light, engine.Palette(1))
 				}
 			}
 		})
@@ -407,7 +407,7 @@ func pixelsDrawn(c *engine.Canvas) [][2]int {
 	var out [][2]int
 	for y := range c.Height() {
 		for x := range c.Width() {
-			if c.At(x, y) != 0 {
+			if c.At(x, y) != (engine.Color{}) {
 				out = append(out, [2]int{x, y})
 			}
 		}
@@ -429,9 +429,9 @@ func TestDrawShadedPixelsHasTwiceTheRows(t *testing.T) {
 	light := Light{Direction: geometry.Vector3{Z: 1}}
 
 	fb := newShadeBuffer(t)
-	cube.DrawShaded(fb, shadeCam(), light, 1)
+	cube.DrawShaded(fb, shadeCam(), light, engine.Palette(1))
 	_, c := newShadeCanvas(t)
-	cube.DrawShadedPixels(c, shadeCam(), light, 1)
+	cube.DrawShadedPixels(c, shadeCam(), light, engine.Palette(1))
 
 	glyphRows, pixelRows := distinctRows(drawn(fb)), distinctRows(pixelsDrawn(c))
 	if glyphRows == 0 {
@@ -472,16 +472,16 @@ func TestDrawShadedPixelsColorFollowsLight(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			_, c := newShadeCanvas(t)
-			cube.DrawShadedPixels(c, shadeCam(), tt.light, 208)
+			cube.DrawShadedPixels(c, shadeCam(), tt.light, engine.Palette(208))
 
-			want := engine.Shade(208, tt.intensity)
+			want := engine.Shade(engine.Palette(208), tt.intensity)
 			pixels := pixelsDrawn(c)
 			if len(pixels) == 0 {
 				t.Fatalf("wanted the cube drawn")
 			}
 			for _, p := range pixels {
 				if got := c.At(p[0], p[1]); got != want {
-					t.Fatalf("wanted every pixel %d, got %d at %v", want, got, p)
+					t.Fatalf("wanted every pixel %v, got %v at %v", want, got, p)
 				}
 			}
 		})
@@ -495,9 +495,9 @@ func TestDrawShadedPixelsFacesDiffer(t *testing.T) {
 	cube.Yaw, cube.Pitch = 0.6, 0.4
 	light := Light{Direction: geometry.Vector3{X: 0.3, Y: -1, Z: 0.5}, Ambient: 0.1}
 
-	cube.DrawShadedPixels(c, shadeCam(), light, 208)
+	cube.DrawShadedPixels(c, shadeCam(), light, engine.Palette(208))
 
-	shades := map[uint8]bool{}
+	shades := map[engine.Color]bool{}
 	for _, p := range pixelsDrawn(c) {
 		shades[c.At(p[0], p[1])] = true
 	}
@@ -516,16 +516,16 @@ func TestDrawShadedPixelsDepthOrder(t *testing.T) {
 	for _, nearFirst := range []bool{true, false} {
 		_, c := newShadeCanvas(t)
 		if nearFirst {
-			near.DrawShadedPixels(c, shadeCam(), light, 196)
-			far.DrawShadedPixels(c, shadeCam(), light, 46)
+			near.DrawShadedPixels(c, shadeCam(), light, engine.Palette(196))
+			far.DrawShadedPixels(c, shadeCam(), light, engine.Palette(46))
 		} else {
-			far.DrawShadedPixels(c, shadeCam(), light, 46)
-			near.DrawShadedPixels(c, shadeCam(), light, 196)
+			far.DrawShadedPixels(c, shadeCam(), light, engine.Palette(46))
+			near.DrawShadedPixels(c, shadeCam(), light, engine.Palette(196))
 		}
 
 		// The far cube sits entirely behind the near one on screen.
 		for _, p := range pixelsDrawn(c) {
-			if got := c.At(p[0], p[1]); got != engine.Shade(196, 1) {
+			if got := c.At(p[0], p[1]); got != engine.Shade(engine.Palette(196), 1) {
 				t.Fatalf("nearFirst=%v: wanted only the near cube, got color %d at %v", nearFirst, got, p)
 			}
 		}
@@ -548,7 +548,7 @@ func TestDrawShadedPixelsCullsBackFaces(t *testing.T) {
 			_, c := newShadeCanvas(t)
 			m := Mesh{Vertices: verts, Faces: [][3]int{tt.face}}
 
-			m.DrawShadedPixels(c, shadeCam(), light, 7)
+			m.DrawShadedPixels(c, shadeCam(), light, engine.Palette(7))
 
 			if got := len(pixelsDrawn(c)) > 0; got != tt.want {
 				t.Errorf("wanted drawn=%v, got %v", tt.want, got)
@@ -574,7 +574,7 @@ func TestDrawShadedPixelsPlacement(t *testing.T) {
 			cube := Cube(1)
 			cube.Position = geometry.Vector3{X: tt.x, Y: tt.y, Z: 5}
 
-			cube.DrawShadedPixels(c, shadeCam(), light, 1)
+			cube.DrawShadedPixels(c, shadeCam(), light, engine.Palette(1))
 
 			pixels := pixelsDrawn(c)
 			if len(pixels) == 0 {
@@ -597,7 +597,7 @@ func TestDrawShadedPixelsBehindCamera(t *testing.T) {
 	cube := Cube(2)
 	cube.Position = geometry.Vector3{Z: -5}
 
-	cube.DrawShadedPixels(c, shadeCam(), Light{Direction: geometry.Vector3{Z: 1}}, 1)
+	cube.DrawShadedPixels(c, shadeCam(), Light{Direction: geometry.Vector3{Z: 1}}, engine.Palette(1))
 
 	if pixels := pixelsDrawn(c); len(pixels) != 0 {
 		t.Errorf("wanted an empty canvas, got %d pixels", len(pixels))
@@ -613,20 +613,20 @@ func TestDrawShadedPixelsFloorCrossingTheNearPlane(t *testing.T) {
 		Faces: [][3]int{{0, 1, 2}, {0, 2, 3}},
 	}
 
-	floor.DrawShadedPixels(c, shadeCam(), Light{Direction: geometry.Vector3{Y: -1}}, 1)
+	floor.DrawShadedPixels(c, shadeCam(), Light{Direction: geometry.Vector3{Y: -1}}, engine.Palette(1))
 
 	// The far edge is at z=10: 1.5/10 below the horizon, which is pixel row 27.6.
 	for y := range 27 {
 		for x := range c.Width() {
-			if c.At(x, y) != 0 {
+			if c.At(x, y) != (engine.Color{}) {
 				t.Fatalf("wanted pixel rows above the floor's far edge empty, got a pixel at (%d,%d)", x, y)
 			}
 		}
 	}
-	if c.At(shadeW/2, 28) == 0 {
+	if c.At(shadeW/2, 28) == (engine.Color{}) {
 		t.Errorf("wanted the floor to fill the view just below its far edge")
 	}
-	if c.At(shadeW/2, c.Height()-1) == 0 {
+	if c.At(shadeW/2, c.Height()-1) == (engine.Color{}) {
 		t.Errorf("wanted the floor to reach the bottom pixel row")
 	}
 }
@@ -636,7 +636,7 @@ func TestDrawShadedPixelsWithoutFaces(t *testing.T) {
 	grid := Grid(10, 5)
 	grid.Position = geometry.Vector3{Y: -1, Z: 5}
 
-	grid.DrawShadedPixels(c, shadeCam(), Light{Direction: geometry.Vector3{Y: -1}}, 1)
+	grid.DrawShadedPixels(c, shadeCam(), Light{Direction: geometry.Vector3{Y: -1}}, engine.Palette(1))
 
 	if pixels := pixelsDrawn(c); len(pixels) != 0 {
 		t.Errorf("wanted a mesh without faces to draw nothing, got %d pixels", len(pixels))
@@ -651,10 +651,10 @@ func TestDrawShadedPixelsComposes(t *testing.T) {
 	cube.Position = geometry.Vector3{Z: 5}
 	light := Light{Direction: geometry.Vector3{Z: 1}}
 
-	cube.DrawShadedPixels(c, shadeCam(), light, 208)
+	cube.DrawShadedPixels(c, shadeCam(), light, engine.Palette(208))
 	c.Compose()
 
-	shade := engine.Shade(208, 1)
+	shade := engine.Shade(engine.Palette(208), 1)
 	if got, want := fb.At(shadeW/2, shadeH/2), (engine.Cell{Character: ' ', Background: shade}); got != want {
 		t.Errorf("wanted a solid cell in the middle of the face, got %+v", got)
 	}
@@ -679,26 +679,26 @@ func TestDrawShadedPixelsDepthVariesAcrossAFace(t *testing.T) {
 		Faces: [][3]int{{0, 1, 2}, {0, 2, 3}},
 	}
 	light := Light{Direction: geometry.Vector3{Y: -1, Z: 2}}
-	wallColor := engine.Shade(196, light.intensity(geometry.Vector3{Z: -1}))
-	floorColor := engine.Shade(46, light.intensity(geometry.Vector3{Y: 1}))
+	wallColor := engine.Shade(engine.Palette(196), light.intensity(geometry.Vector3{Z: -1}))
+	floorColor := engine.Shade(engine.Palette(46), light.intensity(geometry.Vector3{Y: 1}))
 
 	for _, floorFirst := range []bool{true, false} {
 		_, c := newShadeCanvas(t)
 		if floorFirst {
-			floor.DrawShadedPixels(c, shadeCam(), light, 46)
-			wall.DrawShadedPixels(c, shadeCam(), light, 196)
+			floor.DrawShadedPixels(c, shadeCam(), light, engine.Palette(46))
+			wall.DrawShadedPixels(c, shadeCam(), light, engine.Palette(196))
 		} else {
-			wall.DrawShadedPixels(c, shadeCam(), light, 196)
-			floor.DrawShadedPixels(c, shadeCam(), light, 46)
+			wall.DrawShadedPixels(c, shadeCam(), light, engine.Palette(196))
+			floor.DrawShadedPixels(c, shadeCam(), light, engine.Palette(46))
 		}
 
 		// Pixel row 29 is on the wall's face; the floor there lies at about z=6.5, behind it.
 		if got := c.At(shadeW/2, 29); got != wallColor {
-			t.Errorf("floorFirst=%v: wanted the wall (%d) at (40,29), got %d", floorFirst, wallColor, got)
+			t.Errorf("floorFirst=%v: wanted the wall (%v) at (40,29), got %v", floorFirst, wallColor, got)
 		}
 		// Pixel row 36 is below the wall's base; the floor there is at about z=2.9, in front.
 		if got := c.At(shadeW/2, 36); got != floorColor {
-			t.Errorf("floorFirst=%v: wanted the floor (%d) at (40,36), got %d", floorFirst, floorColor, got)
+			t.Errorf("floorFirst=%v: wanted the floor (%v) at (40,36), got %v", floorFirst, floorColor, got)
 		}
 	}
 }
@@ -732,12 +732,12 @@ func TestDrawWithPitchedCamera(t *testing.T) {
 			},
 			"glyph shaded": func(m Mesh) [][2]int {
 				fb := newShadeBuffer(t)
-				m.DrawShaded(fb, cam, light, 1)
+				m.DrawShaded(fb, cam, light, engine.Palette(1))
 				return drawn(fb)
 			},
 			"pixel shaded": func(m Mesh) [][2]int {
 				_, c := newShadeCanvas(t)
-				m.DrawShadedPixels(c, cam, light, 1)
+				m.DrawShadedPixels(c, cam, light, engine.Palette(1))
 				// Pixel rows are half cells; fold them back to cell rows for the comparison.
 				var cells [][2]int
 				for _, p := range pixelsDrawn(c) {
@@ -821,18 +821,18 @@ var doubleSidedLight = Light{Direction: geometry.Vector3{X: 0.3, Y: -1, Z: 0.5},
 // is the same but the shading is not, so it must not look like the plain solid.
 func TestInsideOutMeshLooksWrongUnlessDoubleSided(t *testing.T) {
 	plain := newShadeBuffer(t)
-	posedCube(false).DrawShaded(plain, shadeCam(), doubleSidedLight, 1)
+	posedCube(false).DrawShaded(plain, shadeCam(), doubleSidedLight, engine.Palette(1))
 
 	flipped := newShadeBuffer(t)
-	insideOut(posedCube(false)).DrawShaded(flipped, shadeCam(), doubleSidedLight, 1)
+	insideOut(posedCube(false)).DrawShaded(flipped, shadeCam(), doubleSidedLight, engine.Palette(1))
 	if sameFrame(flipped, plain) {
 		t.Errorf("wanted an inside-out mesh to look different from the plain one without DoubleSided")
 	}
 
 	_, plainPixels := newShadeCanvas(t)
-	posedCube(false).DrawShadedPixels(plainPixels, shadeCam(), doubleSidedLight, 1)
+	posedCube(false).DrawShadedPixels(plainPixels, shadeCam(), doubleSidedLight, engine.Palette(1))
 	_, flippedPixels := newShadeCanvas(t)
-	insideOut(posedCube(false)).DrawShadedPixels(flippedPixels, shadeCam(), doubleSidedLight, 1)
+	insideOut(posedCube(false)).DrawShadedPixels(flippedPixels, shadeCam(), doubleSidedLight, engine.Palette(1))
 	if samePixels(flippedPixels, plainPixels) {
 		t.Errorf("wanted an inside-out mesh to look different in pixels too")
 	}
@@ -843,21 +843,21 @@ func TestInsideOutMeshLooksWrongUnlessDoubleSided(t *testing.T) {
 // are hidden behind them.
 func TestDoubleSidedInsideOutLooksLikeTheOriginal(t *testing.T) {
 	want := newShadeBuffer(t)
-	posedCube(false).DrawShaded(want, shadeCam(), doubleSidedLight, 1)
+	posedCube(false).DrawShaded(want, shadeCam(), doubleSidedLight, engine.Palette(1))
 	if len(drawn(want)) == 0 {
 		t.Fatalf("test setup: wanted the plain cube drawn")
 	}
 
 	got := newShadeBuffer(t)
-	insideOut(posedCube(true)).DrawShaded(got, shadeCam(), doubleSidedLight, 1)
+	insideOut(posedCube(true)).DrawShaded(got, shadeCam(), doubleSidedLight, engine.Palette(1))
 	if !sameFrame(got, want) {
 		t.Errorf("wanted the double-sided inside-out cube to match the plain one")
 	}
 
 	_, wantPixels := newShadeCanvas(t)
-	posedCube(false).DrawShadedPixels(wantPixels, shadeCam(), doubleSidedLight, 1)
+	posedCube(false).DrawShadedPixels(wantPixels, shadeCam(), doubleSidedLight, engine.Palette(1))
 	_, gotPixels := newShadeCanvas(t)
-	insideOut(posedCube(true)).DrawShadedPixels(gotPixels, shadeCam(), doubleSidedLight, 1)
+	insideOut(posedCube(true)).DrawShadedPixels(gotPixels, shadeCam(), doubleSidedLight, engine.Palette(1))
 	if !samePixels(gotPixels, wantPixels) {
 		t.Errorf("wanted the double-sided inside-out cube to match the plain one in pixels")
 	}
@@ -866,16 +866,16 @@ func TestDoubleSidedInsideOutLooksLikeTheOriginal(t *testing.T) {
 // Turning DoubleSided on for a mesh that is already right must change nothing.
 func TestDoubleSidedChangesNothingForAClosedOutwardMesh(t *testing.T) {
 	plain, both := newShadeBuffer(t), newShadeBuffer(t)
-	posedCube(false).DrawShaded(plain, shadeCam(), doubleSidedLight, 1)
-	posedCube(true).DrawShaded(both, shadeCam(), doubleSidedLight, 1)
+	posedCube(false).DrawShaded(plain, shadeCam(), doubleSidedLight, engine.Palette(1))
+	posedCube(true).DrawShaded(both, shadeCam(), doubleSidedLight, engine.Palette(1))
 	if !sameFrame(plain, both) {
 		t.Errorf("wanted DoubleSided to leave a closed outward mesh unchanged")
 	}
 
 	_, plainPixels := newShadeCanvas(t)
 	_, bothPixels := newShadeCanvas(t)
-	posedCube(false).DrawShadedPixels(plainPixels, shadeCam(), doubleSidedLight, 1)
-	posedCube(true).DrawShadedPixels(bothPixels, shadeCam(), doubleSidedLight, 1)
+	posedCube(false).DrawShadedPixels(plainPixels, shadeCam(), doubleSidedLight, engine.Palette(1))
+	posedCube(true).DrawShadedPixels(bothPixels, shadeCam(), doubleSidedLight, engine.Palette(1))
 	if !samePixels(plainPixels, bothPixels) {
 		t.Errorf("wanted DoubleSided to leave a closed outward mesh unchanged in pixels")
 	}
@@ -893,11 +893,11 @@ func TestDoubleSidedSheetIsLitFromTheSideYouSee(t *testing.T) {
 	light := Light{Direction: geometry.Vector3{Z: 1}}
 
 	front := newShadeBuffer(t)
-	towards.DrawShaded(front, shadeCam(), light, 1)
+	towards.DrawShaded(front, shadeCam(), light, engine.Palette(1))
 	back := newShadeBuffer(t)
-	away.DrawShaded(back, shadeCam(), light, 1)
+	away.DrawShaded(back, shadeCam(), light, engine.Palette(1))
 	culled := newShadeBuffer(t)
-	awayCulled.DrawShaded(culled, shadeCam(), light, 1)
+	awayCulled.DrawShaded(culled, shadeCam(), light, engine.Palette(1))
 
 	if len(drawn(front)) == 0 {
 		t.Fatalf("test setup: wanted the sheet drawn from the front")
@@ -912,7 +912,7 @@ func TestDoubleSidedSheetIsLitFromTheSideYouSee(t *testing.T) {
 	// And with the light on the far side, the near side is dark (ambient only).
 	dark := Light{Direction: geometry.Vector3{Z: -1}, Ambient: 0.2}
 	lit := newShadeBuffer(t)
-	away.DrawShaded(lit, shadeCam(), dark, 1)
+	away.DrawShaded(lit, shadeCam(), dark, engine.Palette(1))
 	cells := drawn(lit)
 	if len(cells) == 0 {
 		t.Fatalf("wanted the sheet drawn")
@@ -941,5 +941,51 @@ func TestDoubleSidedSurvivesFit(t *testing.T) {
 
 	if !m.Fit(2).DoubleSided {
 		t.Errorf("wanted Fit to keep DoubleSided")
+	}
+}
+
+// An RGB color works anywhere a palette color does: cells carry it as it is, and
+// pixels carry it scaled by the light.
+func TestDrawShadedAcceptsRGBColors(t *testing.T) {
+	color := engine.RGB(200, 100, 50)
+	light := Light{Direction: geometry.Vector3{Z: 1}} // straight into the front face
+	cube := Cube(2)
+	cube.Position = geometry.Vector3{Z: 5}
+
+	fb := newShadeBuffer(t)
+	cube.DrawShaded(fb, shadeCam(), light, color)
+	cells := drawn(fb)
+	if len(cells) == 0 {
+		t.Fatalf("wanted the cube drawn")
+	}
+	for _, c := range cells {
+		if got := fb.At(c[0], c[1]).Foreground; got != color {
+			t.Fatalf("wanted the RGB color kept on cells, got %v at %v", got, c)
+		}
+	}
+
+	_, canvas := newShadeCanvas(t)
+	cube.DrawShadedPixels(canvas, shadeCam(), light, color)
+	want := engine.Shade(color, 1)
+	if want != color {
+		t.Fatalf("wanted full light to leave an RGB color as it is, got %v", want)
+	}
+	pixels := pixelsDrawn(canvas)
+	if len(pixels) == 0 {
+		t.Fatalf("wanted pixels drawn")
+	}
+	for _, p := range pixels {
+		if got := canvas.At(p[0], p[1]); got != want {
+			t.Fatalf("wanted every pixel %v, got %v at %v", want, got, p)
+		}
+	}
+
+	dim := Light{Direction: geometry.Vector3{Z: -1}, Ambient: 0.5} // light from behind: ambient only
+	_, canvas = newShadeCanvas(t)
+	cube.DrawShadedPixels(canvas, shadeCam(), dim, color)
+	for _, p := range pixelsDrawn(canvas) {
+		if got, want := canvas.At(p[0], p[1]), engine.RGB(100, 50, 25); got != want {
+			t.Fatalf("wanted the RGB color scaled by the ambient light to %v, got %v at %v", want, got, p)
+		}
 	}
 }

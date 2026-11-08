@@ -29,8 +29,8 @@ func drawWith(t *testing.T, m Mesh, cam Camera) *engine.FrameBuffer {
 
 	m.Draw(fb, cam, engine.Cell{Character: '#'})
 	m.DoubleSided = true
-	m.DrawShaded(fb, cam, light, 1)
-	m.DrawShadedPixels(fb.Canvas(), cam, light, 2)
+	m.DrawShaded(fb, cam, light, engine.Palette(1))
+	m.DrawShadedPixels(fb.Canvas(), cam, light, engine.Palette(2))
 	fb.Canvas().Compose()
 	return fb
 }

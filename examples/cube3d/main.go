@@ -32,7 +32,7 @@ var sun = mesh.Light{Direction: geometry.Vector3{X: 0.4, Y: -1, Z: 0.6}, Ambient
 
 type object struct {
 	mesh  mesh.Mesh
-	color uint8
+	color engine.Color
 }
 
 type cubeGame struct {
@@ -60,7 +60,7 @@ func keyDown(held func(engine.Key) bool, letter rune) bool {
 }
 
 // newCube returns a cube of the given size resting on the floor at (x, z).
-func newCube(size, x, z float64, color uint8) object {
+func newCube(size, x, z float64, color engine.Color) object {
 	m := mesh.Cube(size)
 	m.Position = geometry.Vector3{X: x, Y: floorY + size/2, Z: z}
 	return object{mesh: m, color: color}
@@ -121,7 +121,7 @@ func (g *cubeGame) Update(dt float64, in *engine.Input) error {
 func (g *cubeGame) Draw(fb *engine.FrameBuffer) {
 	// The floor is wireframe and ignores depth, so draw it first; the cubes then
 	// cover it where they stand, and hide each other by depth.
-	g.floor.Draw(fb, g.cam, engine.Cell{Character: '.', Color: 240})
+	g.floor.Draw(fb, g.cam, engine.Cell{Character: '.', Foreground: engine.Palette(240)})
 
 	mode := "glyphs"
 	if g.halfBlocks {
@@ -145,10 +145,10 @@ func (g *cubeGame) Draw(fb *engine.FrameBuffer) {
 		}
 	}
 
-	fb.DrawBox(0, 0, fb.Width(), fb.Height(), 0)
-	fb.DrawText(1, 1, fmt.Sprintf("%.0f fps  %s", g.fps, mode), 0)
-	fb.DrawText(1, fb.Height()-3, "WASD move  Q/E turn  arrows look", 0)
-	fb.DrawText(1, fb.Height()-2, "M mode  B edges  Esc quit", 0)
+	fb.DrawBox(0, 0, fb.Width(), fb.Height(), engine.Color{})
+	fb.DrawText(1, 1, fmt.Sprintf("%.0f fps  %s", g.fps, mode), engine.Color{})
+	fb.DrawText(1, fb.Height()-3, "WASD move  Q/E turn  arrows look", engine.Color{})
+	fb.DrawText(1, fb.Height()-2, "M mode  B edges  Esc quit", engine.Color{})
 }
 
 // newCubeGame returns the scene main runs: a floor and six cubes, seen from just
@@ -161,12 +161,12 @@ func newCubeGame() *cubeGame {
 		cam:   mesh.Camera{Position: geometry.Vector3{Z: -4}, FOV: math.Pi / 2, Near: 0.1},
 		floor: floor,
 		cubes: []object{
-			newCube(2, 0, 6, 208),
-			newCube(1, -4, 4, 39),
-			newCube(3, 6, 10, 118),
-			newCube(1.5, -8, 12, 201),
-			newCube(2, 10, -4, 39),
-			newCube(1, -6, -8, 118),
+			newCube(2, 0, 6, engine.Palette(208)),
+			newCube(1, -4, 4, engine.Palette(39)),
+			newCube(3, 6, 10, engine.Palette(118)),
+			newCube(1.5, -8, 12, engine.Palette(201)),
+			newCube(2, 10, -4, engine.Palette(39)),
+			newCube(1, -6, -8, engine.Palette(118)),
 		},
 		fps: 30,
 	}
