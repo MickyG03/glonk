@@ -93,7 +93,7 @@ var goldenScenes = []struct {
 		fb := goldenBuffer(t)
 		cube := Cube(2)
 		cube.Transform.Position = geometry.Vector3{Z: 5}
-		cube.Transform.Yaw, cube.Transform.Pitch = 0.6, 0.4
+		cube.Transform.Yaw, cube.Transform.Pitch = 0.6, -0.4
 		cube.DrawShaded(fb, shadeCam(), goldenSun, engine.Palette(208))
 		return fb
 	}},
@@ -106,7 +106,7 @@ var goldenScenes = []struct {
 		near.Transform.Position = geometry.Vector3{X: -1.2, Y: -0.2, Z: 3}
 		near.Transform.Yaw = 0.7
 		far.Transform.Position = geometry.Vector3{X: 1, Z: 7}
-		far.Transform.Yaw, far.Transform.Pitch = -0.4, 0.2
+		far.Transform.Yaw, far.Transform.Pitch = -0.4, -0.2
 		floor.Draw(fb, cam, engine.Cell{Character: ':', Foreground: engine.Palette(240)})
 		far.DrawShaded(fb, cam, goldenSun, engine.Palette(33))
 		near.DrawShaded(fb, cam, goldenSun, engine.Palette(196))
@@ -117,7 +117,7 @@ var goldenScenes = []struct {
 		fb := goldenBuffer(t)
 		cube := Cube(2)
 		cube.Transform.Position = geometry.Vector3{Z: 5}
-		cube.Transform.Yaw, cube.Transform.Pitch = 0.6, 0.4
+		cube.Transform.Yaw, cube.Transform.Pitch = 0.6, -0.4
 		canvas := fb.Canvas()
 		cube.DrawShadedPixels(canvas, shadeCam(), goldenSun, engine.Palette(208))
 		canvas.Compose()

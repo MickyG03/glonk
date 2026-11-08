@@ -12,13 +12,14 @@ type Transform struct {
 	// applied after Pitch and before Position.
 	Yaw float64
 
-	// Pitch turns the model about the x axis. Positive turns +y toward +z. It is
-	// applied first.
+	// Pitch tips the model's front up, as it does for a Camera: positive turns +z
+	// toward +y. It is applied first.
 	Pitch float64
 }
 
 // Apply returns where the model-space point p ends up in the world: turned by
 // Pitch, then Yaw, then moved to Position.
 func (t Transform) Apply(p geometry.Vector3) geometry.Vector3 {
-	return p.RotateX(t.Pitch).RotateY(t.Yaw).Add(t.Position)
+	// RotateX turns +y toward +z, so tipping +z up toward +y is the opposite way.
+	return p.RotateX(-t.Pitch).RotateY(t.Yaw).Add(t.Position)
 }
