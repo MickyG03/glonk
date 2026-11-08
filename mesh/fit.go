@@ -9,17 +9,17 @@ import (
 // Bounds returns the smallest axis-aligned box around the mesh's vertices, in
 // model space (before Position, Yaw and Pitch are applied). An empty mesh gives
 // two zero vectors.
-func (m Mesh) Bounds() (min, max geometry.Vector3) {
+func (m Mesh) Bounds() (lo, hi geometry.Vector3) {
 	if len(m.Vertices) == 0 {
 		return geometry.Vector3{}, geometry.Vector3{}
 	}
 
-	min, max = m.Vertices[0], m.Vertices[0]
+	lo, hi = m.Vertices[0], m.Vertices[0]
 	for _, v := range m.Vertices[1:] {
-		min = geometry.Vector3{X: math.Min(min.X, v.X), Y: math.Min(min.Y, v.Y), Z: math.Min(min.Z, v.Z)}
-		max = geometry.Vector3{X: math.Max(max.X, v.X), Y: math.Max(max.Y, v.Y), Z: math.Max(max.Z, v.Z)}
+		lo = geometry.Vector3{X: math.Min(lo.X, v.X), Y: math.Min(lo.Y, v.Y), Z: math.Min(lo.Z, v.Z)}
+		hi = geometry.Vector3{X: math.Max(hi.X, v.X), Y: math.Max(hi.Y, v.Y), Z: math.Max(hi.Z, v.Z)}
 	}
-	return min, max
+	return lo, hi
 }
 
 // Fit returns a copy of the mesh centered on the origin and scaled evenly so that

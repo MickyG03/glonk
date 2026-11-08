@@ -13,10 +13,8 @@ type Cell struct {
 	// can span two columns and is not there yet.
 	Character rune
 
-	// Color is the character's color.
-	// 0 means terminal default
-	// 1-255 are the palette indices.
-	// Use 16 for black.
+	// Color is the character's color. 0 means the terminal's default; 1 to 255 are
+	// palette indices. Use 16 for black.
 	Color uint8
 
 	// Background is the color behind the character, with the same values as Color.

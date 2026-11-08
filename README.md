@@ -61,6 +61,8 @@ Ctrl-C quits any program built on glonk.
 
 ## Loading models
 
+This sits inside your `Draw` method, with `fb`, `cam` and `light` set up as in the examples; `ExampleLoadOBJ` in `mesh/example_test.go` is a complete, runnable version.
+
 ```go
 //go:embed ship.obj
 var shipOBJ []byte
@@ -120,7 +122,7 @@ func main() {
 }
 ```
 
-`Run` owns the terminal. Each frame it calls `Update` (move things, read input) and then `Draw` (write cells into the `FrameBuffer`), then prints the frame. The terminal is restored when `Run` returns, and Ctrl-C, `kill` and a closing window (SIGINT, SIGTERM, SIGHUP) end it cleanly, so the game needs no signal handler. Run `go doc github.com/kyrokohan/glonk/engine` for the full API.
+`Run` owns the terminal. Each frame it calls `Update` (move things, read input) and then `Draw` (write cells into the `FrameBuffer`), then prints the frame. The terminal is restored when `Run` returns, and Ctrl-C, `kill` and a closing window (SIGINT, SIGTERM, SIGHUP) end it cleanly, so the game needs no signal handler. The full API is in each package's documentation, with runnable examples: `go doc github.com/kyrokohan/glonk/engine`, or the package pages on pkg.go.dev once the module is published.
 
 ## Packages
 

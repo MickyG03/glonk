@@ -94,8 +94,7 @@ func (fb *FrameBuffer) SetDepth(x, y int, z float64, cell Cell) bool {
 	return true
 }
 
-// At returns the cell at a specific location.
-// Returns BlankCell if x and/or y are out of bounds.
+// At returns the cell at (x, y), or BlankCell if that is outside the buffer.
 func (fb *FrameBuffer) At(x, y int) Cell {
 	if !fb.inBounds(x, y) {
 		return BlankCell

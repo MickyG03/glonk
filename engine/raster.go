@@ -125,8 +125,7 @@ func (fb *FrameBuffer) DrawText(x, y int, text string, color uint8) {
 	}
 }
 
-// DrawBox draws a w x h border at (x, y);
-// boxes smaller than 2x2 draw nothing
+// DrawBox draws a w x h border at (x, y). A box smaller than 2x2 draws nothing.
 func (fb *FrameBuffer) DrawBox(x, y, w, h int, color uint8) {
 	if w < 2 || h < 2 {
 		return

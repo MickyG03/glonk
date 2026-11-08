@@ -24,8 +24,8 @@ var selfExplanatory = map[string]bool{
 	"Vector3.X": true, "Vector3.Y": true, "Vector3.Z": true,
 }
 
-// undocumentedMembers lists the exported struct fields, and the exported constants
-// of a group, that have no comment. go/doc keeps only the comment of a whole group,
+// undocumentedMembers lists the exported struct fields, interface methods, and the
+// exported constants of a group, that have no comment. go/doc keeps only the comment of a whole group,
 // so these are read from the syntax.
 func undocumentedMembers(files []*ast.File) []string {
 	var out []string
@@ -38,6 +38,16 @@ func undocumentedMembers(files []*ast.File) []string {
 			for _, spec := range gd.Specs {
 				switch spec := spec.(type) {
 				case *ast.TypeSpec:
+					if it, ok := spec.Type.(*ast.InterfaceType); ok && spec.Name.IsExported() {
+						for _, m := range it.Methods.List {
+							for _, n := range m.Names {
+								if n.IsExported() && m.Doc == nil && m.Comment == nil {
+									out = append(out, fmt.Sprintf("method %s.%s has no comment", spec.Name.Name, n.Name))
+								}
+							}
+						}
+						continue
+					}
 					st, ok := spec.Type.(*ast.StructType)
 					if !ok || !spec.Name.IsExported() {
 						continue
@@ -104,6 +114,15 @@ func privateNames(files []*ast.File) []string {
 	return names
 }
 
+// firstSentence is the text up to the first full stop that ends a word, as written.
+// (go/doc's own Synopsis cleans doc links away, which pkg.go.dev does not.)
+func firstSentence(text string) string {
+	if m := regexp.MustCompile(`(?s)^.*?[.!?](\s|$)`).FindString(text); m != "" {
+		return m
+	}
+	return text
+}
+
 // docProblems lists what is wrong with the documentation of the package made of
 // files: an exported name with no comment, or a comment that names a private
 // identifier a reader of the documentation cannot look up.
@@ -140,6 +159,11 @@ func docProblems(fset *token.FileSet, files []*ast.File) []string {
 	}
 
 	check("package "+pkg.Name, pkg.Doc)
+	// pkg.go.dev shows the first sentence as it is written in its directory lists and
+	// search results, so a [Link] there would show its brackets.
+	if strings.ContainsAny(firstSentence(pkg.Doc), "[]") {
+		problems = append(problems, fmt.Sprintf("the first sentence of package %s has doc-link brackets, which pkg.go.dev shows as they are", pkg.Name))
+	}
 	values(pkg.Consts)
 	values(pkg.Vars)
 	funcs(pkg.Funcs)
@@ -203,6 +227,8 @@ func TestDocProblemsFindsWhatItShould(t *testing.T) {
 		{"constant group without a comment", "// Package p is p.\npackage p\n\nconst (\n\tA = 1\n\tB = 2\n)\n", []string{"constant A has no comment", "constant B has no comment", "A, B has no doc comment"}},
 		{"variable without a comment", "// Package p is p.\npackage p\n\nvar V = 1\n", []string{"V has no doc comment"}},
 		{"package without a comment", "package p\n\n// F does f.\nfunc F() {}\n", []string{"package p has no doc comment"}},
+		{"link brackets in the package's first sentence", "// Package p has a [T] in it.\npackage p\n\n// T is a type.\ntype T struct{}\n", []string{"first sentence of package p has doc-link brackets"}},
+		{"link brackets later in the package comment are fine", "// Package p is p.\n//\n// It has a [T] in it.\npackage p\n\n// T is a type.\ntype T struct{}\n", nil},
 		{"unexported names need no comment", "// Package p is p.\npackage p\n\nfunc f() {}\n\ntype t struct{}\n", nil},
 		{"names a private function", "// Package p is p.\npackage p\n\n// F is the inverse of toView.\nfunc F() {}\n\nfunc toView() {}\n", []string{"names the private identifier toView"}},
 		{"names a private constant", "// Package p is p.\npackage p\n\n// F waits holdTimeout.\nfunc F() {}\n\nconst holdTimeout = 1\n", []string{"names the private identifier holdTimeout"}},
@@ -212,6 +238,10 @@ func TestDocProblemsFindsWhatItShould(t *testing.T) {
 		{"field with a comment after", "// Package p is p.\npackage p\n\n// T is a type.\ntype T struct {\n\tA int // a\n}\n", nil},
 		{"unexported field needs none", "// Package p is p.\npackage p\n\n// T is a type.\ntype T struct {\n\ta int\n}\n", nil},
 		{"two fields on one line need one comment", "// Package p is p.\npackage p\n\n// T is a type.\ntype T struct {\n\t// A and B are numbers.\n\tA, B int\n}\n", nil},
+		{"interface method without a comment", "// Package p is p.\npackage p\n\n// I is a thing.\ntype I interface {\n\tM()\n}\n", []string{"method I.M has no comment"}},
+		{"interface method with a comment", "// Package p is p.\npackage p\n\n// I is a thing.\ntype I interface {\n\t// M does m.\n\tM()\n}\n", nil},
+		{"unexported interface method needs none", "// Package p is p.\npackage p\n\n// I is a thing.\ntype I interface {\n\tm()\n}\n", nil},
+		{"embedded interface needs none", "// Package p is p.\npackage p\n\n// I is a thing.\ntype I interface {\n\tfmt.Stringer\n}\n", nil},
 		{"constants of a group need one each", "// Package p is p.\npackage p\n\n// Letters.\nconst (\n\t// A is a.\n\tA = 1\n\tB = 2\n)\n", []string{"constant B has no comment"}},
 		{"documented constants", "// Package p is p.\npackage p\n\n// Letters.\nconst (\n\t// A is a.\n\tA = 1\n\t// B is b.\n\tB = 2\n)\n", nil},
 		{"a single constant is covered by its declaration", "// Package p is p.\npackage p\n\n// A is a.\nconst A = 1\n", nil},

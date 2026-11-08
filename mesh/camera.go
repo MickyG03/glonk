@@ -6,13 +6,8 @@ import (
 	"github.com/kyrokohan/glonk/geometry"
 )
 
-// Camera views the world from Position, looking down +z when Yaw and Pitch
-// are 0. Yaw turns it right (positive) or left, Pitch tilts it up (positive) or
-// down, and FOV is the vertical field of view. All three are in radians. Pitch
-// is not limited; keep it inside +-pi/2 or the view flips over.
-//
-// Near is how close to the camera something can be and still be seen; anything
-// nearer is cut away.
+// Camera views the world from Position, looking down +z when Yaw and Pitch are 0.
+// The fields say which way each angle turns; all angles are in radians.
 //
 // A FOV or Near left at 0 uses a default (a FOV of pi/2, a quarter turn, and a Near
 // of 0.1), so Camera{Position: p} is a working camera. A value that makes no sense,
@@ -28,7 +23,8 @@ type Camera struct {
 	// right, toward +x.
 	Yaw float64
 
-	// Pitch tilts the camera, in radians. Positive tilts it up.
+	// Pitch tilts the camera, in radians. Positive tilts it up. It is not limited;
+	// keep it inside +-pi/2 or the view flips over.
 	Pitch float64
 
 	// FOV is the vertical field of view in radians, between 0 and pi. 0 means pi/2.
@@ -62,13 +58,10 @@ func (c Camera) withDefaults() (cam Camera, ok bool) {
 // cellAspect exists because terminal cells are about twice as tall as they are wide
 const cellAspect = 2
 
-// Project returns the 2D projection of p.
-// ok=false means that the point is behind the camera
-// with respect to the Near value, has no finite place on the screen, or that the
-// camera sees nothing at all (see Camera).
-//
-// x and y are fractional cell coordinates and the
-// caller is expected to floor them.
+// Project returns where p appears on a grid of w x h cells, as fractional cell
+// coordinates; the caller is expected to floor them. ok is false when p is nearer
+// than Near or behind the camera, has no finite place on the screen, or the camera
+// sees nothing at all (see Camera).
 func (c Camera) Project(p geometry.Vector3, w, h int) (x, y float64, ok bool) {
 	c, usable := c.withDefaults()
 	if !usable {
