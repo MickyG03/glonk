@@ -37,7 +37,7 @@ func TestKeyboardSequences(t *testing.T) {
 			sb := newSequenceBuilder()
 			tt.build(sb)
 
-			if got := sb.sequence.String(); got != tt.want {
+			if got := sb.String(); got != tt.want {
 				t.Errorf("wanted %q, got %q", tt.want, got)
 			}
 		})
@@ -89,7 +89,7 @@ func TestExitSequence(t *testing.T) {
 			tty := newTerminal(os.Stdin, &bytes.Buffer{})
 			tty.keyboard = tt.keyboard
 
-			if got := tty.exitSequence().sequence.String(); got != tt.want {
+			if got := tty.exitSequence().String(); got != tt.want {
 				t.Errorf("wanted %q, got %q", tt.want, got)
 			}
 		})
@@ -141,7 +141,7 @@ func TestEnterSequence(t *testing.T) {
 
 	// The alternate screen first, so autowrap is turned off on it and back on there.
 	want := "\x1b[?1049h\x1b[?7l\x1b[2J\x1b[?25l"
-	if got := tty.enterSequence().sequence.String(); got != want {
+	if got := tty.enterSequence().String(); got != want {
 		t.Errorf("wanted %q, got %q", want, got)
 	}
 }
@@ -174,5 +174,68 @@ func TestOnlyARealTerminalCanSuspend(t *testing.T) {
 	}
 	if got := newTerminal(os.Stdin, io.Discard).canSuspend(); got != suspendSupported {
 		t.Errorf("wanted a terminal to suspend exactly where the system can, got %v", got)
+	}
+}
+
+func TestSequenceBuilderWritesNumbersInDecimal(t *testing.T) {
+	tests := []struct {
+		name  string
+		build func(sb *sequenceBuilder)
+		want  string
+	}{
+		{"move to the corner", func(sb *sequenceBuilder) { sb.MoveTo(1, 1) }, "\x1b[1;1H"},
+		{"move to a normal spot", func(sb *sequenceBuilder) { sb.MoveTo(24, 80) }, "\x1b[24;80H"},
+		{"move to a big spot", func(sb *sequenceBuilder) { sb.MoveTo(1000, 20000) }, "\x1b[1000;20000H"},
+		{"erase the display", func(sb *sequenceBuilder) { sb.EraseInDisplay(2) }, "\x1b[2J"},
+		{"foreground 0", func(sb *sequenceBuilder) { sb.SetForeground(0) }, "\x1b[38;5;0m"},
+		{"foreground 9", func(sb *sequenceBuilder) { sb.SetForeground(9) }, "\x1b[38;5;9m"},
+		{"foreground 255", func(sb *sequenceBuilder) { sb.SetForeground(255) }, "\x1b[38;5;255m"},
+		{"background 208", func(sb *sequenceBuilder) { sb.SetBackground(208) }, "\x1b[48;5;208m"},
+		{"keyboard flags", func(sb *sequenceBuilder) { sb.PushKeyboardFlags(11) }, "\x1b[>11u"},
+		{"text and an invalid rune", func(sb *sequenceBuilder) { sb.Print("a"); sb.PrintRune('é'); sb.PrintRune(-1) }, "aé�"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			sb := newSequenceBuilder()
+			tt.build(sb)
+			if got := sb.String(); got != tt.want {
+				t.Errorf("wanted %q, got %q", tt.want, got)
+			}
+		})
+	}
+}
+
+func TestSequenceBuilderResetKeepsItsBufferAndStartsOver(t *testing.T) {
+	sb := newSequenceBuilder()
+	sb.Grow(64)
+	sb.MoveTo(10, 10)
+	sb.Print("first")
+	first := cap(sb.buf)
+
+	sb.reset()
+	if sb.Len() != 0 || sb.String() != "" {
+		t.Fatalf("wanted an empty builder after reset, got %q", sb.String())
+	}
+	sb.MoveTo(1, 1)
+
+	if got := sb.String(); got != "\x1b[1;1H" {
+		t.Errorf("wanted only what was built after the reset, got %q", got)
+	}
+	if cap(sb.buf) != first {
+		t.Errorf("wanted the buffer kept, capacity went from %d to %d", first, cap(sb.buf))
+	}
+}
+
+func TestSequenceBuilderFlushIsOneWriteAndLeavesTheBuilderAlone(t *testing.T) {
+	sb := newSequenceBuilder()
+	sb.Print("hello")
+	var out countingWriter
+
+	if err := sb.Flush(&out); err != nil {
+		t.Fatal(err)
+	}
+
+	if out.writes != 1 || out.bytes != 5 || sb.String() != "hello" {
+		t.Errorf("wanted one write of 5 bytes and the builder unchanged, got %d writes of %d bytes and %q", out.writes, out.bytes, sb.String())
 	}
 }

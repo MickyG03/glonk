@@ -1,9 +1,10 @@
 package engine
 
 import (
-	"fmt"
 	"io"
-	"strings"
+	"slices"
+	"strconv"
+	"unicode/utf8"
 )
 
 const (
@@ -31,35 +32,66 @@ const (
 	disableFocusSeq = "\x1b[?1004l"
 )
 
+// sequenceBuilder collects the bytes of one write to the terminal. It keeps its
+// buffer between uses, so a builder that is reset and filled again each frame
+// allocates only until it has grown to the size of a frame.
 type sequenceBuilder struct {
-	sequence strings.Builder
+	buf []byte
 }
 
 func newSequenceBuilder() *sequenceBuilder {
 	return &sequenceBuilder{}
 }
 
+// reset empties the builder and keeps its buffer.
+func (sb *sequenceBuilder) reset() {
+	sb.buf = sb.buf[:0]
+}
+
+// String returns what has been built so far.
+func (sb *sequenceBuilder) String() string {
+	return string(sb.buf)
+}
+
+// Len returns how many bytes have been built so far.
+func (sb *sequenceBuilder) Len() int {
+	return len(sb.buf)
+}
+
+// Flush writes everything built so far to w in a single Write. The builder is left
+// as it is; reset it to build the next one.
 func (sb *sequenceBuilder) Flush(w io.Writer) error {
-	_, err := io.WriteString(w, sb.sequence.String())
+	_, err := w.Write(sb.buf)
 	return err
 }
 
 func (sb *sequenceBuilder) Print(s string) {
-	sb.sequence.WriteString(s)
+	sb.buf = append(sb.buf, s...)
 }
 
-// PrintRune appends r as UTF-8 without building a string first.
-// Invalid runes come out as U+FFFD, the same as string(r).
+// PrintRune appends r as UTF-8. A value that is not a valid character comes out as
+// U+FFFD, the same as string(r).
 func (sb *sequenceBuilder) PrintRune(r rune) {
-	sb.sequence.WriteRune(r)
+	sb.buf = utf8.AppendRune(sb.buf, r)
+}
+
+// appendCSI starts a control sequence with one number and ends it with final.
+func (sb *sequenceBuilder) appendCSI(n int, final byte) {
+	sb.buf = append(sb.buf, escapeSeq...)
+	sb.buf = strconv.AppendInt(sb.buf, int64(n), 10)
+	sb.buf = append(sb.buf, final)
 }
 
 func (sb *sequenceBuilder) MoveTo(n, m int) {
-	fmt.Fprintf(&sb.sequence, escapeSeq+"%d;%dH", n, m)
+	sb.buf = append(sb.buf, escapeSeq...)
+	sb.buf = strconv.AppendInt(sb.buf, int64(n), 10)
+	sb.buf = append(sb.buf, ';')
+	sb.buf = strconv.AppendInt(sb.buf, int64(m), 10)
+	sb.buf = append(sb.buf, 'H')
 }
 
 func (sb *sequenceBuilder) EraseInDisplay(n int) {
-	fmt.Fprintf(&sb.sequence, escapeSeq+"%dJ", n)
+	sb.appendCSI(n, 'J')
 }
 
 func (sb *sequenceBuilder) SwitchToAlternateScreen() {
@@ -89,13 +121,22 @@ func (sb *sequenceBuilder) ShowCursor() {
 	sb.Print(showCursorSeq)
 }
 
+// appendPaletteColor writes the sequence that sets the foreground (38) or the
+// background (48) to palette color n.
+func (sb *sequenceBuilder) appendPaletteColor(base string, n uint8) {
+	sb.buf = append(sb.buf, escapeSeq...)
+	sb.buf = append(sb.buf, base...)
+	sb.buf = strconv.AppendUint(sb.buf, uint64(n), 10)
+	sb.buf = append(sb.buf, 'm')
+}
+
 func (sb *sequenceBuilder) SetForeground(n uint8) {
-	fmt.Fprintf(&sb.sequence, escapeSeq+"38;5;%dm", n)
+	sb.appendPaletteColor("38;5;", n)
 }
 
 // SetBackground sets the background to palette color n.
 func (sb *sequenceBuilder) SetBackground(n uint8) {
-	fmt.Fprintf(&sb.sequence, escapeSeq+"48;5;%dm", n)
+	sb.appendPaletteColor("48;5;", n)
 }
 
 // DefaultForeground returns the foreground to the terminal default and leaves the background alone.
@@ -115,7 +156,7 @@ func (sb *sequenceBuilder) ResetStyle() {
 // Grow reserves room for n more bytes so a frame is built in one allocation
 // instead of the builder doubling its way up.
 func (sb *sequenceBuilder) Grow(n int) {
-	sb.sequence.Grow(n)
+	sb.buf = slices.Grow(sb.buf, n)
 }
 
 // QueryKeyboardProtocol asks whether the terminal speaks the kitty keyboard protocol.
@@ -131,7 +172,10 @@ func (sb *sequenceBuilder) QueryDeviceAttributes() {
 
 // PushKeyboardFlags turns on the given kitty keyboard protocol flags until popped.
 func (sb *sequenceBuilder) PushKeyboardFlags(flags int) {
-	fmt.Fprintf(&sb.sequence, escapeSeq+">%du", flags)
+	sb.buf = append(sb.buf, escapeSeq...)
+	sb.buf = append(sb.buf, '>')
+	sb.buf = strconv.AppendInt(sb.buf, int64(flags), 10)
+	sb.buf = append(sb.buf, 'u')
 }
 
 // PopKeyboardFlags restores the keyboard mode that was active before the last push.

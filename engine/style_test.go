@@ -49,7 +49,7 @@ func TestAttrHas(t *testing.T) {
 func styleBytes(from, to style) string {
 	sb := newSequenceBuilder()
 	sb.SetStyle(from, to)
-	return sb.sequence.String()
+	return sb.String()
 }
 
 func TestSetStyleBytes(t *testing.T) {
