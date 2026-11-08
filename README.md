@@ -13,7 +13,7 @@ A terminal rendering engine for Go. Draw 2D, 3D, or both in the same frame, usin
 - **Mixed:** draw a 3D scene first, then a 2D HUD on top, into the same frame.
 - **Input:** held keys and one-shot presses, including arrows. Terminals with the [kitty keyboard protocol](https://sw.kovidgoyal.net/kitty/keyboard-protocol/) (Ghostty, kitty, WezTerm, foot, iTerm2, Alacritty) report real key releases, so you can hold several keys at once.
 - **Resizing:** the frame follows the terminal window, and a game with a `Resize(width, height int)` method is told its size.
-- **Testing:** `Config.Input` and `Config.Output` take any reader and writer. With ones that are not a terminal, `Run` runs headless at a size you give it, so a game can be driven with key bytes and its frames read back.
+- **Testing:** `engine.Keyboard` presses keys for a game's `Update`, a `FrameBuffer` prints as text, and `Config.Input` and `Config.Output` let a whole `Run` be driven without a terminal. See [Testing a game](#testing-a-game).
 
 ## Install
 
@@ -127,6 +127,42 @@ func main() {
 ```
 
 `Run` owns the terminal. Each frame it calls `Update` (move things, read input) and then `Draw` (write cells into the `FrameBuffer`), then prints the frame. The terminal is restored when `Run` returns, and Ctrl-C, `kill` and a closing window (SIGINT, SIGTERM, SIGHUP) end it cleanly (`Run` returns `nil`), so the game needs no signal handler. When your `context` ends it, `Run` returns the context's error. The full API is in each package's documentation, with runnable examples: `go doc github.com/kyrokohan/glonk/engine`, or the package pages on pkg.go.dev once the module is published.
+
+## Testing a game
+
+`Update` and `Draw` are plain methods, so a game is tested by calling them. `engine.Keyboard` stands in for the terminal's keyboard, and a `FrameBuffer` prints as text, one line per row:
+
+```go
+func TestEscapeQuits(t *testing.T) {
+	kb := engine.NewKeyboard()
+	kb.Press(engine.KeyEscape)
+
+	err := (&game{}).Update(1.0/30, kb.Input())
+
+	if !errors.Is(err, engine.ErrQuit) {
+		t.Errorf("wanted ErrQuit, got %v", err)
+	}
+}
+
+func TestTheDotMovesAcrossTheScreen(t *testing.T) {
+	g := &game{}
+	g.Update(0.25, engine.NewKeyboard().Input()) // a quarter of a second at 20 cells a second
+
+	fb, _ := engine.NewFrameBuffer(12, 3)
+	g.Draw(fb)
+
+	want := "┌──────────┐\n" +
+		"│    @     │\n" +
+		"└──────────┘"
+	if got := fb.String(); got != want {
+		t.Errorf("wanted\n%s\ngot\n%s", want, got)
+	}
+}
+```
+
+A `Keyboard` acts like a terminal that reports key releases: a key is down from `Press` until `Release`, `Input.Pressed` is true for one frame, and `EndFrame` ends that frame the way `Run` does. Tests are exact and need no clock. `String` leaves off the trailing spaces of each line and shows characters only, not colors.
+
+To test a whole run (start-up, key bytes in, frames out), give `Config.Input` and `Config.Output` a reader and a writer that are not a terminal: `Run` then runs headless at the `Width` and `Height` you set. See `ExampleRun_headless`.
 
 ## Packages
 

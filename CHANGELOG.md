@@ -4,7 +4,7 @@ All notable changes to glonk are written here. The format follows [Keep a Change
 
 ## Unreleased
 
-There has been no release yet. The API is pre-1.0 and **will** change before v0.1.0: the test helpers and the 2D API (sprites) are still planned to be reshaped. `Cell` and its colors, `Game` and `Run`, and the 3D API have been. The README lists the known limits of what exists today.
+There has been no release yet. The API is pre-1.0 and **will** change before v0.1.0: the 2D API (sprites) is still planned to be reshaped. `Cell` and its colors, `Game` and `Run`, the 3D API and the test helpers have been. The README lists the known limits of what exists today.
 
 ### Added
 
@@ -17,6 +17,7 @@ There has been no release yet. The API is pre-1.0 and **will** change before v0.
 - `Config.Input` and `Config.Output` (default `os.Stdin` and `os.Stdout`) for running on another terminal such as `/dev/tty`, or on none: with an input or output that is not a terminal, `Run` runs headless at the given `Width` and `Height`, writes only the frames, and leaves terminal settings and signals alone, so a game can be tested with key bytes in and a buffer out. With neither a terminal nor a size, `Run` returns an error that says so.
 - `Resizer`: a game with a `Resize(width, height int)` method is told the frame size before the first `Update` and whenever it changes.
 - A written contract for how `Run` ends and what it calls: it returns `nil` when the player quits (Ctrl-C, `ErrQuit`, a quit signal) and the context's error (`context.Canceled`, `context.DeadlineExceeded`) when the context ends it, at once if the context is already done; `Resize`, `Update` and `Draw` are called one at a time from one goroutine, none starts once the context is done, and none is called after `Run` returns.
+- Test helpers: `Keyboard` presses and releases keys for a game's `Update` (exact, like a terminal that reports releases, with no clock), and `FrameBuffer` has a `String` method, so a whole screen can be compared as text and `fmt.Println(fb)` prints it.
 - Terminal safety: `SIGINT`, `SIGTERM` and `SIGHUP` end `Run` cleanly (a second signal kills a stuck game); Ctrl-Z suspends and `fg` resumes; `Run` leaves stdin alone once it returns; line wrapping is off while a program runs.
 - Output safety: every cell is checked before it is sent, so control characters and escape sequences become `?`, wide characters become `?`, combining marks are skipped by `DrawText`, and NUL is a space.
 
