@@ -2,6 +2,7 @@ package mesh_test
 
 import (
 	"fmt"
+	"math"
 	"strings"
 
 	"github.com/kyrokohan/glonk/engine"
@@ -134,4 +135,93 @@ func ExampleCamera_Project() {
 	// Output:
 	// 44.8 12.0 true
 	// false
+}
+
+// A Transform scales a model, turns it by Roll, Pitch and Yaw in that order, and moves
+// it to Position. Apply says where a point of the model ends up.
+func ExampleTransform() {
+	t := mesh.Transform{
+		Position: geometry.Vector3{X: 10},
+		Yaw:      math.Pi / 2, // swings the front, +z, around to +x
+		Scale:    2,
+	}
+
+	p := t.Apply(geometry.Vector3{Z: 1}) // a point one unit in front of the model
+	fmt.Printf("%.1f %.1f %.1f\n", p.X, p.Y, p.Z)
+	// Output:
+	// 12.0 0.0 0.0
+}
+
+// A Material gives a mesh its color and the characters that show how bright it is.
+func ExampleMaterial() {
+	fb, err := engine.NewFrameBuffer(30, 11)
+	if err != nil {
+		panic(err)
+	}
+
+	fb.DrawBox(0, 0, fb.Width(), fb.Height(), engine.Color{})
+
+	cube := mesh.Cube(2)
+	cube.Transform = mesh.Transform{Position: geometry.Vector3{Z: 3}, Yaw: 0.6}
+	cube.Material = mesh.Material{Color: engine.Palette(208), Ramp: ".oO@"}
+	cube.DrawShaded(fb, mesh.Camera{},
+		mesh.Ambient{Level: 0.2},
+		mesh.Directional{Direction: geometry.Vector3{X: 0.4, Y: -1, Z: 0.6}})
+
+	printFrame(fb)
+	// Output:
+	// ┌────────────────────────────┐
+	// │                            │
+	// │              OO            │
+	// │        OOOOOOOOoo          │
+	// │        OOOOOOOOooo         │
+	// │        OOOOOOOOooo         │
+	// │        OOOOOOOOooo         │
+	// │        OOOOOOOOoo          │
+	// │              OO            │
+	// │                            │
+	// └────────────────────────────┘
+}
+
+// lamp is a light of your own: it lights what is near it, and fades with distance.
+type lamp struct {
+	position geometry.Vector3
+	reach    float64
+}
+
+func (l lamp) Brightness(point, normal geometry.Vector3) float64 {
+	toLamp := l.position.Sub(point)
+	facing := max(0, normal.Dot(toLamp.Normalize()))
+	return facing * max(0, 1-toLamp.Length()/l.reach)
+}
+
+// Any type with a Brightness method is a Light. Lights add up without passing full
+// brightness.
+func ExampleLight() {
+	fb, err := engine.NewFrameBuffer(30, 11)
+	if err != nil {
+		panic(err)
+	}
+
+	fb.DrawBox(0, 0, fb.Width(), fb.Height(), engine.Color{})
+
+	cube := mesh.Cube(2)
+	cube.Transform = mesh.Transform{Position: geometry.Vector3{Z: 3}, Yaw: 0.6}
+	cube.DrawShaded(fb, mesh.Camera{},
+		mesh.Ambient{Level: 0.1},
+		lamp{position: geometry.Vector3{X: -2, Y: 1, Z: 0}, reach: 6})
+
+	printFrame(fb)
+	// Output:
+	// ┌────────────────────────────┐
+	// │                            │
+	// │              *+            │
+	// │        ******++::          │
+	// │        *****+++:::         │
+	// │        ***+++++:::         │
+	// │        **++++++:::         │
+	// │        ++++++++::          │
+	// │              ++            │
+	// │                            │
+	// └────────────────────────────┘
 }

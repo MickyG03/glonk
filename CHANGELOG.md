@@ -4,7 +4,7 @@ All notable changes to glonk are written here. The format follows [Keep a Change
 
 ## Unreleased
 
-There has been no release yet. The API is pre-1.0 and **will** change before v0.1.0: `Cell` and its colors, `Game` and `Run`, the 3D API (transforms, lights, materials), test helpers and the 2D API are all planned to be reshaped. The README lists the known limits of what exists today.
+There has been no release yet. The API is pre-1.0 and **will** change before v0.1.0: the test helpers and the 2D API (sprites) are still planned to be reshaped. `Cell` and its colors, `Game` and `Run`, and the 3D API have been. The README lists the known limits of what exists today.
 
 ### Added
 
@@ -22,8 +22,11 @@ There has been no release yet. The API is pre-1.0 and **will** change before v0.
 
 **mesh**
 - `Mesh` with edges and triangular faces; `Cube`, `Grid`, `LoadOBJ` and `LoadOBJLimit` (which bounds untrusted input); `Fit`, `Bounds`, `Validate` and `Clone`.
-- Perspective `Camera` with yaw, pitch, field of view and a near plane (fields left at zero use defaults); wireframe `Draw`; `DrawShaded` and `DrawShadedPixels` with a directional `Light`, depth testing, back-face culling and near-plane clipping; `DoubleSided` for models wound the other way.
-- Drawing does not panic on bad meshes or cameras: edges and faces that name a missing vertex are skipped, and a camera with nonsense values sees nothing.
+- `Transform` places a mesh: `Position`, `Yaw`, `Pitch`, `Roll` and a uniform `Scale` (0 means 1), in `Mesh.Transform`. Yaw and Pitch turn a model the way they turn a `Camera`: positive yaw swings the front toward +x, positive pitch tips it up. `Transform.Apply` says where a model point ends up. A transform with a number that is not finite, or a negative scale, draws nothing and `Validate` reports it.
+- `Material` says how a mesh looks shaded: a `Color` and a `Ramp` of brightness characters (default `.:-=+*#%@`), in `Mesh.Material`; the draw calls no longer take a color.
+- `Light` is an interface with `Directional` and `Ambient` lights, and your own; `DrawShaded` and `DrawShadedPixels` take any number. Lights add up without passing full brightness, so one ambient light and one directional light give what the single combined light gave before.
+- Perspective `Camera` with yaw, pitch, field of view, a near plane and a `CellAspect` (how much taller than wide a cell is; fields left at zero use defaults); wireframe `Draw`; `DrawShaded` and `DrawShadedPixels` with depth testing, back-face culling and near-plane clipping; `DoubleSided` for models wound the other way.
+- Drawing does not panic on bad meshes, transforms or cameras: edges and faces that name a missing vertex are skipped, and a camera with nonsense values sees nothing.
 
 **sprite**, **geometry**
 - Single-cell `Sprite`s in drawing `Layer`s; `Vector2` and `Vector3`.
