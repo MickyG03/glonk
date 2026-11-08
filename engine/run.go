@@ -171,6 +171,19 @@ func handle(action inputAction, suspend func() error) (done bool, err error) {
 // arrives, no new frame starts; a frame already under way finishes, because Run
 // never interrupts a call into the game.
 //
+// # What is sent
+//
+// To a terminal, Run sends only the cells that changed since the previous frame, as
+// one synchronized update, which terminals that know the mode show all at once and
+// the rest ignore. A screen that does not change sends nothing. Everything is drawn
+// again after the window changes size, after Ctrl-Z, after a failed write, and when
+// the terminal reports that its window came back to the front.
+//
+// Because only changes are sent, text that something else writes to the terminal
+// while Run is running (a Println, a log line) is not wiped by the next frame: it
+// stays until those cells change or the screen is drawn again. Log to a file instead.
+// Without a terminal, see below, every frame is written whole.
+//
 // # How Run ends
 //
 // Run returns nil when the player ends it: Update returns ErrQuit, the user

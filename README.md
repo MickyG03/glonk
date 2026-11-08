@@ -190,6 +190,7 @@ Built to work in most terminals. The basics need only the alternate screen, curs
 - **A fixed-size frame larger than the terminal is cut off.** Only the top-left part that fits is shown, and the screen is cleared when the window changes size. Leave `Width` and `Height` at 0 to fill the terminal.
 - **`FPS` runs from 1 to 1000;** `Run` returns an error outside that range. A key pressed during start-up, while glonk asks the terminal about the keyboard protocol, arrives as a tap rather than a hold.
 - **Without a terminal there is no terminal handling.** A headless `Run` (see `Config.Output`) treats a key as held from its press to its release, as the kitty keyboard protocol reports them, unless `LegacyKeys` is set; a plain letter with no release then stays held. Ctrl-Z does nothing and quit signals are left to your program. Reading from an input that never ends a read (a pipe nobody closes) leaves one goroutine waiting after `Run` returns.
+- **Only changes are sent, so do not print to the terminal yourself.** Each frame sends just the cells that differ from the last, as one synchronized update (terminals that do not know that mode ignore it). Text that something else writes while `Run` is running stays on screen until those cells change, the window is resized, or the window comes back to the front; log to a file instead.
 - **Resizing can flicker for one frame.**
 - **Windows is untested.**
 

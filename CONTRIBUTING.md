@@ -26,6 +26,7 @@ make run      # try an example; EXAMPLE=./examples/cube3d picks another
 - Behavior changes come with tests. For a bug, write the test first and see it fail.
 - Exported names need a doc comment, and a doc comment must not name an unexported identifier, because readers of the documentation cannot look it up. Examples in `example_test.go` files need an `// Output:` comment so that `go test` runs them. `engine/docs_test.go` checks all of this.
 - The first sentence of a package comment is shown as written in pkg.go.dev lists, so it must not contain `[Link]` brackets.
+- What `Run` writes to the terminal is tested by replaying the bytes onto a small virtual terminal (`engine/vterm_test.go`) and requiring that it shows exactly the frame; do the same for a change to how frames are drawn.
 - Text and cell contents reach the terminal only through the frame buffer, which checks every cell. Do not send them by another route. Control sequences are built in one place, `engine/escape.go`.
 - Comments say why, not what.
 

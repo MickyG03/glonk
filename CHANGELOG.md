@@ -4,6 +4,11 @@ All notable changes to glonk are written here. The format follows [Keep a Change
 
 ## [Unreleased]
 
+### Changed
+
+- `Run` sends a terminal only the cells that changed since the last frame, as one synchronized update (terminal mode 2026, which terminals that do not know it ignore), instead of every cell of every frame. A screen that does not change writes nothing, and the example programs write 74% to 100% fewer bytes. The screen is drawn again in full after a resize, after Ctrl-Z, after a failed write and when the terminal reports the window regained focus. A headless `Run` still writes every frame whole. Text that something else prints to the terminal during a run is no longer overwritten by the next frame.
+- Escape sequences are built without `fmt` into a buffer that is reused from frame to frame, and a change of colors or attributes is written as one sequence. A frame takes 2 to 7 times less time to produce, allocates nothing once running, and a color-heavy frame is up to 9% smaller.
+
 ## [0.1.0] - 2026-11-08
 
 The first release. The API is pre-1.0 and may still change. The README lists the known limits of what exists today.
