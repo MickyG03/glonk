@@ -1,6 +1,7 @@
 package mesh
 
 import (
+	"encoding/binary"
 	"math"
 	"slices"
 	"strings"
@@ -277,5 +278,55 @@ func FuzzLoadOBJ(f *testing.F) {
 		fitted.Draw(fb, cam, engine.Cell{Character: '#'})
 		fitted.DrawShaded(fb, cam, Light{Direction: geometry.Vector3{Y: -1}, Ambient: 0.2}, 1)
 		fitted.DrawShadedPixels(fb.Canvas(), cam, Light{Direction: geometry.Vector3{Y: -1}, Ambient: 0.2}, 1)
+	})
+}
+
+// A mesh whose edges and faces name any number at all, vertices or not, must draw
+// without panicking.
+func FuzzDrawBadMesh(f *testing.F) {
+	f.Add(uint8(3), []byte{0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0})
+	f.Add(uint8(0), []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16})
+	f.Add(uint8(4), []byte{0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0, 0, 0, 0, 0, 0, 0, 0x80})
+	f.Add(uint8(2), []byte{})
+
+	f.Fuzz(func(t *testing.T, vertices uint8, data []byte) {
+		// 15 integers: three edges (two each) and three faces (three each).
+		var n [15]int
+		for i := range n {
+			if 8*i+8 <= len(data) {
+				n[i] = int(int64(binary.LittleEndian.Uint64(data[8*i:])))
+			}
+		}
+		m := Mesh{
+			Edges: [][2]int{{n[0], n[1]}, {n[2], n[3]}, {n[4], n[5]}},
+			Faces: [][3]int{{n[6], n[7], n[8]}, {n[9], n[10], n[11]}, {n[12], n[13], n[14]}},
+		}
+		for i := range int(vertices % 5) {
+			m.Vertices = append(m.Vertices, geometry.Vector3{X: float64(i) - 1, Y: float64(i%2) - 0.5, Z: 4 + float64(i)})
+		}
+
+		fb, err := engine.NewFrameBuffer(20, 8)
+		if err != nil {
+			t.Fatalf("unable to initialize frame buffer: %v", err)
+		}
+		cam := Camera{FOV: math.Pi / 2, Near: 0.1}
+		light := Light{Direction: geometry.Vector3{Y: -1}, Ambient: 0.2}
+
+		done := make(chan struct{})
+		go func() {
+			defer close(done)
+			m.Draw(fb, cam, engine.Cell{Character: '#'})
+			m.DrawShaded(fb, cam, light, 1)
+			m.DoubleSided = true
+			m.DrawShaded(fb, cam, light, 1)
+			m.DrawShadedPixels(fb.Canvas(), cam, light, 1)
+			fb.Canvas().Compose()
+		}()
+
+		select {
+		case <-done:
+		case <-time.After(3 * time.Second):
+			t.Fatalf("wanted drawing to finish for %d vertices, edges %v and faces %v", len(m.Vertices), m.Edges, m.Faces)
+		}
 	})
 }

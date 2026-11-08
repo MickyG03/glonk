@@ -87,6 +87,11 @@ func Cube(size float64) Mesh {
 	return Mesh{Vertices: vertices, Edges: edges, Faces: faces}
 }
 
+// validIndex reports whether i names one of n items.
+func validIndex(i, n int) bool {
+	return i >= 0 && i < n
+}
+
 // toWorld places a model-space point in the world: rotate, then translate.
 func (m Mesh) toWorld(v geometry.Vector3) geometry.Vector3 {
 	return v.RotateX(m.Pitch).RotateY(m.Yaw).Add(m.Position)
@@ -94,7 +99,8 @@ func (m Mesh) toWorld(v geometry.Vector3) geometry.Vector3 {
 
 // Draw renders the mesh's edges as lines.
 // Edges crossing the near plane are cut where they cross it;
-// edges entirely behind it are skipped.
+// edges entirely behind it are skipped, and so are edges that name a vertex the
+// mesh does not have (Validate finds them).
 //
 // shortcut: a cut endpoint can project far off screen and DrawLine still steps
 // every cell to it, so a tiny Near gets slow; clip lines to the screen in DrawLine to upgrade.
@@ -105,6 +111,9 @@ func (m Mesh) Draw(fb *engine.FrameBuffer, cam Camera, cell engine.Cell) {
 	}
 
 	for _, e := range m.Edges {
+		if !validIndex(e[0], len(view)) || !validIndex(e[1], len(view)) {
+			continue
+		}
 		a, b := view[e[0]], view[e[1]]
 		aIn := a.Z >= cam.Near
 		bIn := b.Z >= cam.Near

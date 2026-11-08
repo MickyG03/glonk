@@ -55,7 +55,8 @@ type screenPoint struct {
 // eachShadedTriangle does the work shared by every solid drawing mode. For each
 // face turned toward the camera it lights the face, cuts it at the near plane,
 // projects the pieces onto a w x h grid of cells, and hands each to fn along with
-// the face's brightness from 0 to 1.
+// the face's brightness from 0 to 1. A face that names a vertex the mesh does not
+// have is skipped.
 func (m Mesh) eachShadedTriangle(cam Camera, light Light, w, h int, fn func(corners [3]screenPoint, intensity float64)) {
 	world := make([]geometry.Vector3, len(m.Vertices))
 	view := make([]geometry.Vector3, len(m.Vertices))
@@ -65,6 +66,9 @@ func (m Mesh) eachShadedTriangle(cam Camera, light Light, w, h int, fn func(corn
 	}
 
 	for _, f := range m.Faces {
+		if !validIndex(f[0], len(view)) || !validIndex(f[1], len(view)) || !validIndex(f[2], len(view)) {
+			continue
+		}
 		v0, v1, v2 := view[f[0]], view[f[1]], view[f[2]]
 
 		front := frontFacing(v1.Sub(v0).Cross(v2.Sub(v0)), v0)
