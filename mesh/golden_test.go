@@ -143,6 +143,14 @@ var goldenScenes = []struct {
 		quad.withColor(engine.Palette(135)).DrawShaded(fb, shadeCam(), goldenSun)
 		return fb
 	}},
+	{"wide-cells", func(t *testing.T) *engine.FrameBuffer {
+		fb := goldenBuffer(t)
+		cube := Cube(2)
+		cube.Transform.Position = geometry.Vector3{Z: 6}
+		cube.Transform.Yaw = 0.5
+		cube.Draw(fb, Camera{CellAspect: 3}, engine.Cell{Character: '#'})
+		return fb
+	}},
 	{"ambient-only", func(t *testing.T) *engine.FrameBuffer {
 		fb := goldenBuffer(t)
 		cube := Cube(2)

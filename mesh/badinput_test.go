@@ -228,6 +228,8 @@ func TestCameraLeftAtZeroUsesDefaults(t *testing.T) {
 		{"only a turn", Camera{Yaw: 0.3, Pitch: 0.1}, Camera{Yaw: 0.3, Pitch: 0.1, FOV: math.Pi / 2, Near: 0.1}},
 		{"FOV set, Near not", Camera{FOV: 1.2}, Camera{FOV: 1.2, Near: 0.1}},
 		{"Near set, FOV not", Camera{Near: 0.5}, Camera{FOV: math.Pi / 2, Near: 0.5}},
+		{"CellAspect set, the rest not", Camera{CellAspect: 3}, Camera{FOV: math.Pi / 2, Near: 0.1, CellAspect: 3}},
+		{"CellAspect 2 is the default", Camera{CellAspect: 2}, explicit},
 		{"negative zero counts as zero", Camera{FOV: negativeZero, Near: negativeZero}, explicit},
 	}
 
@@ -275,6 +277,10 @@ func TestCameraWithNonsenseValuesSeesNothing(t *testing.T) {
 		{"NaN Near", Camera{FOV: math.Pi / 2, Near: nan}},
 		{"infinite Near", Camera{FOV: math.Pi / 2, Near: inf}},
 		{"negative infinite Near", Camera{FOV: math.Pi / 2, Near: -inf}},
+		{"negative CellAspect", Camera{CellAspect: -2}},
+		{"NaN CellAspect", Camera{CellAspect: nan}},
+		{"infinite CellAspect", Camera{CellAspect: inf}},
+		{"negative infinite CellAspect", Camera{CellAspect: -inf}},
 		{"NaN position", Camera{Position: geometry.Vector3{X: nan}, FOV: math.Pi / 2, Near: 0.1}},
 		{"infinite yaw", Camera{Yaw: inf, FOV: math.Pi / 2, Near: 0.1}},
 		{"NaN pitch", Camera{Pitch: nan, FOV: math.Pi / 2, Near: 0.1}},
@@ -306,6 +312,8 @@ func TestWithDefaultsAcceptsTheEdgesOfTheRange(t *testing.T) {
 		{FOV: math.Nextafter(math.Pi, 0), Near: 0.1},
 		{FOV: math.Pi / 2, Near: 1e-300},
 		{FOV: math.Pi / 2, Near: math.MaxFloat64},
+		{CellAspect: 1e-300},
+		{CellAspect: math.MaxFloat64},
 	} {
 		if _, ok := c.withDefaults(); !ok {
 			t.Errorf("wanted %+v to be usable", c)

@@ -239,3 +239,47 @@ func TestCameraLookMatchesProject(t *testing.T) {
 		}
 	}
 }
+
+func TestCellAspectScalesTheWidthOfThePicture(t *testing.T) {
+	p := geometry.Vector3{X: 1, Y: 0.5, Z: 5}
+	x2, y2, ok2 := Camera{CellAspect: 2}.Project(p, 80, 24)
+	x3, y3, ok3 := Camera{CellAspect: 3}.Project(p, 80, 24)
+	x1, y1, ok1 := Camera{CellAspect: 1}.Project(p, 80, 24)
+	if !ok1 || !ok2 || !ok3 {
+		t.Fatalf("wanted the point seen, got %v %v %v", ok1, ok2, ok3)
+	}
+
+	// The distance from the middle column is in proportion to the aspect, and rows
+	// do not depend on it.
+	if !floatEquals((x3-40)/(x2-40), 1.5) || !floatEquals((x1-40)/(x2-40), 0.5) {
+		t.Errorf("wanted the offsets from the middle to be in proportion to CellAspect, got %v, %v, %v", x1-40, x2-40, x3-40)
+	}
+	if y1 != y2 || y2 != y3 {
+		t.Errorf("wanted the row unchanged by CellAspect, got %v %v %v", y1, y2, y3)
+	}
+}
+
+func TestCellAspectZeroIsTwo(t *testing.T) {
+	p := geometry.Vector3{X: 1.5, Y: -0.5, Z: 4}
+	zx, zy, zok := Camera{}.Project(p, 60, 20)
+	tx, ty, tok := Camera{CellAspect: 2}.Project(p, 60, 20)
+
+	if zx != tx || zy != ty || zok != tok {
+		t.Errorf("wanted a CellAspect of 0 to project like 2, got (%v, %v, %v) and (%v, %v, %v)", zx, zy, zok, tx, ty, tok)
+	}
+}
+
+// Other checks would catch most of these further along, but the camera itself says
+// which values it cannot use.
+func TestWithDefaultsRejectsNonsenseCellAspect(t *testing.T) {
+	for name, aspect := range map[string]float64{
+		"negative":          -2,
+		"negative infinity": math.Inf(-1),
+		"infinity":          math.Inf(1),
+		"NaN":               math.NaN(),
+	} {
+		if _, ok := (Camera{CellAspect: aspect}).withDefaults(); ok {
+			t.Errorf("%s: wanted the camera unusable", name)
+		}
+	}
+}

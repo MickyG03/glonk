@@ -207,6 +207,48 @@ func FuzzMaterialRamp(f *testing.F) {
 	})
 }
 
+// Any CellAspect must draw promptly without a panic, and one that makes no sense must
+// draw nothing.
+func FuzzCellAspect(f *testing.F) {
+	f.Add(2.0, 0.0, 5.0)
+	f.Add(0.0, 0.0, 5.0)
+	f.Add(-1.0, 0.0, 5.0)
+	f.Add(1e-300, 1.0, 5.0)
+	f.Add(math.MaxFloat64, 1.0, 5.0)
+	f.Add(math.NaN(), 0.0, 5.0)
+	f.Add(math.Inf(1), 0.0, 5.0)
+
+	f.Fuzz(func(t *testing.T, aspect, x, z float64) {
+		cube := Cube(2)
+		cube.Transform.Position = geometry.Vector3{X: x, Z: z}
+		cam := Camera{CellAspect: aspect}
+		t.Setenv("TERM_PROGRAM", "") // Canvas.Seamless depends on the terminal running the tests
+		fb, err := engine.NewFrameBuffer(20, 8)
+		if err != nil {
+			t.Fatalf("unable to initialize frame buffer: %v", err)
+		}
+
+		done := make(chan struct{})
+		go func() {
+			defer close(done)
+			cube.Draw(fb, cam, engine.Cell{Character: '#'})
+			cube.DrawShaded(fb, cam, Ambient{Level: 0.5})
+			cube.DrawShadedPixels(fb.Canvas(), cam, Ambient{Level: 0.5})
+			fb.Canvas().Compose()
+		}()
+		select {
+		case <-done:
+		case <-time.After(3 * time.Second):
+			t.Fatalf("wanted drawing to finish for CellAspect %v", aspect)
+		}
+
+		_, _, ok := cam.Project(geometry.Vector3{Z: 5}, 20, 8)
+		if (aspect < 0 || math.IsNaN(aspect) || math.IsInf(aspect, 0)) && (ok || len(drawn(fb)) != 0) {
+			t.Fatalf("wanted nothing seen with CellAspect %v", aspect)
+		}
+	})
+}
+
 func FuzzClipSegment(f *testing.F) {
 	f.Add(2.0, 3.0, 8.0, 7.0, 0.0, 0.0, 10.0, 10.0)
 	f.Add(-10.0, 5.0, 20.0, 5.0, 0.0, 0.0, 10.0, 10.0)

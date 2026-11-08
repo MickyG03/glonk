@@ -9,12 +9,13 @@ import (
 // Camera views the world from Position, looking down +z when Yaw and Pitch are 0.
 // The fields say which way each angle turns; all angles are in radians.
 //
-// A FOV or Near left at 0 uses a default (a FOV of pi/2, a quarter turn, and a Near
-// of 0.1), so Camera{Position: p} is a working camera. A value that makes no sense,
-// namely a FOV outside 0 to pi (exclusive), or a Near that is negative, NaN or
-// infinite, makes the camera see nothing: Draw, DrawShaded and DrawShadedPixels draw
-// nothing and Project reports ok=false. So does a Position, Yaw or Pitch that is not
-// a finite number.
+// A FOV, Near or CellAspect left at 0 uses a default (a FOV of pi/2, a quarter turn,
+// a Near of 0.1 and a CellAspect of 2), so Camera{Position: p} is a working camera. A
+// value that makes no sense, namely a FOV outside 0 to pi (exclusive), a Near that is
+// negative, NaN or infinite, or a CellAspect that is negative, NaN or infinite, makes
+// the camera see nothing: Draw, DrawShaded and DrawShadedPixels draw nothing and
+// Project reports ok=false. So does a Position, Yaw or Pitch that is not a finite
+// number.
 type Camera struct {
 	// Position is where the camera is, in world coordinates.
 	Position geometry.Vector3
@@ -33,16 +34,24 @@ type Camera struct {
 	// Near is the distance from the camera, along its view direction, of the plane
 	// nearer than which everything is cut away. It must be above 0; 0 means 0.1.
 	Near float64
+
+	// CellAspect is how many times taller a terminal cell is than it is wide, which
+	// is what makes a cube look like a cube and not a slab. Most fonts are close to 2,
+	// which is what 0 means. A larger value draws things wider, in more columns, and a
+	// smaller one narrower. It must be above 0.
+	CellAspect float64
 }
 
-// What a zero FOV and Near stand for.
+// What a zero FOV, Near and CellAspect stand for.
 const (
-	defaultFOV  = math.Pi / 2
-	defaultNear = 0.1
+	defaultFOV        = math.Pi / 2
+	defaultNear       = 0.1
+	defaultCellAspect = 2
 )
 
-// withDefaults returns the camera as it is used: a zero FOV or Near replaced by its
-// default. ok is false when a value makes no sense and nothing can be drawn.
+// withDefaults returns the camera as it is used: a zero FOV, Near or CellAspect
+// replaced by its default. ok is false when a value makes no sense and nothing can be
+// drawn.
 func (c Camera) withDefaults() (cam Camera, ok bool) {
 	if c.FOV == 0 {
 		c.FOV = defaultFOV
@@ -50,13 +59,13 @@ func (c Camera) withDefaults() (cam Camera, ok bool) {
 	if c.Near == 0 {
 		c.Near = defaultNear
 	}
+	if c.CellAspect == 0 {
+		c.CellAspect = defaultCellAspect
+	}
 	// Written so that NaN fails every test. An infinite Near passes, and sees nothing.
-	ok = c.FOV > 0 && c.FOV < math.Pi && c.Near > 0
+	ok = c.FOV > 0 && c.FOV < math.Pi && c.Near > 0 && c.CellAspect > 0 && !math.IsInf(c.CellAspect, 0)
 	return c, ok
 }
-
-// cellAspect exists because terminal cells are about twice as tall as they are wide
-const cellAspect = 2
 
 // Project returns where p appears on a grid of w x h cells, as fractional cell
 // coordinates; the caller is expected to floor them. ok is false when p is nearer
@@ -115,7 +124,7 @@ func (c Camera) projectView(v geometry.Vector3, w, h int) (x, y float64) {
 	ndcX := f * v.X / v.Z
 	ndcY := f * v.Y / v.Z
 
-	sx := float64(w)/2 + ndcX*float64(h)/2*cellAspect
+	sx := float64(w)/2 + ndcX*float64(h)/2*c.CellAspect
 	sy := float64(h)/2 - ndcY*float64(h)/2
 
 	return sx, sy
