@@ -2,6 +2,7 @@ package mesh
 
 import (
 	"math"
+	"slices"
 
 	"github.com/kyrokohan/glonk/engine"
 	"github.com/kyrokohan/glonk/geometry"
@@ -85,6 +86,17 @@ func Cube(size float64) Mesh {
 	}
 
 	return Mesh{Vertices: vertices, Edges: edges, Faces: faces}
+}
+
+// Clone returns a copy of the mesh that shares nothing with it, so changing the
+// copy's Vertices, Edges or Faces leaves the original alone. Assigning a Mesh to a
+// new variable copies the struct but not these lists, which both would still share.
+func (m Mesh) Clone() Mesh {
+	out := m
+	out.Vertices = slices.Clone(m.Vertices)
+	out.Edges = slices.Clone(m.Edges)
+	out.Faces = slices.Clone(m.Faces)
+	return out
 }
 
 // validIndex reports whether i names one of n items.

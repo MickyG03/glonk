@@ -3,6 +3,7 @@ package mesh
 import (
 	"fmt"
 	"math"
+	"slices"
 	"strings"
 	"testing"
 
@@ -136,5 +137,65 @@ func TestValidateAcceptsWhatLoadOBJReturns(t *testing.T) {
 	}
 	if err := m.Validate(); err != nil {
 		t.Errorf("wanted a loaded model to be valid, got %v", err)
+	}
+}
+
+func TestClone(t *testing.T) {
+	orig := Cube(2)
+	orig.Position = geometry.Vector3{X: 1, Y: 2, Z: 3}
+	orig.Yaw, orig.Pitch, orig.DoubleSided = 0.5, 0.25, true
+
+	c := orig.Clone()
+
+	if c.Position != orig.Position || c.Yaw != orig.Yaw || c.Pitch != orig.Pitch || c.DoubleSided != orig.DoubleSided {
+		t.Errorf("wanted placement and flags copied, got %+v", c)
+	}
+	if !slices.Equal(c.Vertices, orig.Vertices) || !slices.Equal(c.Edges, orig.Edges) || !slices.Equal(c.Faces, orig.Faces) {
+		t.Fatalf("wanted the same vertices, edges and faces")
+	}
+
+	wantV, wantE, wantF := orig.Vertices[0], orig.Edges[0], orig.Faces[0]
+	c.Vertices[0] = geometry.Vector3{X: 99}
+	c.Edges[0] = [2]int{7, 7}
+	c.Faces[0] = [3]int{7, 7, 7}
+	c.Position.X = 50
+
+	if orig.Vertices[0] != wantV {
+		t.Errorf("wanted the original's vertex untouched, got %v", orig.Vertices[0])
+	}
+	if orig.Edges[0] != wantE {
+		t.Errorf("wanted the original's edge untouched, got %v", orig.Edges[0])
+	}
+	if orig.Faces[0] != wantF {
+		t.Errorf("wanted the original's face untouched, got %v", orig.Faces[0])
+	}
+	if orig.Position.X != 1 {
+		t.Errorf("wanted the original's position untouched, got %v", orig.Position)
+	}
+}
+
+func TestCloneKeepsNilListsNil(t *testing.T) {
+	c := Mesh{Vertices: triangle()}.Clone()
+	if c.Edges != nil || c.Faces != nil {
+		t.Errorf("wanted missing edges and faces to stay nil, got %v and %v", c.Edges, c.Faces)
+	}
+	if got := (Mesh{}).Clone(); got.Vertices != nil || got.Edges != nil || got.Faces != nil {
+		t.Errorf("wanted an empty mesh to clone to an empty mesh, got %+v", got)
+	}
+}
+
+// Plain assignment shares the lists; Clone is the way out.
+func TestAssignmentSharesAndCloneDoesNot(t *testing.T) {
+	a := Cube(2)
+	b := a
+	b.Vertices[0].X = 42
+	if a.Vertices[0].X != 42 {
+		t.Fatalf("wanted assignment to share the vertex list")
+	}
+
+	c := a.Clone()
+	c.Vertices[0].X = -1
+	if a.Vertices[0].X != 42 {
+		t.Errorf("wanted the clone's change to stay out of the original")
 	}
 }

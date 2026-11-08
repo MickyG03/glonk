@@ -2,7 +2,6 @@ package mesh
 
 import (
 	"math"
-	"slices"
 
 	"github.com/kyrokohan/glonk/geometry"
 )
@@ -32,10 +31,7 @@ func (m Mesh) Bounds() (min, max geometry.Vector3) {
 // not a positive finite number, or vertices that are not finite are not scaled; the
 // last of these is also not moved. The copy shares nothing with the original.
 func (m Mesh) Fit(size float64) Mesh {
-	out := m
-	out.Vertices = slices.Clone(m.Vertices)
-	out.Edges = slices.Clone(m.Edges)
-	out.Faces = slices.Clone(m.Faces)
+	out := m.Clone()
 	if len(out.Vertices) == 0 {
 		return out
 	}
