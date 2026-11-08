@@ -22,8 +22,9 @@ const probeTimeout = 250 * time.Millisecond
 const maxFPS = 1000
 
 // Config sets up Run. A Width or Height of 0 fills the terminal on that axis
-// and follows resizes; a nonzero value fixes that axis. FPS must be between 1 and
-// 1000.
+// and follows resizes; a nonzero value fixes that axis, and where the terminal is
+// smaller than the frame only the part that fits is shown, from the top left. FPS
+// must be between 1 and 1000.
 //
 // Where the terminal supports the kitty keyboard protocol, Run uses it so Input
 // can tell exactly which keys are down. LegacyKeys turns that off and uses the

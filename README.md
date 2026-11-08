@@ -144,7 +144,8 @@ Built to work in most terminals: it uses only the alternate screen, cursor movem
 - **Color is 256-color only.** `Cell.Color` 0 is the terminal default and 1 to 255 are palette indices.
 - **Box drawing and half blocks need a Unicode font.** `DrawBox` uses `┌─┐│└┘` and the pixel canvas uses `▀▄`; nearly every monospace font has them. Character shading (`DrawShaded`) needs only ASCII and stays the default in the examples.
 - **Apple's Terminal draws a faint line along half-block edges.** Its block characters fall a little short of the cell. glonk detects it (`TERM_PROGRAM=Apple_Terminal`) and `Canvas.Compose` then draws solid cells instead of half blocks, so there is no line but silhouettes are a pixel blockier. Set `Canvas.Seamless` yourself to override, for instance inside tmux, which hides that variable.
-- **A fixed-size frame larger than the terminal garbles.** Leave `Width` and `Height` at 0 to fill the terminal.
+- **A fixed-size frame larger than the terminal is cut off.** Only the top-left part that fits is shown, and the screen is cleared when the window changes size. Leave `Width` and `Height` at 0 to fill the terminal.
+- **`FPS` runs from 1 to 1000;** `Run` returns an error outside that range. A key pressed during start-up, while glonk asks the terminal about the keyboard protocol, arrives as a tap rather than a hold.
 - **Resizing can flicker for one frame.**
 - **Windows is untested.**
 
