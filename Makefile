@@ -1,19 +1,25 @@
 .DEFAULT_GOAL := help
-.PHONY: help fmt test vet fuzz run build check
+.PHONY: help fmt fmtcheck test vet fuzz run build check
 
 help:
 	@echo "Available targets:"
-	@echo "  fmt     - Format Go code"
-	@echo "  test    - Run tests with the race detector (RACE= to turn it off)"
-	@echo "  vet     - Check for suspicious code with go vet"
-	@echo "  fuzz    - Fuzz every fuzz test for FUZZTIME each (default 10s)"
-	@echo "  run     - Run an example (default bounce2d; EXAMPLE=./examples/cube3d; ARGS= passes arguments)"
-	@echo "  build   - Compile every package"
-	@echo "  check   - Run tests and vet"
+	@echo "  fmt      - Format Go code"
+	@echo "  fmtcheck - Fail if any Go file is not formatted"
+	@echo "  test     - Run tests with the race detector (RACE= to turn it off)"
+	@echo "  vet      - Check for suspicious code with go vet"
+	@echo "  fuzz     - Fuzz every fuzz test for FUZZTIME each (default 10s)"
+	@echo "  run      - Run an example (default bounce2d; EXAMPLE=./examples/cube3d; ARGS= passes arguments)"
+	@echo "  build    - Compile every package"
+	@echo "  check    - Check formatting, run tests and vet"
 
 fmt:
 	@echo "Formatting..."
 	go fmt ./...
+
+# Lists the files and fails if any is not gofmt-formatted; CI runs this too.
+fmtcheck:
+	@echo "Checking format..."
+	@test -z "$$(gofmt -l .)" || { echo "not formatted:"; gofmt -l .; exit 1; }
 
 # The race detector needs cgo; run `make test RACE=` where there is no C compiler.
 RACE ?= -race
@@ -46,5 +52,5 @@ build:
 	@echo "Building..."
 	go build ./...
 
-check: test vet
+check: fmtcheck test vet
 	@echo "All checks passed!"

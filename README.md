@@ -20,7 +20,7 @@ A terminal rendering engine for Go. Draw 2D, 3D, or both in the same frame, usin
 go get github.com/kyrokohan/glonk
 ```
 
-Requires Go 1.27.2 or newer (see `go.mod`).
+Requires Go 1.26 or newer.
 
 ## Run the examples
 
