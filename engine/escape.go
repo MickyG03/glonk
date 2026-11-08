@@ -16,8 +16,6 @@ const (
 	disableWrapSeq     = "\x1b[?7l"
 	enableWrapSeq      = "\x1b[?7h"
 	resetSeq           = "\x1b[0m"
-	defaultForeSeq     = "\x1b[39m"
-	defaultBackSeq     = "\x1b[49m"
 
 	// Kitty keyboard protocol: ask for the current flags (a supporting terminal
 	// answers ESC [ ? flags u), ask for device attributes (every terminal answers),
@@ -119,34 +117,6 @@ func (sb *sequenceBuilder) HideCursor() {
 
 func (sb *sequenceBuilder) ShowCursor() {
 	sb.Print(showCursorSeq)
-}
-
-// appendPaletteColor writes the sequence that sets the foreground (38) or the
-// background (48) to palette color n.
-func (sb *sequenceBuilder) appendPaletteColor(base string, n uint8) {
-	sb.buf = append(sb.buf, escapeSeq...)
-	sb.buf = append(sb.buf, base...)
-	sb.buf = strconv.AppendUint(sb.buf, uint64(n), 10)
-	sb.buf = append(sb.buf, 'm')
-}
-
-func (sb *sequenceBuilder) SetForeground(n uint8) {
-	sb.appendPaletteColor("38;5;", n)
-}
-
-// SetBackground sets the background to palette color n.
-func (sb *sequenceBuilder) SetBackground(n uint8) {
-	sb.appendPaletteColor("48;5;", n)
-}
-
-// DefaultForeground returns the foreground to the terminal default and leaves the background alone.
-func (sb *sequenceBuilder) DefaultForeground() {
-	sb.Print(defaultForeSeq)
-}
-
-// DefaultBackground returns the background to the terminal default and leaves the foreground alone.
-func (sb *sequenceBuilder) DefaultBackground() {
-	sb.Print(defaultBackSeq)
 }
 
 func (sb *sequenceBuilder) ResetStyle() {

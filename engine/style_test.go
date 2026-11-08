@@ -64,7 +64,7 @@ func TestSetStyleBytes(t *testing.T) {
 		{"default to default", style{}, style{}, ""},
 		{"foreground from default", style{}, style{fg: Palette(208)}, "\x1b[38;5;208m"},
 		{"background from default", style{}, style{bg: blue}, "\x1b[48;5;4m"},
-		{"both from default", style{}, style{fg: red, bg: blue}, "\x1b[38;5;1m\x1b[48;5;4m"},
+		{"both from default", style{}, style{fg: red, bg: blue}, "\x1b[38;5;1;48;5;4m"},
 		{"foreground changes", style{fg: red}, style{fg: blue}, "\x1b[38;5;4m"},
 		{"foreground back to default", style{fg: red, bg: blue}, style{bg: blue}, "\x1b[39m"},
 		{"background back to default", style{fg: red, bg: blue}, style{fg: red}, "\x1b[49m"},
@@ -77,15 +77,15 @@ func TestSetStyleBytes(t *testing.T) {
 		{"dim on", style{}, style{attrs: Dim}, "\x1b[2m"},
 		{"underline on", style{}, style{attrs: Underline}, "\x1b[4m"},
 		{"reverse on", style{}, style{attrs: Reverse}, "\x1b[7m"},
-		{"two on, in a fixed order", style{}, style{attrs: Reverse | Bold}, "\x1b[1m\x1b[7m"},
+		{"two on, in a fixed order", style{}, style{attrs: Reverse | Bold}, "\x1b[1;7m"},
 		{"one more on", style{attrs: Bold}, style{attrs: Bold | Underline}, "\x1b[4m"},
-		{"attribute and color together", style{}, style{fg: red, attrs: Bold}, "\x1b[1m\x1b[38;5;1m"},
+		{"attribute and color together", style{}, style{fg: red, attrs: Bold}, "\x1b[1;38;5;1m"},
 		{"color changes, attribute stays", style{fg: red, attrs: Bold}, style{fg: blue, attrs: Bold}, "\x1b[38;5;4m"},
 		{"all attributes off is one reset", style{attrs: Bold | Underline}, style{}, "\x1b[0m"},
-		{"one attribute off starts over", style{attrs: Bold | Underline}, style{attrs: Bold}, "\x1b[0m\x1b[1m"},
-		{"attribute off keeps the colors", style{fg: red, attrs: Bold}, style{fg: red}, "\x1b[0m\x1b[38;5;1m"},
-		{"attribute off with other colors", style{fg: red, bg: blue, attrs: Dim}, style{fg: red, bg: blue}, "\x1b[0m\x1b[38;5;1m\x1b[48;5;4m"},
-		{"attribute swapped", style{attrs: Bold}, style{attrs: Underline}, "\x1b[0m\x1b[4m"},
+		{"one attribute off starts over", style{attrs: Bold | Underline}, style{attrs: Bold}, "\x1b[0;1m"},
+		{"attribute off keeps the colors", style{fg: red, attrs: Bold}, style{fg: red}, "\x1b[0;38;5;1m"},
+		{"attribute off with other colors", style{fg: red, bg: blue, attrs: Dim}, style{fg: red, bg: blue}, "\x1b[0;38;5;1;48;5;4m"},
+		{"attribute swapped", style{attrs: Bold}, style{attrs: Underline}, "\x1b[0;4m"},
 
 		// RGB is written as the nearest palette color until true color is supported.
 		{"rgb foreground", style{}, style{fg: RGB(255, 135, 0)}, "\x1b[38;5;208m"},
@@ -224,7 +224,9 @@ func TestSetStyleOnlyResetsWhenItMust(t *testing.T) {
 		from, to := randomStyle(rng), randomStyle(rng)
 		got := styleBytes(from, to)
 		mustReset := to == (style{}) || from.attrs&^to.attrs != 0
-		if mustReset != strings.Contains(got, "\x1b[0m") && from != to {
+		// A reset is the code 0 first in the sequence, alone or with others.
+		resets := got == "\x1b[0m" || strings.HasPrefix(got, "\x1b[0;")
+		if mustReset != resets && from != to {
 			t.Fatalf("from %+v to %+v: wanted reset=%v, got %q", from, to, mustReset, got)
 		}
 	}

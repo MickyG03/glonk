@@ -1,5 +1,7 @@
 package engine
 
+import "strconv"
+
 // Attr is a set of text attributes. Combine them with |, as in Bold | Underline. The
 // zero Attr is plain text.
 //
@@ -36,10 +38,10 @@ var attrCodes = [...]struct {
 	attr Attr
 	code string
 }{
-	{Bold, "\x1b[1m"},
-	{Dim, "\x1b[2m"},
-	{Underline, "\x1b[4m"},
-	{Reverse, "\x1b[7m"},
+	{Bold, "1"},
+	{Dim, "2"},
+	{Underline, "4"},
+	{Reverse, "7"},
 }
 
 // paletteIndex returns the palette color to write for c. An RGB color is written as
@@ -56,9 +58,11 @@ func (c Color) paletteIndex() (index uint8, ok bool) {
 }
 
 // SetStyle writes what changes the terminal's current style from to to, and nothing
-// when they are the same. Going back to the plain default style takes the single
-// reset code. An attribute can only be turned off by starting over (the codes that
-// turn bold and dim off share one code), so then the whole target style is written.
+// when they are the same. It is a single control sequence, with a code for each thing
+// that changes. Going back to the plain default style takes the single reset code. An
+// attribute can only be turned off by starting over (the codes that turn bold and dim
+// off share one code), so then the sequence starts with a reset and writes the whole
+// target style.
 func (sb *sequenceBuilder) SetStyle(from, to style) {
 	if from == to {
 		return
@@ -67,30 +71,46 @@ func (sb *sequenceBuilder) SetStyle(from, to style) {
 		sb.ResetStyle()
 		return
 	}
-	if from.attrs&^to.attrs != 0 {
-		sb.ResetStyle()
-		from = style{}
+
+	sb.buf = append(sb.buf, escapeSeq...)
+	start := len(sb.buf)
+	// param starts a code, after a ';' if it is not the first.
+	param := func() {
+		if len(sb.buf) > start {
+			sb.buf = append(sb.buf, ';')
+		}
 	}
 
+	if from.attrs&^to.attrs != 0 {
+		param()
+		sb.buf = append(sb.buf, '0')
+		from = style{}
+	}
 	if added := to.attrs &^ from.attrs; added != 0 {
 		for _, a := range attrCodes {
 			if added&a.attr != 0 {
-				sb.Print(a.code)
+				param()
+				sb.buf = append(sb.buf, a.code...)
 			}
 		}
 	}
 	if to.fg != from.fg {
+		param()
 		if n, ok := to.fg.paletteIndex(); ok {
-			sb.SetForeground(n)
+			sb.buf = append(sb.buf, "38;5;"...)
+			sb.buf = strconv.AppendUint(sb.buf, uint64(n), 10)
 		} else {
-			sb.DefaultForeground()
+			sb.buf = append(sb.buf, "39"...)
 		}
 	}
 	if to.bg != from.bg {
+		param()
 		if n, ok := to.bg.paletteIndex(); ok {
-			sb.SetBackground(n)
+			sb.buf = append(sb.buf, "48;5;"...)
+			sb.buf = strconv.AppendUint(sb.buf, uint64(n), 10)
 		} else {
-			sb.DefaultBackground()
+			sb.buf = append(sb.buf, "49"...)
 		}
 	}
+	sb.buf = append(sb.buf, 'm')
 }

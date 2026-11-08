@@ -406,7 +406,7 @@ func TestPresentBackground(t *testing.T) {
 		{
 			"foreground then background",
 			[][]Cell{{c('a', 1, 4)}},
-			"\x1b[1;1H\x1b[38;5;1m\x1b[48;5;4ma\x1b[0m",
+			"\x1b[1;1H\x1b[38;5;1;48;5;4ma\x1b[0m",
 		},
 		{
 			"same background run is set once",
@@ -416,32 +416,32 @@ func TestPresentBackground(t *testing.T) {
 		{
 			"background changes, foreground kept",
 			[][]Cell{{c('a', 1, 4), c('b', 1, 5)}},
-			"\x1b[1;1H\x1b[38;5;1m\x1b[48;5;4ma\x1b[48;5;5mb\x1b[0m",
+			"\x1b[1;1H\x1b[38;5;1;48;5;4ma\x1b[48;5;5mb\x1b[0m",
 		},
 		{
 			"foreground changes, background kept",
 			[][]Cell{{c('a', 1, 4), c('b', 2, 4)}},
-			"\x1b[1;1H\x1b[38;5;1m\x1b[48;5;4ma\x1b[38;5;2mb\x1b[0m",
+			"\x1b[1;1H\x1b[38;5;1;48;5;4ma\x1b[38;5;2mb\x1b[0m",
 		},
 		{
 			"foreground back to default, background kept",
 			[][]Cell{{c('a', 1, 4), c('b', 0, 4)}},
-			"\x1b[1;1H\x1b[38;5;1m\x1b[48;5;4ma\x1b[39mb\x1b[0m",
+			"\x1b[1;1H\x1b[38;5;1;48;5;4ma\x1b[39mb\x1b[0m",
 		},
 		{
 			"background back to default, foreground kept",
 			[][]Cell{{c('a', 1, 4), c('b', 1, 0)}},
-			"\x1b[1;1H\x1b[38;5;1m\x1b[48;5;4ma\x1b[49mb\x1b[0m",
+			"\x1b[1;1H\x1b[38;5;1;48;5;4ma\x1b[49mb\x1b[0m",
 		},
 		{
 			"both back to default",
 			[][]Cell{{c('a', 1, 4), c('b', 0, 0)}},
-			"\x1b[1;1H\x1b[38;5;1m\x1b[48;5;4ma\x1b[0mb",
+			"\x1b[1;1H\x1b[38;5;1;48;5;4ma\x1b[0mb",
 		},
 		{
 			"colors swap sides",
 			[][]Cell{{c('a', 1, 0), c('b', 0, 2)}},
-			"\x1b[1;1H\x1b[38;5;1ma\x1b[39m\x1b[48;5;2mb\x1b[0m",
+			"\x1b[1;1H\x1b[38;5;1ma\x1b[39;48;5;2mb\x1b[0m",
 		},
 		{
 			"style does not leak into the next row",
@@ -717,9 +717,9 @@ func TestPresentWritesAttributes(t *testing.T) {
 		{"underline", map[[2]int]Cell{{0, 0}: {Character: 'a', Attrs: Underline}}, "\x1b[1;1H\x1b[4ma\x1b[0m  "},
 		{"dim", map[[2]int]Cell{{0, 0}: {Character: 'a', Attrs: Dim}}, "\x1b[1;1H\x1b[2ma\x1b[0m  "},
 		{"reverse", map[[2]int]Cell{{0, 0}: {Character: 'a', Attrs: Reverse}}, "\x1b[1;1H\x1b[7ma\x1b[0m  "},
-		{"bold and underline", map[[2]int]Cell{{0, 0}: {Character: 'a', Attrs: Bold | Underline}}, "\x1b[1;1H\x1b[1m\x1b[4ma\x1b[0m  "},
-		{"attribute with color", map[[2]int]Cell{{0, 0}: {Character: 'a', Foreground: Palette(1), Attrs: Bold}}, "\x1b[1;1H\x1b[1m\x1b[38;5;1ma\x1b[0m  "},
-		{"one attribute off starts over", map[[2]int]Cell{{0, 0}: {Character: 'a', Attrs: Bold | Underline}, {1, 0}: {Character: 'b', Attrs: Bold}}, "\x1b[1;1H\x1b[1m\x1b[4ma\x1b[0m\x1b[1mb\x1b[0m "},
+		{"bold and underline", map[[2]int]Cell{{0, 0}: {Character: 'a', Attrs: Bold | Underline}}, "\x1b[1;1H\x1b[1;4ma\x1b[0m  "},
+		{"attribute with color", map[[2]int]Cell{{0, 0}: {Character: 'a', Foreground: Palette(1), Attrs: Bold}}, "\x1b[1;1H\x1b[1;38;5;1ma\x1b[0m  "},
+		{"one attribute off starts over", map[[2]int]Cell{{0, 0}: {Character: 'a', Attrs: Bold | Underline}, {1, 0}: {Character: 'b', Attrs: Bold}}, "\x1b[1;1H\x1b[1;4ma\x1b[0;1mb\x1b[0m "},
 		{"attributes reset at the end of the row", map[[2]int]Cell{{2, 0}: {Character: 'c', Attrs: Bold}, {0, 1}: {Character: 'x'}}, "\x1b[1;1H  \x1b[1mc\x1b[0m\x1b[2;1Hx  "},
 	}
 
@@ -741,14 +741,14 @@ func TestPresentWritesAttributes(t *testing.T) {
 
 func TestPresentWritesRGBAsTheNearestPaletteColor(t *testing.T) {
 	got := presented(t, 2, 1, map[[2]int]Cell{{0, 0}: {Character: 'a', Foreground: RGB(255, 135, 0), Background: RGB(0, 0, 0)}})
-	if want := "\x1b[1;1H\x1b[38;5;208m\x1b[48;5;16ma\x1b[0m "; got != want {
+	if want := "\x1b[1;1H\x1b[38;5;208;48;5;16ma\x1b[0m "; got != want {
 		t.Errorf("wanted %q, got %q", want, got)
 	}
 }
 
 func TestPresentBlackIsAColorAndNotTheDefault(t *testing.T) {
 	got := presented(t, 2, 1, map[[2]int]Cell{{0, 0}: {Character: 'a', Foreground: Palette(0), Background: Palette(0)}})
-	if want := "\x1b[1;1H\x1b[38;5;0m\x1b[48;5;0ma\x1b[0m "; got != want {
+	if want := "\x1b[1;1H\x1b[38;5;0;48;5;0ma\x1b[0m "; got != want {
 		t.Errorf("wanted %q, got %q", want, got)
 	}
 }

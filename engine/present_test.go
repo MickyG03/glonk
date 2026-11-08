@@ -262,7 +262,7 @@ func TestPresenterCarriesTheStyleAcrossJumps(t *testing.T) {
 	}
 
 	got := out.String()
-	if n := strings.Count(got, "m"); n != 3 { // bold, the color, and the final reset
+	if n := strings.Count(got, "m"); n != 2 { // bold and the color in one sequence, and the final reset
 		t.Errorf("wanted the style set once and reset once, got %d sequences in %q", n, got)
 	}
 	if !strings.HasSuffix(got, "\x1b[0m") {
