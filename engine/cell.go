@@ -9,8 +9,8 @@ type Cell struct {
 	// Character is the character to draw. NUL, which is what an unset field holds,
 	// is shown as a space, so Cell{Background: engine.Palette(4)} is a colored blank.
 	// Control characters (tab, newline, escape), wide characters (CJK, most emoji) and
-	// combining marks are shown as '?'. Real wide-character support needs a cell that
-	// can span two columns and is not there yet.
+	// combining marks are shown as '?'. Wide characters are not supported: they would
+	// need a cell that can span two columns.
 	Character rune
 
 	// Foreground is the color of the character. The zero Color is the terminal's

@@ -200,8 +200,8 @@ func handle(action inputAction, suspend func() error) (done bool, err error) {
 // # Without a terminal
 //
 // With a Config.Input or Config.Output that is not a terminal, Run runs headless:
-// the frame size must be given, and nothing above about the terminal, signals and
-// Ctrl-Z applies. See Config.Output.
+// the frame size must be given, and what is said here about the terminal, signals
+// and Ctrl-Z does not apply. See Config.Output.
 //
 // # What cannot be restored
 //

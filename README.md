@@ -126,7 +126,7 @@ func main() {
 }
 ```
 
-`Run` owns the terminal. Each frame it calls `Update` (move things, read input) and then `Draw` (write cells into the `FrameBuffer`), then prints the frame. The terminal is restored when `Run` returns, and Ctrl-C, `kill` and a closing window (SIGINT, SIGTERM, SIGHUP) end it cleanly (`Run` returns `nil`), so the game needs no signal handler. When your `context` ends it, `Run` returns the context's error. The full API is in each package's documentation, with runnable examples: `go doc github.com/kyrokohan/glonk/engine`, or the package pages on pkg.go.dev once the module is published.
+`Run` owns the terminal. Each frame it calls `Update` (move things, read input) and then `Draw` (write cells into the `FrameBuffer`), then prints the frame. The terminal is restored when `Run` returns, and Ctrl-C, `kill` and a closing window (SIGINT, SIGTERM, SIGHUP) end it cleanly (`Run` returns `nil`), so the game needs no signal handler. When your `context` ends it, `Run` returns the context's error. The full API is in each package's documentation, with runnable examples: `go doc github.com/kyrokohan/glonk/engine`, or the package pages on pkg.go.dev.
 
 ## Testing a game
 
@@ -181,8 +181,8 @@ Built to work in most terminals. The basics need only the alternate screen, curs
 - **Without key releases, only one key stays held at a time.** The OS repeats just the most recently pressed key, so holding W and then pressing E stops W and you cannot walk and turn together (Terminal.app, for one). Set `Config.LegacyKeys` to force this behavior if a terminal misbehaves with the protocol.
 - **Escape waits 50 ms, and Alt chords are ignored.** An Escape press and the start of an arrow key are the same byte, so the Escape key counts only after 50 ms with nothing following it. Alt+key arrives as Escape plus the key and is dropped rather than read as Escape.
 - **Ctrl-Z suspends, and some endings cannot be cleaned up.** Ctrl-Z restores the terminal, stops the program, and takes the terminal over again on `fg`; Windows has no suspend. `os.Exit`, `log.Fatal`, a panic in a goroutine you started, `kill -9` and `kill -QUIT` skip the cleanup and leave the terminal raw; type `reset` to repair it. After the first quit signal a second one kills a game that is stuck, unless your program catches those signals itself.
-- **Bad meshes and cameras draw nothing instead of failing.** Edges and faces that name a missing vertex are skipped (`Mesh.Validate` finds them), a `Camera` field left at 0 uses a default (a 90 degree FOV, a Near of 0.1), a nonsense FOV or Near sees nothing, and sprites at NaN or infinite positions are not drawn.
-- **One character is one column.** A cell holds a single character one column wide. Wide characters (CJK, most emoji) are drawn as `?`, combining marks and joiners are skipped by `DrawText`, and control characters, escape sequences in text included, are drawn as `?` too, so nothing a file name or a game contains can send commands to the terminal. A NUL character is shown as a space, so `Cell{Background: engine.Palette(4)}` is a colored blank. Real wide-character support is planned with the redesign of `Cell`.
+- **Bad meshes and cameras draw nothing instead of failing.** Edges and faces that name a missing vertex are skipped (`Mesh.Validate` finds them), a `Camera` field left at 0 uses a default (a 90 degree FOV, a Near of 0.1, a `CellAspect` of 2), a nonsense FOV, Near or `CellAspect` sees nothing, a mesh whose `Transform` has a number that is not finite or a negative `Scale` is not drawn, and sprites at NaN or infinite positions are not drawn.
+- **One character is one column.** A cell holds a single character one column wide. Wide characters (CJK, most emoji) are drawn as `?`, combining marks and joiners are skipped by `DrawText`, and control characters, escape sequences in text included, are drawn as `?` too, so nothing a file name or a game contains can send commands to the terminal. A NUL character is shown as a space, so `Cell{Background: engine.Palette(4)}` is a colored blank. Wide characters are not supported.
 - **RGB colors are shown as the nearest palette color for now.** A `Color` is the terminal default (the zero value), one of the 256 `Palette` colors, or an `RGB` color, and `Attrs` adds bold, dim, underline and reverse. Output is still 256-color, so an RGB color comes out as the closest of palette colors 16 to 255; true color output is planned. Palette colors 0 to 15 follow the user's terminal theme.
 - **Cells are taken to be twice as tall as wide.** That is what makes a cube look like a cube in most fonts; set `Camera.CellAspect` for a font that differs.
 - **Box drawing and half blocks need a Unicode font.** `DrawBox` uses `┌─┐│└┘` and the pixel canvas uses `▀▄`; nearly every monospace font has them. Character shading (`DrawShaded`) needs only ASCII and stays the default in the examples.
@@ -200,7 +200,7 @@ Ideas, not promises: colors from model material files, smooth shading from model
 ## Development
 
 ```
-make check    # tests (with the race detector) and vet
+make check    # formatting, vet, and tests with the race detector
 make fuzz     # fuzz the parsers, rasterizers and clipping; FUZZTIME=1m for longer
 ```
 

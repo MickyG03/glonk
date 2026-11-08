@@ -5,7 +5,7 @@ Issues and pull requests are welcome. glonk is a one-person project, so replies 
 ## Before you start
 
 - For a bug, a typo or a small improvement, go ahead and open a pull request.
-- For anything larger, open an issue first. The API is pre-1.0 and several parts are planned to change before v0.1.0 (`Cell` and its colors, `Game` and `Run`, the 3D API, test helpers, the 2D API), so a big change to one of them may land on ground that is about to move.
+- For anything larger, open an issue first. The API is pre-1.0 and may still change, so a big change is best agreed before you write it.
 - To report a security problem, do not use an issue. See [SECURITY.md](SECURITY.md).
 
 ## Setting up
