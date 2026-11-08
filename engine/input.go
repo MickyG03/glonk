@@ -86,6 +86,77 @@ func (in *Input) Pressed(k Key) bool {
 	return in.pressed[k]
 }
 
+// escapeTimeout is how long an unfinished escape sequence is waited for. The Escape
+// key and the start of an arrow key are both a lone ESC byte, so after seeing one
+// the input is only taken as the Escape key once this long has passed with nothing
+// more. Terminals send a whole key at once, so any value well above the time a read
+// takes works; it is the delay a real Escape press waits.
+const escapeTimeout = 50 * time.Millisecond
+
+// readBuffer is how many bytes are read from the terminal at once. Keys arrive a few
+// bytes at a time, so a large buffer is only filled by pasting or a backlog.
+const readBuffer = 4096
+
+// inputFeed turns the raw bytes read from the terminal into Input updates. It holds
+// a keyParser, and a timer that gives up waiting for the rest of an unfinished
+// sequence.
+type inputFeed struct {
+	parser keyParser
+	in     *Input
+	wait   time.Duration
+	timer  *time.Timer
+}
+
+func newInputFeed(in *Input) *inputFeed {
+	f := &inputFeed{in: in, wait: escapeTimeout}
+	f.timer = time.NewTimer(f.wait)
+	f.timer.Stop()
+	return f
+}
+
+// feed handles one chunk read from the terminal and reports whether it held Ctrl-C.
+func (f *inputFeed) feed(chunk []byte, now time.Time) (quit bool) {
+	quit = f.apply(f.parser.Feed(chunk), now)
+
+	f.stop()
+	if f.parser.Pending() {
+		f.timer.Reset(f.wait)
+	}
+	return quit
+}
+
+// expired is the channel that fires when the wait for the rest of a sequence is over.
+func (f *inputFeed) expired() <-chan time.Time {
+	return f.timer.C
+}
+
+// expire gives up waiting: whatever is held is taken as it stands, so a lone ESC
+// becomes the Escape key. It reports whether that produced Ctrl-C.
+func (f *inputFeed) expire(now time.Time) (quit bool) {
+	return f.apply(f.parser.Flush(), now)
+}
+
+// stop cancels the wait, draining the channel so a tick that was already on its way
+// cannot be mistaken for a later wait ending (needed before Go 1.23 timer semantics).
+func (f *inputFeed) stop() {
+	if !f.timer.Stop() {
+		select {
+		case <-f.timer.C:
+		default:
+		}
+	}
+}
+
+func (f *inputFeed) apply(events []keyEvent, now time.Time) (quit bool) {
+	for _, e := range events {
+		if e.key == KeyCtrlC && e.kind != kindRelease {
+			return true
+		}
+		f.in.event(e, now)
+	}
+	return false
+}
+
 // readInput streams chunks read from r until it errors
 // then closes the channel.
 func readInput(r io.Reader) <-chan []byte {
@@ -94,7 +165,7 @@ func readInput(r io.Reader) <-chan []byte {
 	// harmless unless Run is called twice.
 	go func() {
 		defer close(ch)
-		buf := make([]byte, 64)
+		buf := make([]byte, readBuffer)
 		for {
 			n, err := r.Read(buf)
 			if n > 0 {

@@ -247,3 +247,224 @@ func TestInputFocusGainedKeepsState(t *testing.T) {
 		t.Errorf("wanted a focus event to leave no key state, got pressed=%v down=%v", in.Pressed(KeyUnknown), in.IsDown(KeyUnknown))
 	}
 }
+
+// ---- the input feed ----
+
+func newTestFeed(exact bool) (*inputFeed, *Input) {
+	in := newInput(exact)
+	f := newInputFeed(in)
+	f.wait = 5 * time.Millisecond // short, so the tests can wait for it
+	return f, in
+}
+
+// The other tests shorten the wait, so this is the only one that sees the real default.
+func TestInputFeedWaitsLongEnoughForARealSequence(t *testing.T) {
+	f := newInputFeed(newInput(false))
+	if f.wait != escapeTimeout {
+		t.Errorf("wanted new feed to wait escapeTimeout (%v), got %v", escapeTimeout, f.wait)
+	}
+	if escapeTimeout < 20*time.Millisecond {
+		t.Errorf("wanted a wait that outlasts a slow link's gap between reads, got %v", escapeTimeout)
+	}
+}
+
+func fired(f *inputFeed, within time.Duration) bool {
+	select {
+	case <-f.expired():
+		return true
+	case <-time.After(within):
+		return false
+	}
+}
+
+func TestInputFeedLoneEscapeBecomesEscapeAfterTheWait(t *testing.T) {
+	f, in := newTestFeed(false)
+	t0 := time.Unix(0, 0)
+
+	if f.feed([]byte("\x1b"), t0) {
+		t.Fatalf("wanted a lone ESC not to quit")
+	}
+	if in.Pressed(KeyEscape) {
+		t.Fatalf("wanted Escape not pressed before the wait is over")
+	}
+	if !fired(f, time.Second) {
+		t.Fatalf("wanted the wait to end")
+	}
+
+	if f.expire(t0.Add(50 * time.Millisecond)) {
+		t.Fatalf("wanted Escape not to quit")
+	}
+	if !in.Pressed(KeyEscape) {
+		t.Errorf("wanted Escape pressed once the wait is over")
+	}
+}
+
+func TestInputFeedEscapeSequenceInTwoReadsIsNotEscape(t *testing.T) {
+	f, in := newTestFeed(false)
+	t0 := time.Unix(0, 0)
+
+	f.feed([]byte("\x1b"), t0)
+	f.feed([]byte("[A"), t0.Add(2*time.Millisecond))
+
+	if !in.Pressed(KeyUp) {
+		t.Errorf("wanted Up pressed")
+	}
+	if in.Pressed(KeyEscape) {
+		t.Errorf("wanted Escape not pressed when the sequence completed")
+	}
+	if fired(f, 40*time.Millisecond) {
+		t.Errorf("wanted the wait cancelled once the sequence completed")
+	}
+}
+
+func TestInputFeedTimerOnlyRunsWhileSomethingIsHeld(t *testing.T) {
+	f, _ := newTestFeed(false)
+	t0 := time.Unix(0, 0)
+
+	f.feed([]byte("wasd"), t0)
+	if fired(f, 40*time.Millisecond) {
+		t.Errorf("wanted no wait for complete input")
+	}
+
+	f.feed([]byte("\x1b[1"), t0)
+	if !fired(f, time.Second) {
+		t.Errorf("wanted a wait for an unfinished sequence")
+	}
+	f.expire(t0) // the wait ended, so the held bytes are given up on
+
+	// Each read that leaves something held restarts the wait.
+	f.feed([]byte("\x1b"), t0)
+	f.feed([]byte("["), t0)
+	if !fired(f, time.Second) {
+		t.Errorf("wanted the wait to end after the last read")
+	}
+}
+
+// A tick left over from an earlier wait must not end a later one early. Timers built
+// for Go 1.23 or later cannot leave one behind; stop drains the channel for programs
+// built with an older go.mod, which this toolchain can no longer emulate, so this
+// guards the behavior rather than the drain.
+func TestInputFeedStaleTickDoesNotEndALaterWait(t *testing.T) {
+	f, _ := newTestFeed(false)
+	f.wait = time.Millisecond
+	t0 := time.Unix(0, 0)
+
+	f.feed([]byte("\x1b"), t0)
+	time.Sleep(20 * time.Millisecond) // the first wait ends and its tick sits in the channel
+
+	f.wait = time.Hour
+	f.feed([]byte("\x1b"), t0) // a new wait starts
+	if fired(f, 30*time.Millisecond) {
+		t.Errorf("wanted the old tick gone, but it ended the new wait")
+	}
+}
+
+func TestInputFeedSplitKitlyReleaseIsNotStuck(t *testing.T) {
+	f, in := newTestFeed(true)
+	t0 := time.Unix(0, 0)
+
+	f.feed([]byte("\x1b[119u"), t0)
+	in.beginFrame(t0)
+	if !in.IsDown('w') {
+		t.Fatalf("wanted w held after the press")
+	}
+	in.endFrame()
+
+	f.feed([]byte("\x1b[119;1"), t0.Add(time.Second))
+	f.feed([]byte(":3u"), t0.Add(time.Second))
+	in.beginFrame(t0.Add(time.Second))
+	if in.IsDown('w') {
+		t.Errorf("wanted w released by the release that arrived in two reads")
+	}
+}
+
+func TestInputFeedDamagedStreamForgetsHeldKeys(t *testing.T) {
+	f, in := newTestFeed(true)
+	t0 := time.Unix(0, 0)
+
+	f.feed([]byte("\x1b[119u\x1b[101u"), t0)
+	in.beginFrame(t0)
+	in.endFrame()
+
+	// A release is cut off and its tail never comes.
+	f.feed([]byte("\x1b[119;1"), t0)
+	f.expire(t0.Add(50 * time.Millisecond))
+
+	in.beginFrame(t0.Add(50 * time.Millisecond))
+	if in.IsDown('w') || in.IsDown('e') {
+		t.Errorf("wanted every key forgotten after a damaged stream, got w=%v e=%v", in.IsDown('w'), in.IsDown('e'))
+	}
+}
+
+func TestInputFeedCtrlC(t *testing.T) {
+	tests := []struct {
+		name  string
+		chunk string
+		quit  bool
+	}{
+		{"legacy ctrl-c", "\x03", true},
+		{"legacy ctrl-c among keys", "ab\x03cd", true},
+		{"kitty ctrl-c press", "\x1b[99;5u", true},
+		{"kitty ctrl-c repeat", "\x1b[99;5:2u", true},
+		{"kitty ctrl-c release", "\x1b[99;5:3u", false},
+		{"plain c", "c", false},
+		{"ctrl-w", "\x1b[119;5u", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f, _ := newTestFeed(true)
+			if got := f.feed([]byte(tt.chunk), time.Unix(0, 0)); got != tt.quit {
+				t.Errorf("wanted quit=%v, got %v", tt.quit, got)
+			}
+		})
+	}
+
+	// Ctrl-C split across reads still quits.
+	f, _ := newTestFeed(true)
+	if f.feed([]byte("\x1b[99;"), time.Unix(0, 0)) {
+		t.Fatalf("wanted no quit on half a sequence")
+	}
+	if !f.feed([]byte("5u"), time.Unix(0, 0)) {
+		t.Errorf("wanted quit once the sequence completed")
+	}
+}
+
+func TestInputFeedEventsKeepTheirReadTime(t *testing.T) {
+	f, in := newTestFeed(false)
+	t0 := time.Unix(100, 0)
+
+	f.feed([]byte("w"), t0)
+	in.beginFrame(t0.Add(100 * time.Millisecond))
+	if !in.IsDown('w') {
+		t.Errorf("wanted w down 100 ms after it arrived")
+	}
+	in.beginFrame(t0.Add(holdTimeout))
+	if in.IsDown('w') {
+		t.Errorf("wanted w no longer down once the hold timeout passed")
+	}
+}
+
+func TestReadInputReadsBigChunksAtOnce(t *testing.T) {
+	data := strings.Repeat("w", 1000)
+
+	var chunks []int
+	for chunk := range readInput(strings.NewReader(data)) {
+		chunks = append(chunks, len(chunk))
+	}
+	if len(chunks) != 1 || chunks[0] != 1000 {
+		t.Errorf("wanted one chunk of 1000 bytes, got %v", chunks)
+	}
+
+	big := strings.Repeat("w", 3*readBuffer+17)
+	total := 0
+	for chunk := range readInput(strings.NewReader(big)) {
+		if len(chunk) > readBuffer {
+			t.Errorf("wanted chunks of at most %d bytes, got %d", readBuffer, len(chunk))
+		}
+		total += len(chunk)
+	}
+	if total != len(big) {
+		t.Errorf("wanted %d bytes in all, got %d", len(big), total)
+	}
+}
