@@ -596,3 +596,33 @@ func TestInputFeedResetForgetsHeldKeysAndHalfSequences(t *testing.T) {
 		t.Errorf("wanted a plain A after the reset, got A=%v up=%v", in.Pressed('A'), in.Pressed(KeyUp))
 	}
 }
+
+// Keys typed before the keyboard protocol was on arrive with no release; Run feeds
+// them in and releases at once, so they are taps and nothing stays held.
+func TestTypedAheadKeysAreTapsNotHolds(t *testing.T) {
+	f, in := newTestFeed(true)
+	t0 := time.Unix(0, 0)
+
+	if got := f.feed([]byte("wa"), t0); got != actionNone {
+		t.Fatalf("wanted no action, got %v", got)
+	}
+	in.releaseAll()
+
+	in.beginFrame(t0)
+	if !in.Pressed('w') || !in.Pressed('a') {
+		t.Errorf("wanted both keys seen as pressed in the first frame")
+	}
+	in.endFrame()
+
+	in.beginFrame(t0.Add(time.Second))
+	if in.IsDown('w') || in.IsDown('a') {
+		t.Errorf("wanted the keys released after that frame, got w=%v a=%v", in.IsDown('w'), in.IsDown('a'))
+	}
+}
+
+func TestTypedAheadCtrlCStillQuits(t *testing.T) {
+	f, _ := newTestFeed(true)
+	if got := f.feed([]byte("a\x03"), time.Unix(0, 0)); got != actionQuit {
+		t.Errorf("wanted a quit, got %v", got)
+	}
+}

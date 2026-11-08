@@ -69,7 +69,7 @@ func TestProbeKitty(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			var out bytes.Buffer
 
-			got, err := probeKitty(feed(tt.chunks...), &out, time.Second)
+			got, _, err := probeKitty(feed(tt.chunks...), &out, time.Second)
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
@@ -98,7 +98,7 @@ func TestProbeKittyTimesOut(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			start := time.Now()
 
-			got, err := probeKitty(feed(tt.chunks...), &bytes.Buffer{}, 30*time.Millisecond)
+			got, _, err := probeKitty(feed(tt.chunks...), &bytes.Buffer{}, 30*time.Millisecond)
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
@@ -122,7 +122,7 @@ func TestProbeKittyReturnsOnAttributesReply(t *testing.T) {
 	}()
 
 	start := time.Now()
-	got, err := probeKitty(ch, &bytes.Buffer{}, 5*time.Second)
+	got, _, err := probeKitty(ch, &bytes.Buffer{}, 5*time.Second)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -139,7 +139,7 @@ func TestProbeKittyClosedInput(t *testing.T) {
 	close(ch)
 
 	start := time.Now()
-	got, err := probeKitty(ch, &bytes.Buffer{}, 5*time.Second)
+	got, _, err := probeKitty(ch, &bytes.Buffer{}, 5*time.Second)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -157,12 +157,107 @@ type failingWriter struct{}
 func (failingWriter) Write([]byte) (int, error) { return 0, errors.New("write failed") }
 
 func TestProbeKittyWriteError(t *testing.T) {
-	got, err := probeKitty(feed(), failingWriter{}, time.Second)
+	got, typed, err := probeKitty(feed(), failingWriter{}, time.Second)
 
 	if err == nil {
 		t.Errorf("wanted the write error, got nil")
 	}
 	if got {
 		t.Errorf("wanted unsupported on error, got supported")
+	}
+	if typed != nil {
+		t.Errorf("wanted nothing typed on error, got %q", typed)
+	}
+}
+
+func TestStripProbeReplies(t *testing.T) {
+	tests := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{"empty", "", ""},
+		{"protocol reply", "\x1b[?0u", ""},
+		{"protocol reply with flags", "\x1b[?11u", ""},
+		{"attributes reply", "\x1b[?62;4c", ""},
+		{"attributes reply without question mark", "\x1b[62;4c", ""},
+		{"both replies", "\x1b[?0u\x1b[?62;4c", ""},
+		{"keys before, between and after", "w\x1b[?0u\x1b[?62;4ce", "we"},
+		{"key before the replies", "q\x1b[?6c", "q"},
+		{"key after the replies", "\x1b[?0u\x1b[?6cx", "x"},
+		{"several keys", "ab\x1b[?0ucd\x1b[?6cef", "abcdef"},
+		{"escape key after a reply", "\x1b[?0u\x1b", "\x1b"},
+		{"alt chord", "\x1bx", "\x1bx"},
+		{"control character", "\x03", "\x03"},
+		{"multi-byte rune", "é\x1b[?6c→", "é→"},
+		{"kitty key event is not a reply", "\x1b[119u", "\x1b[119u"},
+		{"kitty release is not a reply", "\x1b[119;1:3u\x1b[?6c", "\x1b[119;1:3u"},
+		{"arrow key", "\x1b[A\x1b[?6c", "\x1b[A"},
+		{"other private mode", "\x1b[?25h", "\x1b[?25h"},
+		{"cut off protocol reply", "\x1b[?0", "\x1b[?0"},
+		{"cut off after a key", "ab\x1b[", "ab\x1b["},
+		{"lone escape", "\x1b", "\x1b"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := string(stripProbeReplies([]byte(tt.in))); got != tt.want {
+				t.Errorf("wanted %q, got %q", tt.want, got)
+			}
+		})
+	}
+}
+
+func TestProbeKittyReturnsWhatWasTyped(t *testing.T) {
+	tests := []struct {
+		name   string
+		chunks []string
+		want   string
+	}{
+		{"typed before the replies", []string{"w", "\x1b[?0u\x1b[?6c"}, "w"},
+		{"typed between the replies", []string{"\x1b[?0u", "w", "\x1b[?6c"}, "w"},
+		{"typed in the same read as the replies", []string{"q\x1b[?0u\x1b[?6cz"}, "qz"},
+		{"typed after the attributes reply, same read", []string{"\x1b[?6cx"}, "x"},
+		{"replies split across reads", []string{"a\x1b[?", "0u\x1b[?6", "cb"}, "ab"},
+		{"nothing typed", []string{"\x1b[?0u\x1b[?6c"}, ""},
+		{"escape key pressed during the wait", []string{"\x1b", "\x1b[?6c"}, "\x1b"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, typed, err := probeKitty(feed(tt.chunks...), &bytes.Buffer{}, time.Second)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if string(typed) != tt.want {
+				t.Errorf("wanted %q, got %q", tt.want, typed)
+			}
+		})
+	}
+}
+
+// A terminal that never answers costs the whole wait, and the keys typed in that
+// time must survive it.
+func TestProbeKittyKeepsKeysWhenNothingAnswers(t *testing.T) {
+	_, typed, err := probeKitty(feed("ab", "c"), &bytes.Buffer{}, 30*time.Millisecond)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if string(typed) != "abc" {
+		t.Errorf("wanted %q, got %q", "abc", typed)
+	}
+}
+
+func TestProbeKittyKeepsKeysOnClosedInput(t *testing.T) {
+	ch := make(chan []byte, 1)
+	ch <- []byte("hi")
+	close(ch)
+
+	_, typed, err := probeKitty(ch, &bytes.Buffer{}, 5*time.Second)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if string(typed) != "hi" {
+		t.Errorf("wanted %q, got %q", "hi", typed)
 	}
 }

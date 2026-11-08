@@ -378,3 +378,36 @@ func FuzzDrawText(f *testing.F) {
 		}
 	})
 }
+
+func FuzzStripProbeReplies(f *testing.F) {
+	for _, s := range seedInputs {
+		f.Add([]byte(s))
+	}
+	f.Add([]byte("w\x1b[?0u\x1b[?62;4ce"))
+	f.Add([]byte("\x1b[?0u\x1b[?62;4c"))
+	f.Add([]byte("\x1b[?\x1b[?0u"))
+
+	f.Fuzz(func(t *testing.T, b []byte) {
+		got := stripProbeReplies(b)
+
+		// What is left is what was typed: some of the input's bytes, in order.
+		if len(got) > len(b) {
+			t.Fatalf("wanted at most %d bytes, got %d", len(b), len(got))
+		}
+		i := 0
+		for _, c := range got {
+			for i < len(b) && b[i] != c {
+				i++
+			}
+			if i == len(b) {
+				t.Fatalf("wanted %q to be some of the bytes of %q in order", got, b)
+			}
+			i++
+		}
+
+		// Input with no ESC has no reply in it, so nothing is taken out.
+		if !bytes.Contains(b, []byte{0x1b}) && !bytes.Equal(got, b) {
+			t.Fatalf("wanted input without ESC returned as it is, got %q for %q", got, b)
+		}
+	})
+}

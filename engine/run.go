@@ -146,11 +146,13 @@ func Run(ctx context.Context, game Game, cfg Config) (err error) {
 	defer stopInput() // before Teardown: nothing may read the terminal once Run is over
 
 	exact := false
+	var typed []byte // keys pressed while the probe waited
 	if !cfg.LegacyKeys {
-		kitty, err := probeKitty(input, tty.out, probeTimeout)
+		kitty, rest, err := probeKitty(input, tty.out, probeTimeout)
 		if err != nil {
 			return err
 		}
+		typed = rest
 		if kitty {
 			if err := tty.EnableKeyboardProtocol(); err != nil {
 				return err
@@ -186,6 +188,16 @@ func Run(ctx context.Context, game Game, cfg Config) (err error) {
 		}
 		last = time.Now() // so the time spent stopped is not a frame
 		return nil
+	}
+
+	// The terminal sent those keys before the keyboard protocol was on, so they come
+	// with no release. They count as taps: held, they would never be let go.
+	if len(typed) > 0 {
+		action := keys.feed(typed, time.Now())
+		in.releaseAll()
+		if done, err := handle(action, suspend); done {
+			return err
+		}
 	}
 
 	dynamic := cfg.Width == 0 || cfg.Height == 0
