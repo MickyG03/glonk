@@ -147,12 +147,12 @@ func TestValidateAcceptsWhatLoadOBJReturns(t *testing.T) {
 
 func TestClone(t *testing.T) {
 	orig := Cube(2)
-	orig.Position = geometry.Vector3{X: 1, Y: 2, Z: 3}
-	orig.Yaw, orig.Pitch, orig.DoubleSided = 0.5, 0.25, true
+	orig.Transform.Position = geometry.Vector3{X: 1, Y: 2, Z: 3}
+	orig.Transform.Yaw, orig.Transform.Pitch, orig.DoubleSided = 0.5, 0.25, true
 
 	c := orig.Clone()
 
-	if c.Position != orig.Position || c.Yaw != orig.Yaw || c.Pitch != orig.Pitch || c.DoubleSided != orig.DoubleSided {
+	if c.Transform.Position != orig.Transform.Position || c.Transform.Yaw != orig.Transform.Yaw || c.Transform.Pitch != orig.Transform.Pitch || c.DoubleSided != orig.DoubleSided {
 		t.Errorf("wanted placement and flags copied, got %+v", c)
 	}
 	if !slices.Equal(c.Vertices, orig.Vertices) || !slices.Equal(c.Edges, orig.Edges) || !slices.Equal(c.Faces, orig.Faces) {
@@ -163,7 +163,7 @@ func TestClone(t *testing.T) {
 	c.Vertices[0] = geometry.Vector3{X: 99}
 	c.Edges[0] = [2]int{7, 7}
 	c.Faces[0] = [3]int{7, 7, 7}
-	c.Position.X = 50
+	c.Transform.Position.X = 50
 
 	if orig.Vertices[0] != wantV {
 		t.Errorf("wanted the original's vertex untouched, got %v", orig.Vertices[0])
@@ -174,8 +174,8 @@ func TestClone(t *testing.T) {
 	if orig.Faces[0] != wantF {
 		t.Errorf("wanted the original's face untouched, got %v", orig.Faces[0])
 	}
-	if orig.Position.X != 1 {
-		t.Errorf("wanted the original's position untouched, got %v", orig.Position)
+	if orig.Transform.Position.X != 1 {
+		t.Errorf("wanted the original's position untouched, got %v", orig.Transform.Position)
 	}
 }
 
@@ -207,7 +207,7 @@ func TestAssignmentSharesAndCloneDoesNot(t *testing.T) {
 
 func cubeAt(z, size float64) Mesh {
 	c := Cube(size)
-	c.Position = geometry.Vector3{Z: z}
+	c.Transform.Position = geometry.Vector3{Z: z}
 	return c
 }
 
@@ -236,10 +236,10 @@ func TestCameraLeftAtZeroUsesDefaults(t *testing.T) {
 				got := drawWith(t, m, tt.cam)
 				want := drawWith(t, m, tt.want)
 				if drawnCells(got) == 0 {
-					t.Fatalf("wanted the camera to see the cube at %v", m.Position)
+					t.Fatalf("wanted the camera to see the cube at %v", m.Transform.Position)
 				}
 				if !sameFrame(got, want) {
-					t.Errorf("wanted %+v to draw like %+v for the cube at %v", tt.cam, tt.want, m.Position)
+					t.Errorf("wanted %+v to draw like %+v for the cube at %v", tt.cam, tt.want, m.Transform.Position)
 				}
 			}
 

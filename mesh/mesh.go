@@ -17,7 +17,7 @@ import (
 // (b-a)x(c-a), points out of the surface.
 type Mesh struct {
 	// Vertices are the points of the model, in model space: the space before
-	// Position, Yaw and Pitch are applied.
+	// Transform is applied.
 	Vertices []geometry.Vector3
 
 	// Edges are pairs of indices into Vertices. Draw draws each as a line.
@@ -27,16 +27,8 @@ type Mesh struct {
 	// triangle.
 	Faces [][3]int
 
-	// Position is where the model's origin sits in the world.
-	Position geometry.Vector3
-
-	// Yaw turns the model about the y axis, in radians. Positive turns +z toward
-	// +x. It is applied after Pitch and before Position.
-	Yaw float64
-
-	// Pitch turns the model about the x axis, in radians. Positive turns +y toward
-	// +z. It is applied first.
-	Pitch float64
+	// Transform places the model in the world.
+	Transform Transform
 
 	// DoubleSided draws faces from behind as well as from the front, lit as the
 	// side the camera sees. Use it for models wound the wrong way round (they
@@ -119,11 +111,6 @@ func validIndex(i, n int) bool {
 	return i >= 0 && i < n
 }
 
-// toWorld places a model-space point in the world: rotate, then translate.
-func (m Mesh) toWorld(v geometry.Vector3) geometry.Vector3 {
-	return v.RotateX(m.Pitch).RotateY(m.Yaw).Add(m.Position)
-}
-
 // Draw renders the mesh's edges as lines, all in cell.
 // Edges crossing the near plane are cut where they cross it;
 // edges entirely behind it are skipped, and so are edges that name a vertex the
@@ -137,7 +124,7 @@ func (m Mesh) Draw(fb *engine.FrameBuffer, cam Camera, cell engine.Cell) {
 
 	view := make([]geometry.Vector3, len(m.Vertices))
 	for i, v := range m.Vertices {
-		view[i] = cam.toView(m.toWorld(v))
+		view[i] = cam.toView(m.Transform.Apply(v))
 	}
 
 	for _, e := range m.Edges {

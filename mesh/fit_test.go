@@ -37,8 +37,8 @@ func TestBounds(t *testing.T) {
 
 func TestBoundsIgnoresPlacement(t *testing.T) {
 	cube := Cube(2)
-	cube.Position = geometry.Vector3{X: 50, Y: 60, Z: 70}
-	cube.Yaw, cube.Pitch = 1, 2
+	cube.Transform.Position = geometry.Vector3{X: 50, Y: 60, Z: 70}
+	cube.Transform.Yaw, cube.Transform.Pitch = 1, 2
 
 	lo, hi := cube.Bounds()
 	if lo != (geometry.Vector3{X: -1, Y: -1, Z: -1}) || hi != (geometry.Vector3{X: 1, Y: 1, Z: 1}) {
@@ -114,13 +114,13 @@ func TestFitKeepsProportionsAndTopology(t *testing.T) {
 
 func TestFitKeepsPlacement(t *testing.T) {
 	m := Cube(4)
-	m.Position = geometry.Vector3{X: 1, Y: 2, Z: 3}
-	m.Yaw, m.Pitch = 0.5, -0.25
+	m.Transform.Position = geometry.Vector3{X: 1, Y: 2, Z: 3}
+	m.Transform.Yaw, m.Transform.Pitch = 0.5, -0.25
 
 	fitted := m.Fit(2)
 
-	if fitted.Position != m.Position || fitted.Yaw != m.Yaw || fitted.Pitch != m.Pitch {
-		t.Errorf("wanted Position, Yaw and Pitch kept, got %v %v %v", fitted.Position, fitted.Yaw, fitted.Pitch)
+	if fitted.Transform != m.Transform {
+		t.Errorf("wanted the Transform kept, got %+v, wanted %+v", fitted.Transform, m.Transform)
 	}
 }
 

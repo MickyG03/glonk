@@ -97,8 +97,8 @@ func FuzzDraw(f *testing.F) {
 	f.Fuzz(func(t *testing.T, cx, cy, cz, yaw, pitch, fov, near, mx, my, mz, size, myaw, mpitch float64) {
 		cam := Camera{Position: geometry.Vector3{X: cx, Y: cy, Z: cz}, Yaw: yaw, Pitch: pitch, FOV: fov, Near: near}
 		cube := Cube(size)
-		cube.Position = geometry.Vector3{X: mx, Y: my, Z: mz}
-		cube.Yaw, cube.Pitch = myaw, mpitch
+		cube.Transform.Position = geometry.Vector3{X: mx, Y: my, Z: mz}
+		cube.Transform.Yaw, cube.Transform.Pitch = myaw, mpitch
 		light := Light{Direction: geometry.Vector3{X: 0.4, Y: -1, Z: 0.6}, Ambient: 0.2}
 
 		fb, err := engine.NewFrameBuffer(20, 8)
@@ -120,7 +120,7 @@ func FuzzDraw(f *testing.F) {
 		select {
 		case <-done:
 		case <-time.After(3 * time.Second):
-			t.Fatalf("wanted drawing to finish, but it is still running for camera %+v and cube at %v", cam, cube.Position)
+			t.Fatalf("wanted drawing to finish, but it is still running for camera %+v and cube at %v", cam, cube.Transform.Position)
 		}
 	})
 }

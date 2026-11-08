@@ -126,7 +126,7 @@ func TestMeshDrawBehindCamera(t *testing.T) {
 	marker := engine.Cell{Character: '#'}
 
 	cube := Cube(2)
-	cube.Position = geometry.Vector3{Z: -5}
+	cube.Transform.Position = geometry.Vector3{Z: -5}
 	cube.Draw(fb, cam, marker)
 
 	for y := range fb.Height() {
@@ -150,10 +150,10 @@ func TestMeshDrawInFront(t *testing.T) {
 	marker := engine.Cell{Character: '#'}
 
 	cube := Cube(2)
-	cube.Position = geometry.Vector3{Z: 5}
+	cube.Transform.Position = geometry.Vector3{Z: 5}
 	cube.Draw(fb, cam, marker)
 
-	world := cube.Vertices[7].Add(cube.Position)
+	world := cube.Vertices[7].Add(cube.Transform.Position)
 	x, y, ok := cam.Project(world, fb.Width(), fb.Height())
 	if !ok {
 		t.Fatalf("camera setup is incorrect")

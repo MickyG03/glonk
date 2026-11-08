@@ -163,7 +163,7 @@ func TestDrawShadedCullsBackFaces(t *testing.T) {
 func TestDrawShadedUsesColorAndShade(t *testing.T) {
 	fb := newShadeBuffer(t)
 	cube := Cube(2)
-	cube.Position = geometry.Vector3{Z: 5}
+	cube.Transform.Position = geometry.Vector3{Z: 5}
 	// The light travels along +z, straight into the face that looks back at the camera.
 	light := Light{Direction: geometry.Vector3{Z: 1}}
 
@@ -188,8 +188,8 @@ func TestDrawShadedUsesColorAndShade(t *testing.T) {
 func TestDrawShadedFacesDiffer(t *testing.T) {
 	fb := newShadeBuffer(t)
 	cube := Cube(2)
-	cube.Position = geometry.Vector3{Z: 5}
-	cube.Yaw, cube.Pitch = 0.6, 0.4
+	cube.Transform.Position = geometry.Vector3{Z: 5}
+	cube.Transform.Yaw, cube.Transform.Pitch = 0.6, 0.4
 	light := Light{Direction: geometry.Vector3{X: 0.3, Y: -1, Z: 0.5}, Ambient: 0.1}
 
 	cube.DrawShaded(fb, shadeCam(), light, engine.Palette(1))
@@ -206,9 +206,9 @@ func TestDrawShadedFacesDiffer(t *testing.T) {
 
 func TestDrawShadedDepthOrder(t *testing.T) {
 	near := Cube(2)
-	near.Position = geometry.Vector3{Z: 4}
+	near.Transform.Position = geometry.Vector3{Z: 4}
 	far := Cube(2)
-	far.Position = geometry.Vector3{Z: 10}
+	far.Transform.Position = geometry.Vector3{Z: 10}
 	light := Light{Direction: geometry.Vector3{Z: 1}, Ambient: 0.2}
 
 	for _, nearFirst := range []bool{true, false} {
@@ -247,7 +247,7 @@ func TestDrawShadedPlacement(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			fb := newShadeBuffer(t)
 			cube := Cube(1)
-			cube.Position = geometry.Vector3{X: tt.x, Z: 5}
+			cube.Transform.Position = geometry.Vector3{X: tt.x, Z: 5}
 
 			cube.DrawShaded(fb, shadeCam(), light, engine.Palette(1))
 
@@ -267,7 +267,7 @@ func TestDrawShadedPlacement(t *testing.T) {
 func TestDrawShadedBehindCamera(t *testing.T) {
 	fb := newShadeBuffer(t)
 	cube := Cube(2)
-	cube.Position = geometry.Vector3{Z: -5}
+	cube.Transform.Position = geometry.Vector3{Z: -5}
 
 	cube.DrawShaded(fb, shadeCam(), Light{Direction: geometry.Vector3{Z: 1}}, engine.Palette(1))
 
@@ -309,7 +309,7 @@ func TestDrawShadedFloorCrossingTheNearPlane(t *testing.T) {
 func TestDrawShadedWithoutFaces(t *testing.T) {
 	fb := newShadeBuffer(t)
 	grid := Grid(10, 5)
-	grid.Position = geometry.Vector3{Y: -1, Z: 5}
+	grid.Transform.Position = geometry.Vector3{Y: -1, Z: 5}
 
 	grid.DrawShaded(fb, shadeCam(), Light{Direction: geometry.Vector3{Y: -1}}, engine.Palette(1))
 
@@ -376,8 +376,8 @@ func BenchmarkDrawShaded(b *testing.B) {
 			var cubes []Mesh
 			for i, z := range []float64{1.5, 3, 5, 7, 9, 12} {
 				c := Cube(2)
-				c.Position = geometry.Vector3{X: float64(i%3-1) * 1.5, Z: z}
-				c.Yaw, c.Pitch = float64(i)*0.5, float64(i)*0.3
+				c.Transform.Position = geometry.Vector3{X: float64(i%3-1) * 1.5, Z: z}
+				c.Transform.Yaw, c.Transform.Pitch = float64(i)*0.5, float64(i)*0.3
 				cubes = append(cubes, c)
 			}
 
@@ -425,7 +425,7 @@ func distinctRows(cells [][2]int) int {
 
 func TestDrawShadedPixelsHasTwiceTheRows(t *testing.T) {
 	cube := Cube(2)
-	cube.Position = geometry.Vector3{Z: 5}
+	cube.Transform.Position = geometry.Vector3{Z: 5}
 	light := Light{Direction: geometry.Vector3{Z: 1}}
 
 	fb := newShadeBuffer(t)
@@ -456,7 +456,7 @@ func TestDrawShadedPixelsHasTwiceTheRows(t *testing.T) {
 
 func TestDrawShadedPixelsColorFollowsLight(t *testing.T) {
 	cube := Cube(2)
-	cube.Position = geometry.Vector3{Z: 5}
+	cube.Transform.Position = geometry.Vector3{Z: 5}
 
 	tests := []struct {
 		name      string
@@ -491,8 +491,8 @@ func TestDrawShadedPixelsColorFollowsLight(t *testing.T) {
 func TestDrawShadedPixelsFacesDiffer(t *testing.T) {
 	_, c := newShadeCanvas(t)
 	cube := Cube(2)
-	cube.Position = geometry.Vector3{Z: 5}
-	cube.Yaw, cube.Pitch = 0.6, 0.4
+	cube.Transform.Position = geometry.Vector3{Z: 5}
+	cube.Transform.Yaw, cube.Transform.Pitch = 0.6, 0.4
 	light := Light{Direction: geometry.Vector3{X: 0.3, Y: -1, Z: 0.5}, Ambient: 0.1}
 
 	cube.DrawShadedPixels(c, shadeCam(), light, engine.Palette(208))
@@ -508,9 +508,9 @@ func TestDrawShadedPixelsFacesDiffer(t *testing.T) {
 
 func TestDrawShadedPixelsDepthOrder(t *testing.T) {
 	near := Cube(2)
-	near.Position = geometry.Vector3{Z: 4}
+	near.Transform.Position = geometry.Vector3{Z: 4}
 	far := Cube(2)
-	far.Position = geometry.Vector3{Z: 10}
+	far.Transform.Position = geometry.Vector3{Z: 10}
 	light := Light{Direction: geometry.Vector3{Z: 1}, Ambient: 0.2}
 
 	for _, nearFirst := range []bool{true, false} {
@@ -572,7 +572,7 @@ func TestDrawShadedPixelsPlacement(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			_, c := newShadeCanvas(t)
 			cube := Cube(1)
-			cube.Position = geometry.Vector3{X: tt.x, Y: tt.y, Z: 5}
+			cube.Transform.Position = geometry.Vector3{X: tt.x, Y: tt.y, Z: 5}
 
 			cube.DrawShadedPixels(c, shadeCam(), light, engine.Palette(1))
 
@@ -595,7 +595,7 @@ func TestDrawShadedPixelsPlacement(t *testing.T) {
 func TestDrawShadedPixelsBehindCamera(t *testing.T) {
 	_, c := newShadeCanvas(t)
 	cube := Cube(2)
-	cube.Position = geometry.Vector3{Z: -5}
+	cube.Transform.Position = geometry.Vector3{Z: -5}
 
 	cube.DrawShadedPixels(c, shadeCam(), Light{Direction: geometry.Vector3{Z: 1}}, engine.Palette(1))
 
@@ -634,7 +634,7 @@ func TestDrawShadedPixelsFloorCrossingTheNearPlane(t *testing.T) {
 func TestDrawShadedPixelsWithoutFaces(t *testing.T) {
 	_, c := newShadeCanvas(t)
 	grid := Grid(10, 5)
-	grid.Position = geometry.Vector3{Y: -1, Z: 5}
+	grid.Transform.Position = geometry.Vector3{Y: -1, Z: 5}
 
 	grid.DrawShadedPixels(c, shadeCam(), Light{Direction: geometry.Vector3{Y: -1}}, engine.Palette(1))
 
@@ -648,7 +648,7 @@ func TestDrawShadedPixelsWithoutFaces(t *testing.T) {
 func TestDrawShadedPixelsComposes(t *testing.T) {
 	fb, c := newShadeCanvas(t)
 	cube := Cube(2)
-	cube.Position = geometry.Vector3{Z: 5}
+	cube.Transform.Position = geometry.Vector3{Z: 5}
 	light := Light{Direction: geometry.Vector3{Z: 1}}
 
 	cube.DrawShadedPixels(c, shadeCam(), light, engine.Palette(208))
@@ -720,9 +720,9 @@ func TestDrawWithPitchedCamera(t *testing.T) {
 		cam := Camera{Position: geometry.Vector3{Y: 1}, Pitch: pitch, FOV: math.Pi / 2, Near: 0.1}
 
 		aimed := Cube(2)
-		aimed.Position = cam.Position.Add(cam.Look().Scale(6))
+		aimed.Transform.Position = cam.Position.Add(cam.Look().Scale(6))
 		level := Cube(2)
-		level.Position = cam.Position.Add(geometry.Vector3{Z: 6})
+		level.Transform.Position = cam.Position.Add(geometry.Vector3{Z: 6})
 
 		draws := map[string]func(m Mesh) [][2]int{
 			"wireframe": func(m Mesh) [][2]int {
@@ -808,8 +808,8 @@ func samePixels(a, b *engine.Canvas) bool {
 
 func posedCube(doubleSided bool) Mesh {
 	cube := Cube(2)
-	cube.Position = geometry.Vector3{X: 0.3, Y: 0.2, Z: 5}
-	cube.Yaw, cube.Pitch = 0.6, 0.4
+	cube.Transform.Position = geometry.Vector3{X: 0.3, Y: 0.2, Z: 5}
+	cube.Transform.Yaw, cube.Transform.Pitch = 0.6, 0.4
 	cube.DoubleSided = doubleSided
 	return cube
 }
@@ -950,7 +950,7 @@ func TestDrawShadedAcceptsRGBColors(t *testing.T) {
 	color := engine.RGB(200, 100, 50)
 	light := Light{Direction: geometry.Vector3{Z: 1}} // straight into the front face
 	cube := Cube(2)
-	cube.Position = geometry.Vector3{Z: 5}
+	cube.Transform.Position = geometry.Vector3{Z: 5}
 
 	fb := newShadeBuffer(t)
 	cube.DrawShaded(fb, shadeCam(), light, color)

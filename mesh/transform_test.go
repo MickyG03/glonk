@@ -7,30 +7,30 @@ import (
 	"github.com/kyrokohan/glonk/geometry"
 )
 
-// The doc comments of Mesh and Camera say which way their angles turn and in what
-// order they apply. This keeps those sentences true.
-func TestMeshPlacementMatchesItsDocs(t *testing.T) {
+// The doc comments of Transform and Camera say which way their angles turn and in
+// what order they apply. This keeps those sentences true.
+func TestTransformMatchesItsDocs(t *testing.T) {
 	const quarter = math.Pi / 2
 	pos := geometry.Vector3{X: 10, Y: 20, Z: 30}
 
 	tests := []struct {
 		name string
-		m    Mesh
+		t    Transform
 		in   geometry.Vector3
 		want geometry.Vector3
 	}{
-		{"positive Pitch turns +y toward +z", Mesh{Pitch: quarter}, geometry.Vector3{Y: 1}, geometry.Vector3{Z: 1}},
-		{"positive Yaw turns +z toward +x", Mesh{Yaw: quarter}, geometry.Vector3{Z: 1}, geometry.Vector3{X: 1}},
-		{"Position moves the model", Mesh{Position: pos}, geometry.Vector3{X: 1}, geometry.Vector3{X: 11, Y: 20, Z: 30}},
+		{"positive Pitch turns +y toward +z", Transform{Pitch: quarter}, geometry.Vector3{Y: 1}, geometry.Vector3{Z: 1}},
+		{"positive Yaw turns +z toward +x", Transform{Yaw: quarter}, geometry.Vector3{Z: 1}, geometry.Vector3{X: 1}},
+		{"Position moves the model", Transform{Position: pos}, geometry.Vector3{X: 1}, geometry.Vector3{X: 11, Y: 20, Z: 30}},
 		// Pitch first: (0,1,0) goes to (0,0,1), then Yaw takes that to (1,0,0). Yaw first
 		// would leave (0,1,0) alone and Pitch would then end at (0,0,1).
-		{"Pitch applies before Yaw", Mesh{Pitch: quarter, Yaw: quarter}, geometry.Vector3{Y: 1}, geometry.Vector3{X: 1}},
-		{"Position applies after both", Mesh{Pitch: quarter, Yaw: quarter, Position: pos}, geometry.Vector3{Y: 1}, geometry.Vector3{X: 11, Y: 20, Z: 30}},
+		{"Pitch applies before Yaw", Transform{Pitch: quarter, Yaw: quarter}, geometry.Vector3{Y: 1}, geometry.Vector3{X: 1}},
+		{"Position applies after both", Transform{Pitch: quarter, Yaw: quarter, Position: pos}, geometry.Vector3{Y: 1}, geometry.Vector3{X: 11, Y: 20, Z: 30}},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := tt.m.toWorld(tt.in); !vecEquals(got, tt.want) {
+			if got := tt.t.Apply(tt.in); !vecEquals(got, tt.want) {
 				t.Errorf("wanted %v, got %v", tt.want, got)
 			}
 		})

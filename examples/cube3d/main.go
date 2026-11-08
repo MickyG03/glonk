@@ -62,7 +62,7 @@ func keyDown(held func(engine.Key) bool, letter rune) bool {
 // newCube returns a cube of the given size resting on the floor at (x, z).
 func newCube(size, x, z float64, color engine.Color) object {
 	m := mesh.Cube(size)
-	m.Position = geometry.Vector3{X: x, Y: floorY + size/2, Z: z}
+	m.Transform.Position = geometry.Vector3{X: x, Y: floorY + size/2, Z: z}
 	return object{mesh: m, color: color}
 }
 
@@ -155,7 +155,7 @@ func (g *cubeGame) Draw(fb *engine.FrameBuffer) {
 // inside the south edge.
 func newCubeGame() *cubeGame {
 	floor := mesh.Grid(gridSize, gridDivisions)
-	floor.Position.Y = floorY
+	floor.Transform.Position.Y = floorY
 
 	return &cubeGame{
 		cam:   mesh.Camera{Position: geometry.Vector3{Z: -4}, FOV: math.Pi / 2, Near: 0.1},

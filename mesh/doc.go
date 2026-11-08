@@ -2,7 +2,7 @@
 // engine.FrameBuffer, as wireframes or as solid, lit surfaces.
 //
 // A [Mesh] holds vertices, the edges and triangular faces between them, and where
-// it sits in the world. [Cube], [Grid] and [LoadOBJ] make meshes; [Mesh.Draw] draws
+// it sits in the world (its [Transform]). [Cube], [Grid] and [LoadOBJ] make meshes; [Mesh.Draw] draws
 // the edges, and [Mesh.DrawShaded] and [Mesh.DrawShadedPixels] draw the faces lit
 // by a [Light], into cells or into a half-block pixel Canvas.
 //

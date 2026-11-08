@@ -7,7 +7,7 @@ import (
 )
 
 // Bounds returns the smallest axis-aligned box around the mesh's vertices, in
-// model space (before Position, Yaw and Pitch are applied). An empty mesh gives
+// model space (before the Transform is applied). An empty mesh gives
 // two zero vectors.
 func (m Mesh) Bounds() (lo, hi geometry.Vector3) {
 	if len(m.Vertices) == 0 {
@@ -24,8 +24,8 @@ func (m Mesh) Bounds() (lo, hi geometry.Vector3) {
 
 // Fit returns a copy of the mesh centered on the origin and scaled evenly so that
 // its longest side is size, which makes models from different sources comparable
-// and puts them where a camera at the origin's side can see them. Position, Yaw
-// and Pitch are kept.
+// and puts them where a camera at the origin's side can see them. The Transform is
+// kept.
 //
 // A mesh with no size to speak of (an empty mesh, a single point), a size that is
 // not a positive finite number, or vertices that are not finite are not scaled; the

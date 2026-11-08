@@ -73,7 +73,7 @@ if err != nil {
 	log.Fatal(err) // names the line that went wrong, e.g. "obj line 12: bad number"
 }
 ship = ship.Fit(2) // centered on the origin, longest side 2
-ship.Position = geometry.Vector3{Z: 6}
+ship.Transform.Position = geometry.Vector3{Z: 6}
 
 ship.DrawShaded(fb, cam, light, engine.Palette(208)) // or ship.Draw for a wireframe
 ```

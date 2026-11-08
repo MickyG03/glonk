@@ -7,7 +7,7 @@ import (
 // Grid returns a flat grid of lines on the y=0 plane, centered on the origin,
 // size wide and deep with divisions cells per side. Each line runs the full
 // width, so there are divisions+1 of them in each direction. divisions below 1
-// is treated as 1. Lift it to floor height with Mesh.Position.
+// is treated as 1. Lift it to floor height with Mesh.Transform.
 func Grid(size float64, divisions int) Mesh {
 	m := Mesh{}
 

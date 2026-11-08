@@ -54,7 +54,7 @@ func ExampleMesh_Draw() {
 	fb.DrawBox(0, 0, fb.Width(), fb.Height(), engine.Color{})
 
 	cube := mesh.Cube(2)
-	cube.Position = geometry.Vector3{Z: 3} // three units in front of the camera
+	cube.Transform.Position = geometry.Vector3{Z: 3} // three units in front of the camera
 	cube.Draw(fb, mesh.Camera{}, engine.Cell{Character: '#'})
 
 	printFrame(fb)
@@ -80,8 +80,8 @@ func ExampleMesh_DrawShaded() {
 	fb.DrawBox(0, 0, fb.Width(), fb.Height(), engine.Color{})
 
 	cube := mesh.Cube(2)
-	cube.Position = geometry.Vector3{Z: 3}
-	cube.Yaw = 0.6 // turn it so that two sides show
+	cube.Transform.Position = geometry.Vector3{Z: 3}
+	cube.Transform.Yaw = 0.6 // turn it so that two sides show
 	light := mesh.Light{Direction: geometry.Vector3{X: 0.4, Y: -1, Z: 0.6}, Ambient: 0.2}
 	cube.DrawShaded(fb, mesh.Camera{}, light, engine.Palette(208))
 
