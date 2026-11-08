@@ -2,10 +2,13 @@ package engine
 
 import (
 	"bytes"
+	"encoding/binary"
 	"math"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
+	"unicode"
 	"unicode/utf8"
 )
 
@@ -283,6 +286,63 @@ func FuzzKeyParser(f *testing.F) {
 			}
 			if !slices.Equal(single, whole) {
 				t.Fatalf("wanted %q one byte at a time to give %v, got %v", b, whole, single)
+			}
+		}
+	})
+}
+
+// ownSequence matches the escape sequences present writes itself: cursor moves and
+// colours.
+var ownSequence = regexp.MustCompile(`\x1b\[[0-9;]*[A-Za-z]`)
+
+func FuzzPresent(f *testing.F) {
+	seed := func(runes ...rune) {
+		var b []byte
+		for _, r := range runes {
+			b = binary.LittleEndian.AppendUint32(b, uint32(r))
+		}
+		f.Add(b)
+	}
+	seed('a', 'b', 0, 0x1b, '\n', 0x9b, 0x202e, '中', '😀', 0x301, 0xd800, -1, 0x110000, '─', '▀', '⣿')
+	seed(0x1b, '[', '2', 'J', 0x1b, '[', 'H', 0x07, 0x7f, '\t', '\r', 0x08, 0x0e, 0x0f, 0x90, 0x9d)
+	seed(0x200d, 0x200b, 0x2060, 0xfeff, 0xfe0f, 0x20dd, 0xe0b0, 0xf8ff, 0xfffe, 0xffff, 0xfdd0, 0x3000, 0xff21, 0x1100, 0x1f600, 0x2fffd)
+
+	f.Fuzz(func(t *testing.T, data []byte) {
+		const w, h = 8, 2
+		fb, err := NewFrameBuffer(w, h)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for i := range w * h {
+			r := 'x'
+			if 4*i+4 <= len(data) {
+				r = rune(int32(binary.LittleEndian.Uint32(data[4*i:])))
+			}
+			fb.Set(i%w, i/w, Cell{Character: r, Color: uint8(i * 17), Background: uint8(i * 29)})
+		}
+
+		var buf bytes.Buffer
+		if err := fb.present(&buf); err != nil {
+			t.Fatal(err)
+		}
+
+		// What is left once glonk's own sequences are removed is the drawn text. It
+		// must be one visible, narrow character per cell, with nothing a terminal
+		// could act on, however hostile the cells were.
+		out := ownSequence.ReplaceAll(buf.Bytes(), nil)
+		if !utf8.Valid(out) {
+			t.Fatalf("wanted valid UTF-8, got %q", out)
+		}
+		runes := []rune(string(out))
+		if len(runes) != w*h {
+			t.Fatalf("wanted %d characters, one per cell, got %d in %q", w*h, len(runes), out)
+		}
+		for _, r := range runes {
+			if unicode.IsControl(r) || unicode.In(r, unicode.Mn, unicode.Me, unicode.Cf) {
+				t.Fatalf("wanted no control or zero-width character, got %U in %q", r, out)
+			}
+			if !unicode.IsGraphic(r) && !unicode.Is(unicode.Co, r) {
+				t.Fatalf("wanted a printable character, got %U in %q", r, out)
 			}
 		}
 	})

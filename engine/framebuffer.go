@@ -139,7 +139,13 @@ func (fb *FrameBuffer) present(w io.Writer) error {
 				fg, bg = cell.Color, cell.Background
 			}
 
-			sb.PrintRune(cell.Character)
+			// Nothing but a character one column wide may reach the terminal; the
+			// check is skipped for printable ASCII, nearly all of what is sent.
+			r := cell.Character
+			if r < 0x20 || r >= 0x7f {
+				r = safeRune(r)
+			}
+			sb.PrintRune(r)
 		}
 
 		// Leave nothing set at the end of a row, so a later row or the shell starts clean.

@@ -489,9 +489,26 @@ func TestPresentRunes(t *testing.T) {
 		{"ascii", 'a', "a"},
 		{"two bytes", 'é', "é"},
 		{"three bytes", '─', "─"},
-		{"four bytes", '😀', "😀"},
-		{"surrogate becomes replacement", 0xD800, "�"},
-		{"negative becomes replacement", -1, "�"},
+		{"half block", '▀', "▀"},
+		{"braille", '⣿', "⣿"},
+		{"private use", '\ue0b0', "\ue0b0"},
+		{"nul is a space", 0, " "},
+		{"escape", 0x1b, "?"},
+		{"newline", '\n', "?"},
+		{"tab", '\t', "?"},
+		{"bell", 0x07, "?"},
+		{"delete", 0x7f, "?"},
+		{"c1 csi", 0x9b, "?"},
+		{"bidi override", 0x202e, "?"},
+		{"zero width joiner", 0x200d, "?"},
+		{"combining accent", 0x0301, "?"},
+		{"wide cjk", '中', "?"},
+		{"wide fullwidth", 'Ａ', "?"},
+		{"wide emoji", '😀', "?"},
+		{"unassigned", 0x0378, "?"},
+		{"surrogate", 0xD800, "?"},
+		{"negative", -1, "?"},
+		{"past unicode", 0x110000, "?"},
 	}
 
 	for _, tt := range tests {
@@ -512,6 +529,27 @@ func TestPresentRunes(t *testing.T) {
 				t.Errorf("wanted %q, got %q", want, buf.String())
 			}
 		})
+	}
+}
+
+// A cell with a colour but no character is a coloured blank, not a dropped column.
+func TestPresentColouredCellWithoutCharacterKeepsItsColumn(t *testing.T) {
+	fb, err := NewFrameBuffer(3, 1)
+	if err != nil {
+		t.Fatalf("unable to initialize frame buffer: %v", err)
+	}
+	fb.Set(0, 0, Cell{Character: 'a'})
+	fb.Set(1, 0, Cell{Background: 4})
+	fb.Set(2, 0, Cell{Character: 'b'})
+
+	buf := bytes.Buffer{}
+	if err := fb.present(&buf); err != nil {
+		t.Fatalf("could not present: %v", err)
+	}
+
+	want := "\x1b[1;1Ha\x1b[48;5;4m \x1b[0mb"
+	if buf.String() != want {
+		t.Errorf("wanted %q, got %q", want, buf.String())
 	}
 }
 
@@ -539,5 +577,30 @@ func BenchmarkPresent(b *testing.B) {
 				}
 			}
 		})
+	}
+}
+
+// BenchmarkPresentBlocks is a frame of half blocks, as the pixel canvas makes: every
+// cell is outside printable ASCII.
+func BenchmarkPresentBlocks(b *testing.B) {
+	fb, err := NewFrameBuffer(200, 60)
+	if err != nil {
+		b.Fatalf("unable to initialize frame buffer: %v", err)
+	}
+	for y := range 60 {
+		for x := range 200 {
+			c := Cell{Character: '▀', Color: uint8(1 + (x+y)%200), Background: uint8(1 + (x*y)%200)}
+			if (x+y)%3 == 0 {
+				c.Character = '▄'
+			}
+			fb.Set(x, y, c)
+		}
+	}
+
+	b.ReportAllocs()
+	for b.Loop() {
+		if err := fb.present(io.Discard); err != nil {
+			b.Fatal(err)
+		}
 	}
 }
