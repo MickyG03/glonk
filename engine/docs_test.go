@@ -235,3 +235,71 @@ func TestDocProblemsFindsWhatItShould(t *testing.T) {
 		})
 	}
 }
+
+// compileOnly names the examples that cannot print anything checkable, because
+// they need a terminal. Every other example must have an Output comment, or go test
+// compiles it and never runs it.
+var compileOnly = map[string]bool{"Run": true}
+
+// uncheckedExamples lists the examples in the files that have no Output comment.
+func uncheckedExamples(files []*ast.File) []string {
+	var out []string
+	for _, ex := range doc.Examples(files...) {
+		if ex.Output == "" && !ex.EmptyOutput && !compileOnly[ex.Name] {
+			out = append(out, "Example"+ex.Name+" has no Output comment, so it is never run")
+		}
+	}
+	return out
+}
+
+func TestExamplesAreRun(t *testing.T) {
+	for _, dir := range []string{".", "../geometry", "../mesh", "../sprite"} {
+		t.Run(dir, func(t *testing.T) {
+			fset := token.NewFileSet()
+			pkgs, err := parser.ParseDir(fset, dir, func(fi fs.FileInfo) bool {
+				return strings.HasSuffix(fi.Name(), "example_test.go")
+			}, parser.ParseComments)
+			if err != nil {
+				t.Fatal(err)
+			}
+			found := 0
+			for _, p := range pkgs {
+				var files []*ast.File
+				for _, f := range p.Files {
+					files = append(files, f)
+				}
+				found += len(doc.Examples(files...))
+				for _, problem := range uncheckedExamples(files) {
+					t.Error(problem)
+				}
+			}
+			if found == 0 {
+				t.Errorf("wanted examples in %s, found none", dir)
+			}
+		})
+	}
+}
+
+func TestUncheckedExamplesFindsWhatItShould(t *testing.T) {
+	tests := []struct {
+		name string
+		src  string
+		want int
+	}{
+		{"with output", "package p_test\n\nfunc ExampleF() {\n\t// Output:\n\t// 1\n}\n", 0},
+		{"without output", "package p_test\n\nfunc ExampleF() {\n\tprintln(1)\n}\n", 1},
+		{"empty output is a check too", "package p_test\n\nfunc ExampleF() {\n\t// Output:\n}\n", 0},
+		{"the terminal example may go unrun", "package p_test\n\nfunc ExampleRun() {\n}\n", 0},
+		{"another example may not", "package p_test\n\nfunc ExampleRunner() {\n}\n", 1},
+		{"unordered output counts", "package p_test\n\nfunc ExampleF() {\n\t// Unordered output:\n\t// 1\n}\n", 0},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, files := parseSource(t, tt.src)
+			if got := uncheckedExamples(files); len(got) != tt.want {
+				t.Errorf("wanted %d unchecked examples, got %v", tt.want, got)
+			}
+		})
+	}
+}
