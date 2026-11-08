@@ -1,10 +1,12 @@
 # Changelog
 
-All notable changes to glonk are written here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project will follow [Semantic Versioning](https://semver.org/) from v0.1.0 on.
+All notable changes to glonk are written here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project follows [Semantic Versioning](https://semver.org/). While the version is below 1.0, a new minor version (0.2.0, say) may change the API.
 
-## Unreleased
+## [Unreleased]
 
-There has been no release yet. The API is pre-1.0 and may still change. The reshaping planned before v0.1.0 (`Cell` and its colors, `Game` and `Run`, the 3D API, the test helpers and the 2D API) is done. The README lists the known limits of what exists today.
+## [0.1.0] - 2026-11-08
+
+The first release. The API is pre-1.0 and may still change. The README lists the known limits of what exists today.
 
 ### Added
 
@@ -26,7 +28,7 @@ There has been no release yet. The API is pre-1.0 and may still change. The resh
 - `Transform` places a mesh: `Position`, `Yaw`, `Pitch`, `Roll` and a uniform `Scale` (0 means 1), in `Mesh.Transform`. Yaw and Pitch turn a model the way they turn a `Camera`: positive yaw swings the front toward +x, positive pitch tips it up. `Transform.Apply` says where a model point ends up. A transform with a number that is not finite, or a negative scale, draws nothing and `Validate` reports it.
 - `Material` says how a mesh looks shaded: a `Color` and a `Ramp` of brightness characters (default `.:-=+*#%@`), in `Mesh.Material`; the draw calls no longer take a color.
 - `Light` is an interface with `Directional` and `Ambient` lights, and your own; `DrawShaded` and `DrawShadedPixels` take any number. Lights add up without passing full brightness, so one ambient light and one directional light give what the single combined light gave before.
-- Perspective `Camera` with yaw, pitch, field of view, a near plane and a `CellAspect` (how much taller than wide a cell is; fields left at zero use defaults); wireframe `Draw`; `DrawShaded` and `DrawShadedPixels` with depth testing, back-face culling and near-plane clipping; `DoubleSided` for models wound the other way.
+- Perspective `Camera` with yaw, pitch, field of view, a near plane and a `CellAspect` (how much taller than wide a cell is; fields left at zero use defaults), and `Project`, `Forward`, `Right` and `Look` for putting things on screen and moving around; wireframe `Draw`; `DrawShaded` and `DrawShadedPixels` with depth testing, back-face culling and near-plane clipping; `DoubleSided` for models wound the other way.
 - Drawing does not panic on bad meshes, transforms or cameras: edges and faces that name a missing vertex are skipped, and a camera with nonsense values sees nothing.
 
 **sprite**, **geometry**
@@ -35,3 +37,6 @@ There has been no release yet. The API is pre-1.0 and may still change. The resh
 **Everything else**
 - Three example programs (`bounce2d`, `cube3d` and a model `viewer`), runnable examples in the package documentation, fuzz tests for the parsers, rasterizers and clipping, and a test that keeps the documentation complete.
 - Continuous integration (format, vet and race tests on Linux and macOS for Go 1.26 and 1.27, cross-compilation, 32-bit tests), Dependabot, a security policy and contributing notes.
+
+[Unreleased]: https://github.com/kyrokohan/glonk/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/kyrokohan/glonk/releases/tag/v0.1.0
