@@ -117,6 +117,11 @@ func (m Mesh) toWorld(v geometry.Vector3) geometry.Vector3 {
 // shortcut: a cut endpoint can project far off screen and DrawLine still steps
 // every cell to it, so a tiny Near gets slow; clip lines to the screen in DrawLine to upgrade.
 func (m Mesh) Draw(fb *engine.FrameBuffer, cam Camera, cell engine.Cell) {
+	cam, ok := cam.withDefaults()
+	if !ok {
+		return
+	}
+
 	view := make([]geometry.Vector3, len(m.Vertices))
 	for i, v := range m.Vertices {
 		view[i] = cam.toView(m.toWorld(v))

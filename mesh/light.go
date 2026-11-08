@@ -58,6 +58,11 @@ type screenPoint struct {
 // the face's brightness from 0 to 1. A face that names a vertex the mesh does not
 // have is skipped.
 func (m Mesh) eachShadedTriangle(cam Camera, light Light, w, h int, fn func(corners [3]screenPoint, intensity float64)) {
+	cam, ok := cam.withDefaults()
+	if !ok {
+		return
+	}
+
 	world := make([]geometry.Vector3, len(m.Vertices))
 	view := make([]geometry.Vector3, len(m.Vertices))
 	for i, v := range m.Vertices {

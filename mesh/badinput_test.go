@@ -14,12 +14,17 @@ import (
 // drawEverything draws m with all four ways to draw a mesh into a fresh frame.
 func drawEverything(t *testing.T, m Mesh) *engine.FrameBuffer {
 	t.Helper()
+	return drawWith(t, m, Camera{FOV: math.Pi / 2, Near: 0.1})
+}
+
+// drawWith is drawEverything seen through cam.
+func drawWith(t *testing.T, m Mesh, cam Camera) *engine.FrameBuffer {
+	t.Helper()
 
 	fb, err := engine.NewFrameBuffer(40, 12)
 	if err != nil {
 		t.Fatalf("unable to initialize frame buffer: %v", err)
 	}
-	cam := Camera{FOV: math.Pi / 2, Near: 0.1}
 	light := Light{Direction: geometry.Vector3{Y: -1}, Ambient: 0.2}
 
 	m.Draw(fb, cam, engine.Cell{Character: '#'})
@@ -197,5 +202,129 @@ func TestAssignmentSharesAndCloneDoesNot(t *testing.T) {
 	c.Vertices[0].X = -1
 	if a.Vertices[0].X != 42 {
 		t.Errorf("wanted the clone's change to stay out of the original")
+	}
+}
+
+func cubeAt(z, size float64) Mesh {
+	c := Cube(size)
+	c.Position = geometry.Vector3{Z: z}
+	return c
+}
+
+func TestCameraLeftAtZeroUsesDefaults(t *testing.T) {
+	explicit := Camera{FOV: math.Pi / 2, Near: 0.1}
+	negativeZero := math.Copysign(0, -1)
+
+	tests := []struct {
+		name string
+		cam  Camera
+		want Camera
+	}{
+		{"nothing set", Camera{}, explicit},
+		{"only a position", Camera{Position: geometry.Vector3{X: 0.5, Y: 0.25}}, Camera{Position: geometry.Vector3{X: 0.5, Y: 0.25}, FOV: math.Pi / 2, Near: 0.1}},
+		{"only a turn", Camera{Yaw: 0.3, Pitch: 0.1}, Camera{Yaw: 0.3, Pitch: 0.1, FOV: math.Pi / 2, Near: 0.1}},
+		{"FOV set, Near not", Camera{FOV: 1.2}, Camera{FOV: 1.2, Near: 0.1}},
+		{"Near set, FOV not", Camera{Near: 0.5}, Camera{FOV: math.Pi / 2, Near: 0.5}},
+		{"negative zero counts as zero", Camera{FOV: negativeZero, Near: negativeZero}, explicit},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// The second cube straddles 0.3 in front of the camera, so which Near is used
+			// changes what is cut away; the first only needs a FOV.
+			for _, m := range []Mesh{cubeAt(5, 2), cubeAt(0.3, 0.8)} {
+				got := drawWith(t, m, tt.cam)
+				want := drawWith(t, m, tt.want)
+				if drawnCells(got) == 0 {
+					t.Fatalf("wanted the camera to see the cube at %v", m.Position)
+				}
+				if !sameFrame(got, want) {
+					t.Errorf("wanted %+v to draw like %+v for the cube at %v", tt.cam, tt.want, m.Position)
+				}
+			}
+
+			p := geometry.Vector3{X: 1, Y: 0.5, Z: 4}
+			gx, gy, gok := tt.cam.Project(p, 40, 12)
+			wx, wy, wok := tt.want.Project(p, 40, 12)
+			if gok != wok || gx != wx || gy != wy {
+				t.Errorf("wanted Project to give (%v, %v, %v), got (%v, %v, %v)", wx, wy, wok, gx, gy, gok)
+			}
+		})
+	}
+}
+
+func TestCameraWithNonsenseValuesSeesNothing(t *testing.T) {
+	inf := math.Inf(1)
+	nan := math.NaN()
+
+	tests := []struct {
+		name string
+		cam  Camera
+	}{
+		{"negative FOV", Camera{FOV: -1, Near: 0.1}},
+		{"FOV of pi", Camera{FOV: math.Pi, Near: 0.1}},
+		{"FOV past pi", Camera{FOV: 4, Near: 0.1}},
+		{"FOV of a full turn", Camera{FOV: 2 * math.Pi, Near: 0.1}},
+		{"NaN FOV", Camera{FOV: nan, Near: 0.1}},
+		{"infinite FOV", Camera{FOV: inf, Near: 0.1}},
+		{"negative infinite FOV", Camera{FOV: -inf, Near: 0.1}},
+		{"negative Near", Camera{FOV: math.Pi / 2, Near: -1}},
+		{"NaN Near", Camera{FOV: math.Pi / 2, Near: nan}},
+		{"infinite Near", Camera{FOV: math.Pi / 2, Near: inf}},
+		{"negative infinite Near", Camera{FOV: math.Pi / 2, Near: -inf}},
+		{"NaN position", Camera{Position: geometry.Vector3{X: nan}, FOV: math.Pi / 2, Near: 0.1}},
+		{"infinite yaw", Camera{Yaw: inf, FOV: math.Pi / 2, Near: 0.1}},
+		{"NaN pitch", Camera{Pitch: nan, FOV: math.Pi / 2, Near: 0.1}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if n := drawnCells(drawWith(t, cubeAt(5, 2), tt.cam)); n != 0 {
+				t.Errorf("wanted nothing drawn, got %d cells", n)
+			}
+			if _, _, ok := tt.cam.Project(geometry.Vector3{Z: 5}, 40, 12); ok {
+				t.Errorf("wanted Project to report ok=false")
+			}
+		})
+	}
+}
+
+// A negative Near used to let things behind the camera through, drawn mirrored.
+func TestNegativeNearNoLongerDrawsWhatIsBehindTheCamera(t *testing.T) {
+	behind := cubeAt(-0.5, 0.2)
+	if n := drawnCells(drawWith(t, behind, Camera{FOV: math.Pi / 2, Near: -1})); n != 0 {
+		t.Errorf("wanted nothing drawn for a cube behind the camera, got %d cells", n)
+	}
+}
+
+func TestWithDefaultsAcceptsTheEdgesOfTheRange(t *testing.T) {
+	for _, c := range []Camera{
+		{FOV: 1e-9, Near: 0.1},
+		{FOV: math.Nextafter(math.Pi, 0), Near: 0.1},
+		{FOV: math.Pi / 2, Near: 1e-300},
+		{FOV: math.Pi / 2, Near: math.MaxFloat64},
+	} {
+		if _, ok := c.withDefaults(); !ok {
+			t.Errorf("wanted %+v to be usable", c)
+		}
+	}
+}
+
+func TestProjectRejectsPointsWithNoPlaceOnTheScreen(t *testing.T) {
+	cam := Camera{FOV: math.Pi / 2, Near: 0.1}
+	nan, inf := math.NaN(), math.Inf(1)
+
+	for name, p := range map[string]geometry.Vector3{
+		"NaN x":               {X: nan, Z: 5},
+		"NaN y":               {Y: nan, Z: 5},
+		"NaN z":               {Z: nan},
+		"infinite x":          {X: inf, Z: 5},
+		"negative infinite y": {Y: -inf, Z: 5},
+		"infinitely far":      {Z: inf},
+		"infinite in all":     {X: inf, Y: inf, Z: inf},
+	} {
+		if x, y, ok := cam.Project(p, 40, 12); ok {
+			t.Errorf("%s: wanted ok=false, got (%v, %v)", name, x, y)
+		}
 	}
 }
