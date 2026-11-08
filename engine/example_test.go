@@ -84,6 +84,29 @@ func ExampleFrameBuffer_DrawText() {
 	// └──────────────┘
 }
 
+// A Keyboard stands in for the terminal's keyboard in a test: hand its Input to Update.
+func ExampleKeyboard() {
+	kb := engine.NewKeyboard()
+	game := &walker{}
+
+	kb.Press('d')
+	fmt.Println(kb.Input().IsDown('d'), kb.Input().Pressed('d')) // down, and new this frame
+	kb.EndFrame()
+	fmt.Println(kb.Input().IsDown('d'), kb.Input().Pressed('d')) // still down, no longer new
+	kb.Release('d')
+	fmt.Println(kb.Input().IsDown('d'))
+
+	fmt.Println(game.Update(0.1, kb.Input()))
+	kb.Press(engine.KeyEscape)
+	fmt.Println(game.Update(0.1, kb.Input()))
+	// Output:
+	// true true
+	// true false
+	// false
+	// <nil>
+	// quit
+}
+
 // A FrameBuffer prints as text, one line per row, which makes a whole screen easy to
 // check in a test.
 func ExampleFrameBuffer_String() {

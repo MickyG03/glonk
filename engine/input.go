@@ -19,6 +19,8 @@ const holdTimeout = 150 * time.Millisecond
 // there. Terminals that implement the kitty keyboard protocol report releases;
 // there Input tracks exactly which keys are down. Letters keep their case in
 // the first kind of terminal (shift+w arrives as 'W'), not in the second.
+//
+// To test a game's Update, build an Input with a [Keyboard].
 type Input struct {
 	now      time.Time
 	exact    bool // true when the terminal reports key releases
