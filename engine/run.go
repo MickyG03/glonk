@@ -67,6 +67,14 @@ func resolveSize(cfgW, cfgH, termW, termH int) (int, int) {
 	return resW, resH
 }
 
+// finish adds a failure to restore the terminal to err, the result of the run.
+func finish(err error, tty *terminal) error {
+	if restoreErr := tty.Teardown(); restoreErr != nil {
+		return errors.Join(err, fmt.Errorf("restoring the terminal: %w", restoreErr))
+	}
+	return err
+}
+
 // handle carries out what the input asked for. done says Run should now return err.
 func handle(action inputAction, suspend func() error) (done bool, err error) {
 	switch action {
@@ -98,11 +106,14 @@ func handle(action inputAction, suspend func() error) (done bool, err error) {
 // from outside (kill -TSTP) is not caught, so it leaves the terminal as it is.
 // Windows has no suspend.
 //
+// If the terminal cannot be restored, Run returns that error too, after the one that
+// ended the run, if there was one.
+//
 // Run cannot restore the terminal if the process ends without returning from it:
 // os.Exit or log.Fatal called by the game, a panic in a goroutine of your own,
 // SIGKILL, or SIGQUIT (which keeps Go's stack dump). Typing reset repairs the
 // terminal.
-func Run(ctx context.Context, game Game, cfg Config) error {
+func Run(ctx context.Context, game Game, cfg Config) (err error) {
 	if err := checkConfig(cfg); err != nil {
 		return err
 	}
@@ -130,7 +141,7 @@ func Run(ctx context.Context, game Game, cfg Config) error {
 	if err != nil {
 		return err
 	}
-	defer tty.Teardown()
+	defer func() { err = finish(err, tty) }()
 	input, stopInput := readInput(os.Stdin)
 	defer stopInput() // before Teardown: nothing may read the terminal once Run is over
 

@@ -1,9 +1,14 @@
 package engine
 
 import (
+	"errors"
 	"math"
+	"os"
+	"strings"
 	"testing"
 	"time"
+
+	"golang.org/x/term"
 )
 
 func TestResolveSize(t *testing.T) {
@@ -101,5 +106,65 @@ func TestEveryAcceptedFPSHasAPositiveInterval(t *testing.T) {
 		if time.Second/time.Duration(fps) <= 0 {
 			t.Fatalf("wanted a positive interval for %d fps", fps)
 		}
+	}
+}
+
+// errWriter fails every write with err.
+type errWriter struct{ err error }
+
+func (w errWriter) Write([]byte) (int, error) { return 0, w.err }
+
+// brokenTerminal is a terminal that Setup was done on, as far as Teardown can tell,
+// and whose output fails. Its descriptor is a pipe, which cannot have its mode
+// restored either.
+func brokenTerminal(t *testing.T, writeErr error) *terminal {
+	t.Helper()
+	r, _, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { r.Close() })
+
+	tty := newTerminal(r, errWriter{writeErr})
+	tty.state = &term.State{}
+	return tty
+}
+
+func TestFinishLeavesTheResultAloneWhenTheTerminalIsRestored(t *testing.T) {
+	// Never set up, so there is nothing to restore and Teardown succeeds.
+	tty := newTerminal(os.Stdin, errWriter{errors.New("unused")})
+
+	if err := finish(nil, tty); err != nil {
+		t.Errorf("wanted nil, got %v", err)
+	}
+
+	runErr := errors.New("update failed")
+	if err := finish(runErr, tty); err != runErr {
+		t.Errorf("wanted the run's own error back untouched, got %v", err)
+	}
+}
+
+func TestFinishReportsAFailureToRestoreTheTerminal(t *testing.T) {
+	writeErr := errors.New("output closed")
+	err := finish(nil, brokenTerminal(t, writeErr))
+
+	if err == nil {
+		t.Fatalf("wanted the restore failure reported, got nil")
+	}
+	if !errors.Is(err, writeErr) {
+		t.Errorf("wanted the cause kept in the error, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "restoring the terminal") {
+		t.Errorf("wanted the error to say what failed, got %q", err)
+	}
+}
+
+func TestFinishKeepsBothErrors(t *testing.T) {
+	runErr := errors.New("update failed")
+	writeErr := errors.New("output closed")
+
+	err := finish(runErr, brokenTerminal(t, writeErr))
+	if !errors.Is(err, runErr) || !errors.Is(err, writeErr) {
+		t.Errorf("wanted both the run's error and the restore error, got %v", err)
 	}
 }
