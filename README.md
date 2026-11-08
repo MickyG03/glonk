@@ -164,6 +164,10 @@ make fuzz     # fuzz the parsers, rasterizers and clipping; FUZZTIME=1m for long
 
 The race detector needs cgo. Where there is no C compiler, run `make test RACE=`.
 
+## Contributing
+
+Issues and pull requests are welcome; see [CONTRIBUTING.md](CONTRIBUTING.md). To report a security problem privately, see [SECURITY.md](SECURITY.md). Changes are listed in [CHANGELOG.md](CHANGELOG.md).
+
 ## License
 
 MIT. See [LICENSE](LICENSE).
