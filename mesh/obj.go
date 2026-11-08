@@ -114,7 +114,7 @@ func readOBJ(r io.Reader, limit int64) (Mesh, error) {
 	// the limit cannot have been hit there and they return their errors as they are.
 	fail := func(err error) (Mesh, error) {
 		if lr != nil && lr.over {
-			return Mesh{}, fmt.Errorf("obj: input larger than %d bytes: %w", limit, ErrOBJTooLarge)
+			return Mesh{}, fmt.Errorf("%w: more than %d bytes", ErrOBJTooLarge, limit)
 		}
 		return Mesh{}, err
 	}

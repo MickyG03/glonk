@@ -39,7 +39,12 @@ type model struct {
 	faces int
 }
 
-// loadModel reads one OBJ file from fsys and fits it to modelSize.
+// maxModelBytes bounds the OBJ files the viewer reads. A model larger than this is
+// more likely a mistake than something to look at in a terminal, and loading one
+// takes about 25 times as much memory. It is a variable so tests can lower it.
+var maxModelBytes int64 = 64 << 20
+
+// loadModel reads one OBJ file from fsys, up to maxModelBytes, and fits it to modelSize.
 func loadModel(fsys fs.FS, name string) (model, error) {
 	f, err := fsys.Open(name)
 	if err != nil {
@@ -47,7 +52,7 @@ func loadModel(fsys fs.FS, name string) (model, error) {
 	}
 	defer f.Close()
 
-	m, err := mesh.LoadOBJ(f)
+	m, err := mesh.LoadOBJLimit(f, maxModelBytes)
 	if err != nil {
 		return model{}, err
 	}

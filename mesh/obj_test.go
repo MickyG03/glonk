@@ -427,7 +427,7 @@ func TestLoadOBJLimitAtAndAroundTheLimit(t *testing.T) {
 		if !errors.Is(err, ErrOBJTooLarge) {
 			t.Errorf("limit %d: wanted ErrOBJTooLarge, got %v", limit, err)
 		}
-		if err != nil && !strings.Contains(err.Error(), fmt.Sprintf("larger than %d bytes", limit)) {
+		if err != nil && !strings.Contains(err.Error(), fmt.Sprintf("more than %d bytes", limit)) {
 			t.Errorf("limit %d: wanted the message to name the limit, got %q", limit, err)
 		}
 		if len(m.Vertices) != 0 || len(m.Faces) != 0 || len(m.Edges) != 0 {

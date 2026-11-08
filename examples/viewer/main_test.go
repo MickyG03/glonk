@@ -1,6 +1,8 @@
 package main
 
 import (
+	"errors"
+	"fmt"
 	"math"
 	"os"
 	"path/filepath"
@@ -9,6 +11,7 @@ import (
 
 	"github.com/kyrokohan/glonk/engine"
 	"github.com/kyrokohan/glonk/geometry"
+	"github.com/kyrokohan/glonk/mesh"
 )
 
 func loadSamples(t *testing.T) []model {
@@ -394,4 +397,35 @@ func TestColorReachesHalfBlockPixels(t *testing.T) {
 	if same {
 		t.Errorf("wanted different palette colors to give different pixels, both gave %v", first)
 	}
+}
+
+func TestOversizedModelIsRefused(t *testing.T) {
+	text := "v 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\n" + strings.Repeat("# padding\n", 200)
+	big := writeFile(t, "big.obj", text)
+	size := int64(len(text))
+
+	defer func(old int64) { maxModelBytes = old }(maxModelBytes)
+
+	maxModelBytes = size
+	if _, err := loadModels([]string{big}); err != nil {
+		t.Errorf("wanted a file exactly at the limit to load, got %v", err)
+	}
+
+	maxModelBytes = size - 1
+	_, err := loadModels([]string{big})
+	if !errors.Is(err, mesh.ErrOBJTooLarge) {
+		t.Fatalf("wanted ErrOBJTooLarge one byte under, got %v", err)
+	}
+	for _, frag := range []string{"big.obj", "more than", fmt.Sprint(size - 1)} {
+		if !strings.Contains(err.Error(), frag) {
+			t.Errorf("wanted the message to contain %q, got %q", frag, err)
+		}
+	}
+}
+
+func TestDefaultLimitSuitsTheSamplesAndIsGenerous(t *testing.T) {
+	if maxModelBytes != 64<<20 {
+		t.Errorf("wanted the default limit to be 64 MiB, got %d", maxModelBytes)
+	}
+	loadSamples(t) // the bundled models are tiny and must load under it
 }
