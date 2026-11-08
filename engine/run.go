@@ -75,6 +75,12 @@ func Run(ctx context.Context, game Game, cfg Config) error {
 		return err
 	}
 
+	// From here a quit signal must reach the deferred Teardown, not kill the process
+	// with the terminal still taken over.
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	defer notifyQuit(cancel)()
+
 	err = tty.Setup()
 	if err != nil {
 		return err

@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"math"
 	"os"
-	"os/signal"
-	"syscall"
 
 	"github.com/kyrokohan/glonk/engine"
 	"github.com/kyrokohan/glonk/geometry"
@@ -142,9 +140,6 @@ func (g *cubeGame) Draw(fb *engine.FrameBuffer) {
 }
 
 func main() {
-	ctx, ctxCancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer ctxCancel()
-
 	floor := mesh.Grid(gridSize, gridDivisions)
 	floor.Position.Y = floorY
 
@@ -162,7 +157,7 @@ func main() {
 		fps: 30,
 	}
 
-	err := engine.Run(ctx, game, engine.Config{
+	err := engine.Run(context.Background(), game, engine.Config{
 		FPS: 30,
 	})
 	if err != nil {

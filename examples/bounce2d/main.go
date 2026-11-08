@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"math"
 	"os"
-	"os/signal"
-	"syscall"
 
 	"github.com/kyrokohan/glonk/engine"
 	"github.com/kyrokohan/glonk/sprite"
@@ -54,9 +52,6 @@ func (bg *bounceGame) Draw(fb *engine.FrameBuffer) {
 }
 
 func main() {
-	ctx, ctxCancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer ctxCancel()
-
 	game := &bounceGame{
 		vx:     30,
 		vy:     15,
@@ -68,7 +63,7 @@ func main() {
 
 	game.layer.Add(game.ball)
 
-	err := engine.Run(ctx, game, engine.Config{
+	err := engine.Run(context.Background(), game, engine.Config{
 		Width:  game.width,
 		Height: game.height,
 		FPS:    30,

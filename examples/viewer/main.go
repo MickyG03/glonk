@@ -10,10 +10,8 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
-	"os/signal"
 	"path"
 	"path/filepath"
-	"syscall"
 
 	"github.com/kyrokohan/glonk/engine"
 	"github.com/kyrokohan/glonk/geometry"
@@ -241,10 +239,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer cancel()
-
-	if err := engine.Run(ctx, newViewer(models), engine.Config{FPS: 30}); err != nil {
+	if err := engine.Run(context.Background(), newViewer(models), engine.Config{FPS: 30}); err != nil {
 		fmt.Fprintln(os.Stderr, "viewer:", err)
 		os.Exit(1)
 	}
