@@ -4,6 +4,7 @@ import (
 	"errors"
 	"io"
 	"math"
+	"strings"
 )
 
 // FrameBuffer is a width x height grid of Cells that a game draws into each
@@ -101,6 +102,31 @@ func (fb *FrameBuffer) At(x, y int) Cell {
 	}
 
 	return fb.frame[y*fb.width+x]
+}
+
+// String returns the frame as text, for tests and for printing: the characters of the
+// cells as the terminal would be sent them (NUL as a space, control characters and
+// wide ones as '?'), one line per row, joined by newlines with none at the end.
+// Trailing spaces are removed from each line, so a blank frame is just newlines.
+// Colors and attributes are not shown, and neither are the pixels of a Canvas until
+// Compose has turned them into cells.
+func (fb *FrameBuffer) String() string {
+	var sb strings.Builder
+	sb.Grow(len(fb.frame) + fb.height)
+	for y := range fb.height {
+		if y > 0 {
+			sb.WriteByte('\n')
+		}
+		row := fb.frame[y*fb.width : (y+1)*fb.width]
+		end := len(row)
+		for end > 0 && safeRune(row[end-1].Character) == ' ' {
+			end--
+		}
+		for _, c := range row[:end] {
+			sb.WriteRune(safeRune(c.Character))
+		}
+	}
+	return sb.String()
 }
 
 // Width returns the number of columns.

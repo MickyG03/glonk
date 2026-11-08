@@ -10,17 +10,6 @@ import (
 	"github.com/kyrokohan/glonk/engine"
 )
 
-// printFrame prints the characters of fb, one line per row.
-func printFrame(fb *engine.FrameBuffer) {
-	for y := range fb.Height() {
-		row := make([]rune, fb.Width())
-		for x := range row {
-			row[x] = fb.At(x, y).Character
-		}
-		fmt.Println(strings.TrimRight(string(row), " "))
-	}
-}
-
 // walker is a game: a dot that crosses the screen until Escape is pressed.
 type walker struct{ x float64 }
 
@@ -88,11 +77,29 @@ func ExampleFrameBuffer_DrawText() {
 	fb.DrawBox(0, 0, fb.Width(), fb.Height(), engine.Color{})
 	fb.DrawText(2, 1, "hello, glonk", engine.Color{})
 
-	printFrame(fb)
+	fmt.Println(fb)
 	// Output:
 	// ┌──────────────┐
 	// │ hello, glonk │
 	// └──────────────┘
+}
+
+// A FrameBuffer prints as text, one line per row, which makes a whole screen easy to
+// check in a test.
+func ExampleFrameBuffer_String() {
+	fb, err := engine.NewFrameBuffer(10, 3)
+	if err != nil {
+		panic(err)
+	}
+
+	fb.DrawBox(0, 0, fb.Width(), fb.Height(), engine.Color{})
+	fb.DrawText(2, 1, "hi", engine.Color{})
+
+	fmt.Println(fb)
+	// Output:
+	// ┌────────┐
+	// │ hi     │
+	// └────────┘
 }
 
 // A Canvas holds two pixels per cell, one above the other, and Compose turns them
@@ -109,7 +116,7 @@ func ExampleCanvas() {
 	}
 	canvas.Compose()
 
-	printFrame(fb)
+	fmt.Println(fb)
 	// Output:
 	// ▀▄  ▀▄
 	//   ▀▄  ▀▄

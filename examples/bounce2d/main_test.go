@@ -24,15 +24,6 @@ func newSizedGame(w, h int) *bounceGame {
 	return g
 }
 
-// rowText returns the characters of row y.
-func rowText(fb *engine.FrameBuffer, y int) string {
-	var sb strings.Builder
-	for x := range fb.Width() {
-		sb.WriteRune(fb.At(x, y).Character)
-	}
-	return sb.String()
-}
-
 func TestBallMovesByVelocityTimesTime(t *testing.T) {
 	g := newSizedGame(64, 24)
 	if err := g.Update(0.1, &engine.Input{}); err != nil {
@@ -110,7 +101,7 @@ func TestDrawShowsTheBoxTheBallAndTheKey(t *testing.T) {
 		t.Errorf("wanted a box around the whole frame, corners were %q %q %q %q",
 			fb.At(0, 0).Character, fb.At(39, 0).Character, fb.At(0, 11).Character, fb.At(39, 11).Character)
 	}
-	if got := rowText(fb, 11); !strings.Contains(got, " Esc quits ") {
+	if got := strings.Split(fb.String(), "\n")[11]; !strings.Contains(got, " Esc quits ") {
 		t.Errorf("wanted the key hint on the bottom border, got %q", got)
 	}
 	if got := fb.At(int(g.ball.X), int(g.ball.Y)).Character; got != 'o' {

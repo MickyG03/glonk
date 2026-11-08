@@ -789,3 +789,81 @@ func TestDrawTextAndBoxUseTheColorGiven(t *testing.T) {
 		t.Errorf("wanted the zero Color to give the default color, got %v", got)
 	}
 }
+
+func TestFrameBufferString(t *testing.T) {
+	ch := func(r rune) Cell { return Cell{Character: r} }
+	frame := func(w, h int, cells map[[2]int]Cell) *FrameBuffer {
+		fb, err := NewFrameBuffer(w, h)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for at, c := range cells {
+			fb.Set(at[0], at[1], c)
+		}
+		return fb
+	}
+
+	tests := []struct {
+		name string
+		fb   *FrameBuffer
+		want string
+	}{
+		{"blank is empty lines", frame(4, 3, nil), "\n\n"},
+		{"one row", frame(4, 1, map[[2]int]Cell{{0, 0}: ch('a'), {1, 0}: ch('b')}), "ab"},
+		{"cells land where they were set", frame(3, 3, map[[2]int]Cell{{0, 0}: ch('a'), {2, 1}: ch('b'), {1, 2}: ch('c')}), "a\n  b\n c"},
+		{"inner spaces stay, trailing ones go", frame(6, 1, map[[2]int]Cell{{0, 0}: ch('a'), {3, 0}: ch('b')}), "a  b"},
+		{"leading spaces stay", frame(4, 1, map[[2]int]Cell{{2, 0}: ch('x')}), "  x"},
+		{"a drawn space is trimmed like a blank one", frame(3, 1, map[[2]int]Cell{{0, 0}: ch('a'), {1, 0}: ch(' '), {2, 0}: ch(' ')}), "a"},
+		{"NUL is a space", frame(3, 1, map[[2]int]Cell{{0, 0}: ch('a'), {1, 0}: ch(0), {2, 0}: ch('b')}), "a b"},
+		{"a trailing NUL is trimmed", frame(3, 1, map[[2]int]Cell{{0, 0}: ch('a'), {1, 0}: ch(0)}), "a"},
+		{"control characters are question marks", frame(4, 1, map[[2]int]Cell{{0, 0}: ch('\x1b'), {1, 0}: ch('\n'), {2, 0}: ch(0x7f)}), "???"},
+		{"wide characters are question marks", frame(2, 1, map[[2]int]Cell{{0, 0}: ch('中'), {1, 0}: ch('😀')}), "??"},
+		{"box drawing is kept", frame(3, 1, map[[2]int]Cell{{0, 0}: ch('┌'), {1, 0}: ch('─'), {2, 0}: ch('┐')}), "┌─┐"},
+		{"colors and attributes are not shown", frame(2, 1, map[[2]int]Cell{{0, 0}: {Character: 'a', Foreground: Palette(1), Background: Palette(2), Attrs: Bold | Reverse}, {1, 0}: {Background: Palette(4)}}), "a"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.fb.String(); got != tt.want {
+				t.Errorf("wanted %q, got %q", tt.want, got)
+			}
+		})
+	}
+}
+
+func TestFrameBufferStringShowsCanvasPixelsOnlyOnceComposed(t *testing.T) {
+	t.Setenv("TERM_PROGRAM", "") // Canvas.Seamless depends on the terminal running the tests
+	fb, err := NewFrameBuffer(3, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fb.Canvas().Set(1, 0, Palette(1)) // the upper half of cell (1, 0)
+
+	if got := fb.String(); got != "\n" {
+		t.Errorf("wanted the pixel not shown before Compose, got %q", got)
+	}
+	fb.Canvas().Compose()
+	if got := fb.String(); got != " ▀\n" {
+		t.Errorf("wanted the composed half block, got %q", got)
+	}
+}
+
+func TestFrameBufferStringPrintsWithFmt(t *testing.T) {
+	fb, err := NewFrameBuffer(3, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fb.DrawText(0, 0, "hi", Color{})
+
+	if got := fmt.Sprint(fb); got != "hi\n" {
+		t.Errorf("wanted fmt to print the frame, got %q", got)
+	}
+	if got := fmt.Sprintf("%v|%s", fb, fb); got != "hi\n|hi\n" {
+		t.Errorf("wanted %%v and %%s to print the frame, got %q", got)
+	}
+}
+
+func TestFrameBufferStringOfAnEmptyFrame(t *testing.T) {
+	if got := (&FrameBuffer{}).String(); got != "" {
+		t.Errorf("wanted nothing for a frame with no rows, got %q", got)
+	}
+}

@@ -348,6 +348,61 @@ func FuzzPresent(f *testing.F) {
 	})
 }
 
+// String must show exactly the characters present would send, only with the trailing
+// spaces of each line left off, whatever the cells hold.
+func FuzzFrameBufferString(f *testing.F) {
+	seed := func(runes ...rune) {
+		var b []byte
+		for _, r := range runes {
+			b = binary.LittleEndian.AppendUint32(b, uint32(r))
+		}
+		f.Add(b)
+	}
+	seed('a', 'b', 0, 0x1b, '\n', 0x9b, 0x202e, '中', '😀', 0x301, 0xd800, -1, 0x110000, '─', '▀', '⣿')
+	seed(' ', ' ', ' ', 'x', ' ', ' ', ' ', ' ', 0, 0, ' ', 'y', 0, 0, 0, 0)
+
+	f.Fuzz(func(t *testing.T, data []byte) {
+		const w, h = 8, 2
+		fb, err := NewFrameBuffer(w, h)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for i := range w * h {
+			r := ' '
+			if 4*i+4 <= len(data) {
+				r = rune(int32(binary.LittleEndian.Uint32(data[4*i:])))
+			}
+			fb.Set(i%w, i/w, Cell{Character: r})
+		}
+
+		var buf bytes.Buffer
+		if err := fb.present(&buf); err != nil {
+			t.Fatal(err)
+		}
+		drawn := string(ownSequence.ReplaceAll(buf.Bytes(), nil))
+
+		text := fb.String()
+		lines := strings.Split(text, "\n")
+		if len(lines) != h {
+			t.Fatalf("wanted %d lines, got %d in %q", h, len(lines), text)
+		}
+		var padded strings.Builder
+		for _, line := range lines {
+			if strings.HasSuffix(line, " ") {
+				t.Fatalf("wanted no trailing space, got %q", line)
+			}
+			n := utf8.RuneCountInString(line)
+			if n > w {
+				t.Fatalf("wanted at most %d characters in a line, got %d in %q", w, n, line)
+			}
+			padded.WriteString(line + strings.Repeat(" ", w-n))
+		}
+		if padded.String() != drawn {
+			t.Fatalf("wanted the text to match what present draws, %q against %q", padded.String(), drawn)
+		}
+	})
+}
+
 func FuzzDrawText(f *testing.F) {
 	for _, s := range []string{
 		"", "hello", "\x1b[2J", "a\tb\nc", "e\u0301", "中文", "😀👍🏽", "\u202eevil", "a\x00b", "\xff\xfe", "\u009b31m",

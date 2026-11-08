@@ -10,17 +10,6 @@ import (
 	"github.com/kyrokohan/glonk/mesh"
 )
 
-// printFrame prints the characters of fb, one line per row.
-func printFrame(fb *engine.FrameBuffer) {
-	for y := range fb.Height() {
-		row := make([]rune, fb.Width())
-		for x := range row {
-			row[x] = fb.At(x, y).Character
-		}
-		fmt.Println(strings.TrimRight(string(row), " "))
-	}
-}
-
 func ExampleLoadOBJ() {
 	const square = `# a flat rectangle, 4 wide and 2 tall
 v 0 0 0
@@ -58,7 +47,7 @@ func ExampleMesh_Draw() {
 	cube.Transform.Position = geometry.Vector3{Z: 3} // three units in front of the camera
 	cube.Draw(fb, mesh.Camera{}, engine.Cell{Character: '#'})
 
-	printFrame(fb)
+	fmt.Println(fb)
 	// Output:
 	// ┌────────────────────────────┐
 	// │                            │
@@ -88,7 +77,7 @@ func ExampleMesh_DrawShaded() {
 		mesh.Ambient{Level: 0.2},
 		mesh.Directional{Direction: geometry.Vector3{X: 0.4, Y: -1, Z: 0.6}})
 
-	printFrame(fb)
+	fmt.Println(fb)
 	// Output:
 	// ┌────────────────────────────┐
 	// │                            │
@@ -168,7 +157,7 @@ func ExampleMaterial() {
 		mesh.Ambient{Level: 0.2},
 		mesh.Directional{Direction: geometry.Vector3{X: 0.4, Y: -1, Z: 0.6}})
 
-	printFrame(fb)
+	fmt.Println(fb)
 	// Output:
 	// ┌────────────────────────────┐
 	// │                            │
@@ -211,7 +200,7 @@ func ExampleLight() {
 		mesh.Ambient{Level: 0.1},
 		lamp{position: geometry.Vector3{X: -2, Y: 1, Z: 0}, reach: 6})
 
-	printFrame(fb)
+	fmt.Println(fb)
 	// Output:
 	// ┌────────────────────────────┐
 	// │                            │
