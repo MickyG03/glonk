@@ -82,9 +82,10 @@ func ExampleMesh_DrawShaded() {
 	cube := mesh.Cube(2)
 	cube.Transform.Position = geometry.Vector3{Z: 3}
 	cube.Transform.Yaw = 0.6 // turn it so that two sides show
-	light := mesh.Light{Direction: geometry.Vector3{X: 0.4, Y: -1, Z: 0.6}, Ambient: 0.2}
 	cube.Material.Color = engine.Palette(208)
-	cube.DrawShaded(fb, mesh.Camera{}, light)
+	cube.DrawShaded(fb, mesh.Camera{},
+		mesh.Ambient{Level: 0.2},
+		mesh.Directional{Direction: geometry.Vector3{X: 0.4, Y: -1, Z: 0.6}})
 
 	printFrame(fb)
 	// Output:

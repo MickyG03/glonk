@@ -682,7 +682,7 @@ func TestLoadOBJFrontFacesTheCamera(t *testing.T) {
 	// A triangle on the right (x 1..3) at z=1, counter-clockwise seen from +Z, so
 	// in OBJ terms it faces +Z.
 	m := loadOBJ(t, "v 1 -1 1\nv 3 -1 1\nv 2 1 1\nf 1 2 3\n")
-	light := Light{Direction: geometry.Vector3{Z: 1}}
+	light := sunAndFill(geometry.Vector3{Z: 1}, 0)
 
 	front := Camera{Position: geometry.Vector3{Z: -5}, FOV: math.Pi / 2, Near: 0.1}
 	fb := newShadeBuffer(t)

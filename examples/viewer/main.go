@@ -30,8 +30,12 @@ var palette = []engine.Color{
 	engine.Palette(201), engine.Palette(226), engine.Palette(255),
 }
 
-// sun lights the model from above, to one side and slightly ahead.
-var sun = mesh.Light{Direction: geometry.Vector3{X: 0.4, Y: -1, Z: 0.6}, Ambient: 0.2}
+// lights light the model: some ambient fill, and a sun from above, to one side and
+// slightly ahead.
+var lights = []mesh.Light{
+	mesh.Ambient{Level: 0.2},
+	mesh.Directional{Direction: geometry.Vector3{X: 0.4, Y: -1, Z: 0.6}},
+}
 
 type model struct {
 	name  string
@@ -214,10 +218,10 @@ func (v *viewer) Draw(fb *engine.FrameBuffer) {
 		if canvas.Seamless {
 			mode = "half-blocks, solid edges"
 		}
-		m.DrawShadedPixels(canvas, cam, sun)
+		m.DrawShadedPixels(canvas, cam, lights...)
 		canvas.Compose()
 	default:
-		m.DrawShaded(fb, cam, sun)
+		m.DrawShaded(fb, cam, lights...)
 	}
 
 	if v.doubleSided {

@@ -25,7 +25,7 @@ func drawWith(t *testing.T, m Mesh, cam Camera) *engine.FrameBuffer {
 	if err != nil {
 		t.Fatalf("unable to initialize frame buffer: %v", err)
 	}
-	light := Light{Direction: geometry.Vector3{Y: -1}, Ambient: 0.2}
+	light := sunAndFill(geometry.Vector3{Y: -1}, 0.2)
 
 	m.Draw(fb, cam, engine.Cell{Character: '#'})
 	m.DoubleSided = true

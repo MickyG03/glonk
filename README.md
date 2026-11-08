@@ -7,7 +7,7 @@ A terminal rendering engine for Go. Draw 2D, 3D, or both in the same frame, usin
 ## What it does
 
 - **2D:** cells with foreground and background colors (the 256-color palette or RGB) and text attributes (bold, dim, underline, reverse), lines, boxes, text, and sprites.
-- **3D:** wireframe or solid meshes through a perspective camera, with near-plane clipping. Solid meshes are flat-shaded by a directional light into an ASCII brightness ramp, hide each other by depth, and skip faces turned away.
+- **3D:** wireframe or solid meshes through a perspective camera, with near-plane clipping. Solid meshes are flat-shaded by any number of lights (directional, ambient, or your own) into an ASCII brightness ramp, hide each other by depth, and skip faces turned away.
 - **Models:** load OBJ files from any `io.Reader` (a file, `//go:embed`, a download), center and scale them, and draw them wireframe or shaded.
 - **Half blocks:** a pixel `Canvas` with two square-ish pixels per cell, drawn with `▀` and a background color, for twice the vertical detail and shading by color instead of by character.
 - **Mixed:** draw a 3D scene first, then a 2D HUD on top, into the same frame.
@@ -62,7 +62,7 @@ Letters work in either case. Ctrl-C quits any program built on glonk.
 
 ## Loading models
 
-This sits inside your `Draw` method, with `fb`, `cam` and `light` set up as in the examples; `ExampleLoadOBJ` in `mesh/example_test.go` is a complete, runnable version.
+This sits inside your `Draw` method, with `fb`, `cam` and `lights` (a `[]mesh.Light`) set up as in the examples; `ExampleLoadOBJ` in `mesh/example_test.go` is a complete, runnable version.
 
 ```go
 //go:embed ship.obj
@@ -76,7 +76,7 @@ ship = ship.Fit(2) // centered on the origin, longest side 2
 ship.Transform.Position = geometry.Vector3{Z: 6}
 
 ship.Material.Color = engine.Palette(208)
-ship.DrawShaded(fb, cam, light) // or ship.Draw for a wireframe
+ship.DrawShaded(fb, cam, lights...) // or ship.Draw for a wireframe
 ```
 
 `LoadOBJ` reads any `io.Reader`, so a file, an embedded asset or a download all work. For input you do not control, use `LoadOBJLimit(r, maxBytes)`: it fails with `mesh.ErrOBJTooLarge` instead of reading without end (a plain `io.LimitReader` would quietly cut the model short).

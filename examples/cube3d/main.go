@@ -27,8 +27,12 @@ const (
 	walkLimit     = gridSize/2 - 0.5 // invisible walls, half a unit inside the floor edge
 )
 
-// sun lights the cubes from above, to one side and slightly ahead of the start.
-var sun = mesh.Light{Direction: geometry.Vector3{X: 0.4, Y: -1, Z: 0.6}, Ambient: 0.2}
+// lights light the cubes: some ambient fill, and a sun from above, to one side and
+// slightly ahead of the start.
+var lights = []mesh.Light{
+	mesh.Ambient{Level: 0.2},
+	mesh.Directional{Direction: geometry.Vector3{X: 0.4, Y: -1, Z: 0.6}},
+}
 
 type cubeGame struct {
 	cam   mesh.Camera
@@ -131,13 +135,13 @@ func (g *cubeGame) Draw(fb *engine.FrameBuffer) {
 			mode = "half-blocks, solid edges"
 		}
 		for _, o := range g.cubes {
-			o.DrawShadedPixels(canvas, g.cam, sun)
+			o.DrawShadedPixels(canvas, g.cam, lights...)
 		}
 		// Compose before the HUD so the HUD lands on top of the pixels.
 		canvas.Compose()
 	} else {
 		for _, o := range g.cubes {
-			o.DrawShaded(fb, g.cam, sun)
+			o.DrawShaded(fb, g.cam, lights...)
 		}
 	}
 

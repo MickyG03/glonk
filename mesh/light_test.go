@@ -43,7 +43,7 @@ func TestShadeChar(t *testing.T) {
 	}
 }
 
-func TestLightIntensity(t *testing.T) {
+func TestAmbientPlusDirectionalBrightness(t *testing.T) {
 	down := geometry.Vector3{Y: -1}
 	up := geometry.Vector3{Y: 1}
 	side := geometry.Vector3{X: 1}
@@ -55,23 +55,23 @@ func TestLightIntensity(t *testing.T) {
 		normal geometry.Vector3
 		want   float64
 	}{
-		{"facing the light", Light{Direction: down, Ambient: 0.2}, up, 1},
-		{"turned away", Light{Direction: down, Ambient: 0.2}, down, 0.2},
-		{"edge on", Light{Direction: down, Ambient: 0.2}, side, 0.2},
-		{"at 45 degrees", Light{Direction: down, Ambient: 0.2}, diag, 0.2 + 0.8*math.Sqrt2/2},
-		{"direction length does not matter", Light{Direction: down.Scale(5), Ambient: 0.2}, up, 1},
-		{"direction length does not matter at an angle", Light{Direction: down.Scale(0.01), Ambient: 0.2}, diag, 0.2 + 0.8*math.Sqrt2/2},
-		{"no ambient, away", Light{Direction: down}, down, 0},
-		{"no ambient, facing", Light{Direction: down}, up, 1},
-		{"zero direction is ambient only", Light{Ambient: 0.3}, up, 0.3},
-		{"full ambient", Light{Direction: down, Ambient: 1}, down, 1},
-		{"ambient above 1 clamps", Light{Direction: down, Ambient: 4}, down, 1},
-		{"negative ambient clamps", Light{Direction: down, Ambient: -2}, down, 0},
+		{"facing the light", sunAndFill(down, 0.2), up, 1},
+		{"turned away", sunAndFill(down, 0.2), down, 0.2},
+		{"edge on", sunAndFill(down, 0.2), side, 0.2},
+		{"at 45 degrees", sunAndFill(down, 0.2), diag, 0.2 + 0.8*math.Sqrt2/2},
+		{"direction length does not matter", sunAndFill(down.Scale(5), 0.2), up, 1},
+		{"direction length does not matter at an angle", sunAndFill(down.Scale(0.01), 0.2), diag, 0.2 + 0.8*math.Sqrt2/2},
+		{"no ambient, away", sunAndFill(down, 0), down, 0},
+		{"no ambient, facing", sunAndFill(down, 0), up, 1},
+		{"zero direction is ambient only", sunAndFill(geometry.Vector3{}, 0.3), up, 0.3},
+		{"full ambient", sunAndFill(down, 1), down, 1},
+		{"ambient above 1 clamps", sunAndFill(down, 4), down, 1},
+		{"negative ambient clamps", sunAndFill(down, -2), down, 0},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := tt.light.intensity(tt.normal); !floatEquals(got, tt.want) {
+			if got := tt.light.Brightness(geometry.Vector3{}, tt.normal); !floatEquals(got, tt.want) {
 				t.Errorf("wanted %v, got %v", tt.want, got)
 			}
 		})
@@ -110,6 +110,19 @@ func shadeCam() Camera {
 	return Camera{FOV: math.Pi / 2, Near: 0.1}
 }
 
+// lightSet is lights that light a surface together, as one Light.
+type lightSet []Light
+
+func (s lightSet) Brightness(point, normal geometry.Vector3) float64 {
+	return brightness(s, point, normal)
+}
+
+// sunAndFill is a Directional light with some Ambient fill under it, the pair most
+// of these tests light with.
+func sunAndFill(direction geometry.Vector3, ambient float64) Light {
+	return lightSet{Ambient{Level: ambient}, Directional{Direction: direction}}
+}
+
 // withColor returns a copy of m that is drawn in color.
 func (m Mesh) withColor(color engine.Color) Mesh {
 	m.Material.Color = color
@@ -140,7 +153,7 @@ func drawn(fb *engine.FrameBuffer) [][2]int {
 
 func TestDrawShadedCullsBackFaces(t *testing.T) {
 	verts := []geometry.Vector3{{X: -1, Y: -1, Z: 5}, {X: 1, Y: -1, Z: 5}, {X: 0, Y: 1, Z: 5}}
-	light := Light{Direction: geometry.Vector3{Z: 1}, Ambient: 0.1}
+	light := sunAndFill(geometry.Vector3{Z: 1}, 0.1)
 
 	tests := []struct {
 		name string
@@ -171,7 +184,7 @@ func TestDrawShadedUsesColorAndShade(t *testing.T) {
 	cube := Cube(2)
 	cube.Transform.Position = geometry.Vector3{Z: 5}
 	// The light travels along +z, straight into the face that looks back at the camera.
-	light := Light{Direction: geometry.Vector3{Z: 1}}
+	light := sunAndFill(geometry.Vector3{Z: 1}, 0)
 
 	cube.withColor(engine.Palette(208)).DrawShaded(fb, shadeCam(), light)
 
@@ -196,7 +209,7 @@ func TestDrawShadedFacesDiffer(t *testing.T) {
 	cube := Cube(2)
 	cube.Transform.Position = geometry.Vector3{Z: 5}
 	cube.Transform.Yaw, cube.Transform.Pitch = 0.6, 0.4
-	light := Light{Direction: geometry.Vector3{X: 0.3, Y: -1, Z: 0.5}, Ambient: 0.1}
+	light := sunAndFill(geometry.Vector3{X: 0.3, Y: -1, Z: 0.5}, 0.1)
 
 	cube.withColor(engine.Palette(1)).DrawShaded(fb, shadeCam(), light)
 
@@ -215,7 +228,7 @@ func TestDrawShadedDepthOrder(t *testing.T) {
 	near.Transform.Position = geometry.Vector3{Z: 4}
 	far := Cube(2)
 	far.Transform.Position = geometry.Vector3{Z: 10}
-	light := Light{Direction: geometry.Vector3{Z: 1}, Ambient: 0.2}
+	light := sunAndFill(geometry.Vector3{Z: 1}, 0.2)
 
 	for _, nearFirst := range []bool{true, false} {
 		fb := newShadeBuffer(t)
@@ -240,7 +253,7 @@ func TestDrawShadedDepthOrder(t *testing.T) {
 }
 
 func TestDrawShadedPlacement(t *testing.T) {
-	light := Light{Direction: geometry.Vector3{Z: 1}}
+	light := sunAndFill(geometry.Vector3{Z: 1}, 0)
 
 	for _, tt := range []struct {
 		name  string
@@ -275,7 +288,7 @@ func TestDrawShadedBehindCamera(t *testing.T) {
 	cube := Cube(2)
 	cube.Transform.Position = geometry.Vector3{Z: -5}
 
-	cube.withColor(engine.Palette(1)).DrawShaded(fb, shadeCam(), Light{Direction: geometry.Vector3{Z: 1}})
+	cube.withColor(engine.Palette(1)).DrawShaded(fb, shadeCam(), sunAndFill(geometry.Vector3{Z: 1}, 0))
 
 	if cells := drawn(fb); len(cells) != 0 {
 		t.Errorf("wanted a blank frame, got %d cells", len(cells))
@@ -294,7 +307,7 @@ func TestDrawShadedFloorCrossingTheNearPlane(t *testing.T) {
 		Faces: [][3]int{{0, 1, 2}, {0, 2, 3}},
 	}
 
-	floor.withColor(engine.Palette(1)).DrawShaded(fb, shadeCam(), Light{Direction: geometry.Vector3{Y: -1}})
+	floor.withColor(engine.Palette(1)).DrawShaded(fb, shadeCam(), sunAndFill(geometry.Vector3{Y: -1}, 0))
 
 	// The far edge is at z=10: 1.5/10 below the horizon, so row 13 and down.
 	for y := range 13 {
@@ -317,7 +330,7 @@ func TestDrawShadedWithoutFaces(t *testing.T) {
 	grid := Grid(10, 5)
 	grid.Transform.Position = geometry.Vector3{Y: -1, Z: 5}
 
-	grid.withColor(engine.Palette(1)).DrawShaded(fb, shadeCam(), Light{Direction: geometry.Vector3{Y: -1}})
+	grid.withColor(engine.Palette(1)).DrawShaded(fb, shadeCam(), sunAndFill(geometry.Vector3{Y: -1}, 0))
 
 	if cells := drawn(fb); len(cells) != 0 {
 		t.Errorf("wanted a mesh without faces to draw nothing, got %d cells", len(cells))
@@ -340,9 +353,9 @@ func TestDrawShadedDepthVariesAcrossAFace(t *testing.T) {
 		Faces: [][3]int{{0, 1, 2}, {0, 2, 3}}, // faces the camera
 	}
 	// Lights the wall harder than the floor, so their characters differ.
-	light := Light{Direction: geometry.Vector3{Y: -1, Z: 2}}
-	wallChar := shadeChar(defaultRampRunes, light.intensity(geometry.Vector3{Z: -1}))
-	floorChar := shadeChar(defaultRampRunes, light.intensity(geometry.Vector3{Y: 1}))
+	light := sunAndFill(geometry.Vector3{Y: -1, Z: 2}, 0)
+	wallChar := shadeChar(defaultRampRunes, light.Brightness(geometry.Vector3{}, geometry.Vector3{Z: -1}))
+	floorChar := shadeChar(defaultRampRunes, light.Brightness(geometry.Vector3{}, geometry.Vector3{Y: 1}))
 	if wallChar == floorChar {
 		t.Fatalf("test setup: wall and floor need different shades, both %q", wallChar)
 	}
@@ -376,7 +389,7 @@ func BenchmarkDrawShaded(b *testing.B) {
 				b.Fatalf("unable to initialize frame buffer: %v", err)
 			}
 			cam := shadeCam()
-			light := Light{Direction: geometry.Vector3{X: 0.4, Y: -1, Z: 0.6}, Ambient: 0.2}
+			light := sunAndFill(geometry.Vector3{X: 0.4, Y: -1, Z: 0.6}, 0.2)
 
 			// Six cubes at mixed distances and turns, one close enough to fill the view.
 			var cubes []Mesh
@@ -432,7 +445,7 @@ func distinctRows(cells [][2]int) int {
 func TestDrawShadedPixelsHasTwiceTheRows(t *testing.T) {
 	cube := Cube(2)
 	cube.Transform.Position = geometry.Vector3{Z: 5}
-	light := Light{Direction: geometry.Vector3{Z: 1}}
+	light := sunAndFill(geometry.Vector3{Z: 1}, 0)
 
 	fb := newShadeBuffer(t)
 	cube.withColor(engine.Palette(1)).DrawShaded(fb, shadeCam(), light)
@@ -469,10 +482,10 @@ func TestDrawShadedPixelsColorFollowsLight(t *testing.T) {
 		light     Light
 		intensity float64
 	}{
-		{"light straight at the face", Light{Direction: geometry.Vector3{Z: 1}}, 1},
-		{"light at an angle", Light{Direction: geometry.Vector3{Y: -1, Z: 1}}, math.Sqrt2 / 2},
-		{"light from behind the face", Light{Direction: geometry.Vector3{Z: -1}, Ambient: 0.25}, 0.25},
-		{"ambient only", Light{Ambient: 0.4}, 0.4},
+		{"light straight at the face", sunAndFill(geometry.Vector3{Z: 1}, 0), 1},
+		{"light at an angle", sunAndFill(geometry.Vector3{Y: -1, Z: 1}, 0), math.Sqrt2 / 2},
+		{"light from behind the face", sunAndFill(geometry.Vector3{Z: -1}, 0.25), 0.25},
+		{"ambient only", sunAndFill(geometry.Vector3{}, 0.4), 0.4},
 	}
 
 	for _, tt := range tests {
@@ -499,7 +512,7 @@ func TestDrawShadedPixelsFacesDiffer(t *testing.T) {
 	cube := Cube(2)
 	cube.Transform.Position = geometry.Vector3{Z: 5}
 	cube.Transform.Yaw, cube.Transform.Pitch = 0.6, 0.4
-	light := Light{Direction: geometry.Vector3{X: 0.3, Y: -1, Z: 0.5}, Ambient: 0.1}
+	light := sunAndFill(geometry.Vector3{X: 0.3, Y: -1, Z: 0.5}, 0.1)
 
 	cube.withColor(engine.Palette(208)).DrawShadedPixels(c, shadeCam(), light)
 
@@ -517,7 +530,7 @@ func TestDrawShadedPixelsDepthOrder(t *testing.T) {
 	near.Transform.Position = geometry.Vector3{Z: 4}
 	far := Cube(2)
 	far.Transform.Position = geometry.Vector3{Z: 10}
-	light := Light{Direction: geometry.Vector3{Z: 1}, Ambient: 0.2}
+	light := sunAndFill(geometry.Vector3{Z: 1}, 0.2)
 
 	for _, nearFirst := range []bool{true, false} {
 		_, c := newShadeCanvas(t)
@@ -540,7 +553,7 @@ func TestDrawShadedPixelsDepthOrder(t *testing.T) {
 
 func TestDrawShadedPixelsCullsBackFaces(t *testing.T) {
 	verts := []geometry.Vector3{{X: -1, Y: -1, Z: 5}, {X: 1, Y: -1, Z: 5}, {X: 0, Y: 1, Z: 5}}
-	light := Light{Direction: geometry.Vector3{Z: 1}, Ambient: 0.1}
+	light := sunAndFill(geometry.Vector3{Z: 1}, 0.1)
 
 	for _, tt := range []struct {
 		name string
@@ -564,7 +577,7 @@ func TestDrawShadedPixelsCullsBackFaces(t *testing.T) {
 }
 
 func TestDrawShadedPixelsPlacement(t *testing.T) {
-	light := Light{Direction: geometry.Vector3{Z: 1}}
+	light := sunAndFill(geometry.Vector3{Z: 1}, 0)
 
 	for _, tt := range []struct {
 		name  string
@@ -603,7 +616,7 @@ func TestDrawShadedPixelsBehindCamera(t *testing.T) {
 	cube := Cube(2)
 	cube.Transform.Position = geometry.Vector3{Z: -5}
 
-	cube.withColor(engine.Palette(1)).DrawShadedPixels(c, shadeCam(), Light{Direction: geometry.Vector3{Z: 1}})
+	cube.withColor(engine.Palette(1)).DrawShadedPixels(c, shadeCam(), sunAndFill(geometry.Vector3{Z: 1}, 0))
 
 	if pixels := pixelsDrawn(c); len(pixels) != 0 {
 		t.Errorf("wanted an empty canvas, got %d pixels", len(pixels))
@@ -619,7 +632,7 @@ func TestDrawShadedPixelsFloorCrossingTheNearPlane(t *testing.T) {
 		Faces: [][3]int{{0, 1, 2}, {0, 2, 3}},
 	}
 
-	floor.withColor(engine.Palette(1)).DrawShadedPixels(c, shadeCam(), Light{Direction: geometry.Vector3{Y: -1}})
+	floor.withColor(engine.Palette(1)).DrawShadedPixels(c, shadeCam(), sunAndFill(geometry.Vector3{Y: -1}, 0))
 
 	// The far edge is at z=10: 1.5/10 below the horizon, which is pixel row 27.6.
 	for y := range 27 {
@@ -642,7 +655,7 @@ func TestDrawShadedPixelsWithoutFaces(t *testing.T) {
 	grid := Grid(10, 5)
 	grid.Transform.Position = geometry.Vector3{Y: -1, Z: 5}
 
-	grid.withColor(engine.Palette(1)).DrawShadedPixels(c, shadeCam(), Light{Direction: geometry.Vector3{Y: -1}})
+	grid.withColor(engine.Palette(1)).DrawShadedPixels(c, shadeCam(), sunAndFill(geometry.Vector3{Y: -1}, 0))
 
 	if pixels := pixelsDrawn(c); len(pixels) != 0 {
 		t.Errorf("wanted a mesh without faces to draw nothing, got %d pixels", len(pixels))
@@ -655,7 +668,7 @@ func TestDrawShadedPixelsComposes(t *testing.T) {
 	fb, c := newShadeCanvas(t)
 	cube := Cube(2)
 	cube.Transform.Position = geometry.Vector3{Z: 5}
-	light := Light{Direction: geometry.Vector3{Z: 1}}
+	light := sunAndFill(geometry.Vector3{Z: 1}, 0)
 
 	cube.withColor(engine.Palette(208)).DrawShadedPixels(c, shadeCam(), light)
 	c.Compose()
@@ -684,9 +697,9 @@ func TestDrawShadedPixelsDepthVariesAcrossAFace(t *testing.T) {
 		},
 		Faces: [][3]int{{0, 1, 2}, {0, 2, 3}},
 	}
-	light := Light{Direction: geometry.Vector3{Y: -1, Z: 2}}
-	wallColor := engine.Shade(engine.Palette(196), light.intensity(geometry.Vector3{Z: -1}))
-	floorColor := engine.Shade(engine.Palette(46), light.intensity(geometry.Vector3{Y: 1}))
+	light := sunAndFill(geometry.Vector3{Y: -1, Z: 2}, 0)
+	wallColor := engine.Shade(engine.Palette(196), light.Brightness(geometry.Vector3{}, geometry.Vector3{Z: -1}))
+	floorColor := engine.Shade(engine.Palette(46), light.Brightness(geometry.Vector3{}, geometry.Vector3{Y: 1}))
 
 	for _, floorFirst := range []bool{true, false} {
 		_, c := newShadeCanvas(t)
@@ -720,7 +733,7 @@ func centroid(cells [][2]int) (x, y float64) {
 
 // A tilted camera must still see what it points at, in every drawing mode.
 func TestDrawWithPitchedCamera(t *testing.T) {
-	light := Light{Direction: geometry.Vector3{X: 0.3, Y: -1, Z: 0.5}, Ambient: 0.2}
+	light := sunAndFill(geometry.Vector3{X: 0.3, Y: -1, Z: 0.5}, 0.2)
 
 	for _, pitch := range []float64{-0.8, 0.8} {
 		cam := Camera{Position: geometry.Vector3{Y: 1}, Pitch: pitch, FOV: math.Pi / 2, Near: 0.1}
@@ -820,7 +833,7 @@ func posedCube(doubleSided bool) Mesh {
 	return cube
 }
 
-var doubleSidedLight = Light{Direction: geometry.Vector3{X: 0.3, Y: -1, Z: 0.5}, Ambient: 0.1}
+var doubleSidedLight = sunAndFill(geometry.Vector3{X: 0.3, Y: -1, Z: 0.5}, 0.1)
 
 // Without DoubleSided an inside-out solid shows the wrong faces: the near ones are
 // culled and the far ones, whose back is now their front, show through. Its outline
@@ -896,7 +909,7 @@ func TestDoubleSidedSheetIsLitFromTheSideYouSee(t *testing.T) {
 	awayCulled := Mesh{Vertices: verts, Faces: [][3]int{{0, 1, 2}}}
 
 	// The light travels along +z: it hits the side facing the camera at full strength.
-	light := Light{Direction: geometry.Vector3{Z: 1}}
+	light := sunAndFill(geometry.Vector3{Z: 1}, 0)
 
 	front := newShadeBuffer(t)
 	towards.withColor(engine.Palette(1)).DrawShaded(front, shadeCam(), light)
@@ -916,7 +929,7 @@ func TestDoubleSidedSheetIsLitFromTheSideYouSee(t *testing.T) {
 	}
 
 	// And with the light on the far side, the near side is dark (ambient only).
-	dark := Light{Direction: geometry.Vector3{Z: -1}, Ambient: 0.2}
+	dark := sunAndFill(geometry.Vector3{Z: -1}, 0.2)
 	lit := newShadeBuffer(t)
 	away.withColor(engine.Palette(1)).DrawShaded(lit, shadeCam(), dark)
 	cells := drawn(lit)
@@ -954,7 +967,7 @@ func TestDoubleSidedSurvivesFit(t *testing.T) {
 // pixels carry it scaled by the light.
 func TestDrawShadedAcceptsRGBColors(t *testing.T) {
 	color := engine.RGB(200, 100, 50)
-	light := Light{Direction: geometry.Vector3{Z: 1}} // straight into the front face
+	light := sunAndFill(geometry.Vector3{Z: 1}, 0) // straight into the front face
 	cube := Cube(2)
 	cube.Transform.Position = geometry.Vector3{Z: 5}
 
@@ -986,7 +999,7 @@ func TestDrawShadedAcceptsRGBColors(t *testing.T) {
 		}
 	}
 
-	dim := Light{Direction: geometry.Vector3{Z: -1}, Ambient: 0.5} // light from behind: ambient only
+	dim := sunAndFill(geometry.Vector3{Z: -1}, 0.5) // light from behind: ambient only
 	_, canvas = newShadeCanvas(t)
 	cube.withColor(color).DrawShadedPixels(canvas, shadeCam(), dim)
 	for _, p := range pixelsDrawn(canvas) {

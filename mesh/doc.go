@@ -4,7 +4,8 @@
 // A [Mesh] holds vertices, the edges and triangular faces between them, and where
 // it sits in the world (its [Transform]). [Cube], [Grid] and [LoadOBJ] make meshes; [Mesh.Draw] draws
 // the edges, and [Mesh.DrawShaded] and [Mesh.DrawShadedPixels] draw the faces lit
-// by a [Light], into cells or into a half-block pixel Canvas.
+// by any number of [Light]s ([Directional], [Ambient], or your own), into cells or
+// into a half-block pixel Canvas.
 //
 // Coordinates: x points right, y up and z away from the viewer, so a Camera at the
 // origin with Yaw and Pitch 0 looks down +z. Angles are in radians. OBJ files are

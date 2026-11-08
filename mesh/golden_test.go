@@ -180,6 +180,6 @@ func TestGoldenPictures(t *testing.T) {
 
 // What the scenes are lit by. Written as the API of the day expects.
 var (
-	goldenSun         = Light{Direction: geometry.Vector3{X: 0.4, Y: -1, Z: 0.6}, Ambient: 0.2}
-	goldenAmbientOnly = Light{Ambient: 0.5}
+	goldenSun         = sunAndFill(geometry.Vector3{X: 0.4, Y: -1, Z: 0.6}, 0.2)
+	goldenAmbientOnly = sunAndFill(geometry.Vector3{}, 0.5)
 )

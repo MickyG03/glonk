@@ -99,7 +99,7 @@ func FuzzDraw(f *testing.F) {
 		cube := Cube(size)
 		cube.Transform.Position = geometry.Vector3{X: mx, Y: my, Z: mz}
 		cube.Transform.Yaw, cube.Transform.Pitch = myaw, mpitch
-		light := Light{Direction: geometry.Vector3{X: 0.4, Y: -1, Z: 0.6}, Ambient: 0.2}
+		light := sunAndFill(geometry.Vector3{X: 0.4, Y: -1, Z: 0.6}, 0.2)
 
 		fb, err := engine.NewFrameBuffer(20, 8)
 		if err != nil {
@@ -143,7 +143,7 @@ func FuzzDrawTransform(f *testing.F) {
 		cube := Cube(2)
 		cube.Transform = Transform{Position: geometry.Vector3{X: px, Y: py, Z: pz}, Yaw: yaw, Pitch: pitch, Roll: roll, Scale: scale}
 		cam := Camera{Position: geometry.Vector3{Z: -2}}
-		light := Light{Direction: geometry.Vector3{X: 0.4, Y: -1, Z: 0.6}, Ambient: 0.2}
+		light := sunAndFill(geometry.Vector3{X: 0.4, Y: -1, Z: 0.6}, 0.2)
 		t.Setenv("TERM_PROGRAM", "") // Canvas.Seamless depends on the terminal running the tests
 
 		fb, err := engine.NewFrameBuffer(20, 8)
@@ -196,7 +196,7 @@ func FuzzMaterialRamp(f *testing.F) {
 			t.Fatalf("unable to initialize frame buffer: %v", err)
 		}
 
-		cube.DrawShaded(fb, Camera{}, Light{Direction: geometry.Vector3{X: 0.4, Y: -1, Z: 0.6}, Ambient: 0.2})
+		cube.DrawShaded(fb, Camera{}, sunAndFill(geometry.Vector3{X: 0.4, Y: -1, Z: 0.6}, 0.2))
 
 		allowed := cube.Material.ramp()
 		for _, c := range drawn(fb) {
@@ -358,8 +358,8 @@ func FuzzLoadOBJ(f *testing.F) {
 		}
 		cam := Camera{Position: geometry.Vector3{Z: -5}, FOV: math.Pi / 2, Near: 0.1}
 		fitted.Draw(fb, cam, engine.Cell{Character: '#'})
-		fitted.withColor(engine.Palette(1)).DrawShaded(fb, cam, Light{Direction: geometry.Vector3{Y: -1}, Ambient: 0.2})
-		fitted.withColor(engine.Palette(1)).DrawShadedPixels(fb.Canvas(), cam, Light{Direction: geometry.Vector3{Y: -1}, Ambient: 0.2})
+		fitted.withColor(engine.Palette(1)).DrawShaded(fb, cam, sunAndFill(geometry.Vector3{Y: -1}, 0.2))
+		fitted.withColor(engine.Palette(1)).DrawShadedPixels(fb.Canvas(), cam, sunAndFill(geometry.Vector3{Y: -1}, 0.2))
 	})
 }
 
@@ -392,7 +392,7 @@ func FuzzDrawBadMesh(f *testing.F) {
 			t.Fatalf("unable to initialize frame buffer: %v", err)
 		}
 		cam := Camera{FOV: math.Pi / 2, Near: 0.1}
-		light := Light{Direction: geometry.Vector3{Y: -1}, Ambient: 0.2}
+		light := sunAndFill(geometry.Vector3{Y: -1}, 0.2)
 
 		done := make(chan struct{})
 		go func() {
