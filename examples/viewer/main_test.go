@@ -435,34 +435,279 @@ func TestEdgeKeyFlipsTheEdgeStyleOncePerPress(t *testing.T) {
 	t.Setenv("TERM_PROGRAM", "") // the default style depends on the terminal
 	v := newViewer(loadSamples(t))
 	v.halfBlocks = true
+	kb := engine.NewKeyboard()
 
 	fb, err := engine.NewFrameBuffer(80, 24)
 	if err != nil {
 		t.Fatalf("unable to initialize frame buffer: %v", err)
 	}
-	draw := func() string {
+	frame := func(pressB bool) string {
+		if pressB {
+			kb.Press('b')
+		}
+		if err := step(v, kb, 1.0/30); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		kb.Release('b')
 		fb.Clear()
 		v.Draw(fb)
 		return hudText(fb, 2)
 	}
 
-	if got := draw(); !strings.Contains(got, "exact edges") {
+	if got := frame(false); !strings.Contains(got, "exact edges") {
 		t.Fatalf("wanted exact edges to start with, got %q", got)
 	}
-
-	v.flipEdges = true
-	if got := draw(); !strings.Contains(got, "solid edges") {
+	if got := frame(true); !strings.Contains(got, "solid edges") {
 		t.Errorf("wanted solid edges after a press, got %q", got)
 	}
 	if v.flipEdges {
 		t.Errorf("wanted the press used up by the frame that applied it")
 	}
-	if got := draw(); !strings.Contains(got, "solid edges") {
+	if got := frame(false); !strings.Contains(got, "solid edges") {
 		t.Errorf("wanted solid edges kept on the next frame, got %q", got)
 	}
-
-	v.flipEdges = true
-	if got := draw(); !strings.Contains(got, "exact edges") {
+	if got := frame(true); !strings.Contains(got, "exact edges") {
 		t.Errorf("wanted a second press to switch back, got %q", got)
+	}
+}
+
+// step runs one Update of dt seconds with the keyboard as it is, then ends the frame
+// as Run does.
+func step(v *viewer, kb *engine.Keyboard, dt float64) error {
+	err := v.Update(dt, kb.Input())
+	kb.EndFrame()
+	return err
+}
+
+// quiet is a viewer that does not spin, so that only the keys move it.
+func quiet(t *testing.T) *viewer {
+	t.Helper()
+	v := newViewer(loadSamples(t))
+	v.spin = false
+	return v
+}
+
+func TestEscapeQuitsTheViewer(t *testing.T) {
+	v := quiet(t)
+	kb := engine.NewKeyboard()
+
+	if err := step(v, kb, 0.1); err != nil {
+		t.Fatalf("wanted no error without Escape, got %v", err)
+	}
+	kb.Press(engine.KeyEscape)
+	if err := step(v, kb, 0.1); !errors.Is(err, engine.ErrQuit) {
+		t.Errorf("wanted ErrQuit, got %v", err)
+	}
+}
+
+func TestToggleKeysSwitchOncePerPressInEitherCase(t *testing.T) {
+	tests := []struct {
+		lower, upper engine.Key
+		get          func(*viewer) bool
+		startsOn     bool
+	}{
+		{'r', 'R', func(v *viewer) bool { return v.spin }, false},
+		{'v', 'V', func(v *viewer) bool { return v.wire }, false},
+		{'m', 'M', func(v *viewer) bool { return v.halfBlocks }, false},
+		{'d', 'D', func(v *viewer) bool { return v.doubleSided }, false},
+	}
+	for _, tt := range tests {
+		for _, key := range []engine.Key{tt.lower, tt.upper} {
+			t.Run(fmt.Sprintf("%c", key), func(t *testing.T) {
+				v := quiet(t)
+				start := tt.get(v)
+				kb := engine.NewKeyboard()
+
+				kb.Press(key)
+				step(v, kb, 0.1)
+				if tt.get(v) == start {
+					t.Fatalf("wanted the first press to switch it")
+				}
+				for range 5 { // held down, no new press
+					step(v, kb, 0.1)
+				}
+				if tt.get(v) == start {
+					t.Errorf("wanted holding the key to change nothing")
+				}
+				kb.Release(key)
+				kb.Press(key)
+				step(v, kb, 0.1)
+				if tt.get(v) != start {
+					t.Errorf("wanted a second press to switch it back")
+				}
+			})
+		}
+	}
+}
+
+func TestNextModelCyclesAndWraps(t *testing.T) {
+	v := quiet(t)
+	n := len(v.models)
+	if n < 2 {
+		t.Fatalf("wanted at least two samples to cycle through, got %d", n)
+	}
+	kb := engine.NewKeyboard()
+
+	for i := 1; i <= n; i++ {
+		kb.Press('n')
+		step(v, kb, 0.1)
+		kb.Release('n')
+		if want := i % n; v.current != want {
+			t.Fatalf("after %d presses: wanted model %d, got %d", i, want, v.current)
+		}
+	}
+	kb.Press('N')
+	step(v, kb, 0.1)
+	if v.current != 1 {
+		t.Errorf("wanted a capital N to go on too, got model %d", v.current)
+	}
+}
+
+func TestColorKeyCyclesThroughThePalette(t *testing.T) {
+	v := quiet(t)
+	kb := engine.NewKeyboard()
+
+	for i := 1; i <= len(palette)+1; i++ {
+		kb.Press('c')
+		step(v, kb, 0.1)
+		kb.Release('c')
+		if want := i % len(palette); v.color != want {
+			t.Fatalf("after %d presses: wanted color %d, got %d", i, want, v.color)
+		}
+	}
+}
+
+func TestEdgeKeyOnlyWorksOnHalfBlockPixels(t *testing.T) {
+	tests := []struct {
+		name             string
+		halfBlocks, wire bool
+		want             bool
+	}{
+		{"half blocks", true, false, true},
+		{"glyphs", false, false, false},
+		{"half blocks, but wireframe", true, true, false},
+		{"neither", false, true, false},
+	}
+	for _, tt := range tests {
+		for _, key := range []engine.Key{'b', 'B'} {
+			t.Run(fmt.Sprintf("%s %c", tt.name, key), func(t *testing.T) {
+				v := quiet(t)
+				v.halfBlocks, v.wire = tt.halfBlocks, tt.wire
+				kb := engine.NewKeyboard()
+				kb.Press(key)
+
+				step(v, kb, 0.1)
+
+				if v.flipEdges != tt.want {
+					t.Errorf("wanted flipEdges %v, got %v", tt.want, v.flipEdges)
+				}
+			})
+		}
+	}
+}
+
+func TestArrowsOrbitTheModel(t *testing.T) {
+	const dt = 0.1
+	tests := []struct {
+		name   string
+		key    engine.Key
+		dYaw   float64
+		dPitch float64
+	}{
+		{"left", engine.KeyLeft, -1.5 * dt, 0},
+		{"right", engine.KeyRight, 1.5 * dt, 0},
+		{"up looks down on the model", engine.KeyUp, 0, -1.5 * dt},
+		{"down looks up at it", engine.KeyDown, 0, 1.5 * dt},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			v := quiet(t)
+			yaw, pitch := v.yaw, v.pitch
+			kb := engine.NewKeyboard()
+			kb.Press(tt.key)
+
+			step(v, kb, dt)
+
+			if math.Abs(v.yaw-yaw-tt.dYaw) > 1e-9 || math.Abs(v.pitch-pitch-tt.dPitch) > 1e-9 {
+				t.Errorf("wanted yaw %+v and pitch %+v, got %+v and %+v", tt.dYaw, tt.dPitch, v.yaw-yaw, v.pitch-pitch)
+			}
+		})
+	}
+}
+
+func TestOrbitingStopsShortOfThePoles(t *testing.T) {
+	for _, tt := range []struct {
+		key  engine.Key
+		want float64
+	}{{engine.KeyUp, -1.4}, {engine.KeyDown, 1.4}} {
+		v := quiet(t)
+		kb := engine.NewKeyboard()
+		kb.Press(tt.key)
+		for range 100 {
+			step(v, kb, 0.1)
+		}
+		if v.pitch != tt.want {
+			t.Errorf("key %v: wanted the pitch held at %v, got %v", tt.key, tt.want, v.pitch)
+		}
+	}
+}
+
+func TestSpinTurnsTheModelWhenNoKeyDoes(t *testing.T) {
+	v := newViewer(loadSamples(t))
+	yaw := v.yaw
+
+	step(v, engine.NewKeyboard(), 0.1)
+
+	if got := v.yaw - yaw; math.Abs(got-0.6*0.1) > 1e-9 {
+		t.Errorf("wanted a spin of 0.06, got %v", got)
+	}
+}
+
+func TestZoomKeys(t *testing.T) {
+	const dt = 0.1
+	for _, key := range []engine.Key{'+', '=', 'w', 'W'} {
+		v := quiet(t)
+		dist := v.dist
+		kb := engine.NewKeyboard()
+		kb.Press(key)
+		step(v, kb, dt)
+		if math.Abs(v.dist-(dist-3*dt)) > 1e-9 {
+			t.Errorf("key %q: wanted to zoom in to %v, got %v", key, dist-3*dt, v.dist)
+		}
+	}
+	for _, key := range []engine.Key{'-', '_', 's', 'S'} {
+		v := quiet(t)
+		dist := v.dist
+		kb := engine.NewKeyboard()
+		kb.Press(key)
+		step(v, kb, dt)
+		if math.Abs(v.dist-(dist+3*dt)) > 1e-9 {
+			t.Errorf("key %q: wanted to zoom out to %v, got %v", key, dist+3*dt, v.dist)
+		}
+	}
+	v := quiet(t)
+	dist := v.dist
+	kb := engine.NewKeyboard()
+	kb.Press('+', '-')
+	step(v, kb, dt)
+	if v.dist != dist {
+		t.Errorf("wanted zooming in and out together to cancel, got %v from %v", v.dist, dist)
+	}
+}
+
+func TestZoomStaysWithinItsLimits(t *testing.T) {
+	for _, tt := range []struct {
+		key  engine.Key
+		want float64
+	}{{'+', 2.2}, {'-', 14}} {
+		v := quiet(t)
+		kb := engine.NewKeyboard()
+		kb.Press(tt.key)
+		for range 200 {
+			step(v, kb, 0.1)
+		}
+		if v.dist != tt.want {
+			t.Errorf("key %q: wanted the distance held at %v, got %v", tt.key, tt.want, v.dist)
+		}
 	}
 }

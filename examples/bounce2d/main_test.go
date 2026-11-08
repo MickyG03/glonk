@@ -1,6 +1,8 @@
 package main
 
 import (
+	"errors"
+	"math"
 	"strings"
 	"testing"
 
@@ -121,5 +123,25 @@ func TestDrawInTinyFramesKeepsTheCornersAndDoesNotPanic(t *testing.T) {
 		if size[0] >= 2 && size[1] >= 2 && fb.At(size[0]-1, size[1]-1).Character != '┘' {
 			t.Errorf("%v: wanted the bottom right corner kept, got %q", size, fb.At(size[0]-1, size[1]-1).Character)
 		}
+	}
+}
+
+func TestEscapeQuitsAndOtherKeysDoNot(t *testing.T) {
+	g := newSizedGame(64, 24)
+	kb := engine.NewKeyboard()
+
+	kb.Press('w', 'q', engine.KeyEnter, engine.KeyUp)
+	x, y := g.ball.X, g.ball.Y
+	if err := g.Update(0.1, kb.Input()); err != nil {
+		t.Fatalf("wanted other keys to be ignored, got %v", err)
+	}
+	if math.Abs(g.ball.X-(x+3)) > 1e-9 || math.Abs(g.ball.Y-(y+1.5)) > 1e-9 {
+		t.Errorf("wanted the ball to fly on as usual, got (%v, %v) from (%v, %v)", g.ball.X, g.ball.Y, x, y)
+	}
+	kb.EndFrame()
+
+	kb.Press(engine.KeyEscape)
+	if err := g.Update(0.1, kb.Input()); !errors.Is(err, engine.ErrQuit) {
+		t.Errorf("wanted ErrQuit on Escape, got %v", err)
 	}
 }
