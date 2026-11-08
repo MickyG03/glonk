@@ -85,3 +85,10 @@ func (v Vector3) RotateY(angle float64) Vector3 {
 	zp := -v.X*math.Sin(angle) + v.Z*math.Cos(angle)
 	return Vector3{X: xp, Y: yp, Z: zp}
 }
+
+// RotateZ turns v around the z axis by angle radians; positive turns +x toward +y.
+func (v Vector3) RotateZ(angle float64) Vector3 {
+	xp := v.X*math.Cos(angle) - v.Y*math.Sin(angle)
+	yp := v.X*math.Sin(angle) + v.Y*math.Cos(angle)
+	return Vector3{X: xp, Y: yp, Z: v.Z}
+}

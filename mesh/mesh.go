@@ -111,20 +111,22 @@ func validIndex(i, n int) bool {
 	return i >= 0 && i < n
 }
 
-// Draw renders the mesh's edges as lines, all in cell.
+// Draw renders the mesh's edges as lines, all in cell. A mesh whose Transform is
+// not valid is not drawn.
 // Edges crossing the near plane are cut where they cross it;
 // edges entirely behind it are skipped, and so are edges that name a vertex the
 // mesh does not have (Validate finds them). An edge that ends far off screen
 // costs no more than one that stays on screen.
 func (m Mesh) Draw(fb *engine.FrameBuffer, cam Camera, cell engine.Cell) {
 	cam, ok := cam.withDefaults()
-	if !ok {
+	if !ok || !m.Transform.valid() {
 		return
 	}
 
+	place := m.Transform.placement()
 	view := make([]geometry.Vector3, len(m.Vertices))
 	for i, v := range m.Vertices {
-		view[i] = cam.toView(m.Transform.Apply(v))
+		view[i] = cam.toView(place.apply(v))
 	}
 
 	for _, e := range m.Edges {

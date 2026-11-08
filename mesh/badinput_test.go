@@ -116,6 +116,9 @@ func TestValidate(t *testing.T) {
 
 		{"NaN vertex", Mesh{Vertices: []geometry.Vector3{{}, {Y: nan}}}, "mesh: vertex 1 is not a finite number: {0 NaN 0}"},
 		{"infinite vertex", Mesh{Vertices: []geometry.Vector3{{Z: math.Inf(-1)}}}, "mesh: vertex 0 is not a finite number: {0 0 -Inf}"},
+		{"transform with a NaN", Mesh{Transform: Transform{Roll: nan}}, "mesh: the transform has a number that is not finite or a negative scale: " + fmt.Sprintf("%+v", Transform{Roll: nan})},
+		{"transform with a negative scale", Mesh{Transform: Transform{Scale: -2}}, "mesh: the transform has a number that is not finite or a negative scale: " + fmt.Sprintf("%+v", Transform{Scale: -2})},
+		{"transform reported before vertex", Mesh{Vertices: []geometry.Vector3{{X: nan}}, Transform: Transform{Scale: -1}}, "mesh: the transform has a number that is not finite or a negative scale: " + fmt.Sprintf("%+v", Transform{Scale: -1})},
 		{"vertex reported before edge", Mesh{Vertices: []geometry.Vector3{{X: nan}}, Edges: [][2]int{{0, 5}}}, "mesh: vertex 0 is not a finite number: {NaN 0 0}"},
 	}
 

@@ -125,6 +125,56 @@ func FuzzDraw(f *testing.F) {
 	})
 }
 
+// Drawing a mesh must finish promptly and not panic whatever its Transform holds, and a
+// Transform that cannot be applied must leave the frame blank.
+func FuzzDrawTransform(f *testing.F) {
+	f.Add(0.0, 0.0, 5.0, 0.3, 0.2, 0.1, 1.0)
+	f.Add(0.0, 0.0, 5.0, 0.0, 0.0, 0.0, 0.0)  // Scale unset
+	f.Add(0.0, 0.0, 5.0, 0.0, 0.0, 0.0, -1.0) // negative scale
+	f.Add(0.0, 0.0, 5.0, 0.0, 0.0, 0.0, 1e300)
+	f.Add(0.0, 0.0, 5.0, 0.0, 0.0, 0.0, 1e-300)
+	f.Add(0.0, 0.0, 5.0, 1e18, -1e18, 1e18, 1.0)
+	f.Add(math.NaN(), 0.0, 5.0, 0.0, 0.0, 0.0, 1.0)
+	f.Add(0.0, 0.0, 5.0, math.Inf(1), 0.0, 0.0, 1.0)
+	f.Add(0.0, 0.0, 5.0, 0.0, 0.0, math.NaN(), 1.0)
+	f.Add(0.0, 0.0, 5.0, 0.0, 0.0, 0.0, math.Inf(1))
+
+	f.Fuzz(func(t *testing.T, px, py, pz, yaw, pitch, roll, scale float64) {
+		cube := Cube(2)
+		cube.Transform = Transform{Position: geometry.Vector3{X: px, Y: py, Z: pz}, Yaw: yaw, Pitch: pitch, Roll: roll, Scale: scale}
+		cam := Camera{Position: geometry.Vector3{Z: -2}}
+		light := Light{Direction: geometry.Vector3{X: 0.4, Y: -1, Z: 0.6}, Ambient: 0.2}
+		t.Setenv("TERM_PROGRAM", "") // Canvas.Seamless depends on the terminal running the tests
+
+		fb, err := engine.NewFrameBuffer(20, 8)
+		if err != nil {
+			t.Fatalf("unable to initialize frame buffer: %v", err)
+		}
+
+		done := make(chan struct{})
+		go func() {
+			defer close(done)
+			cube.Draw(fb, cam, engine.Cell{Character: '#'})
+			cube.DrawShaded(fb, cam, light, engine.Palette(1))
+			cube.DrawShadedPixels(fb.Canvas(), cam, light, engine.Palette(1))
+			fb.Canvas().Compose()
+		}()
+
+		select {
+		case <-done:
+		case <-time.After(3 * time.Second):
+			t.Fatalf("wanted drawing to finish, but it is still running for %+v", cube.Transform)
+		}
+
+		if !cube.Transform.valid() && len(drawn(fb)) != 0 {
+			t.Fatalf("wanted nothing drawn for the invalid %+v", cube.Transform)
+		}
+		if (cube.Validate() == nil) != cube.Transform.valid() {
+			t.Fatalf("wanted Validate to agree with valid() for %+v", cube.Transform)
+		}
+	})
+}
+
 func FuzzClipSegment(f *testing.F) {
 	f.Add(2.0, 3.0, 8.0, 7.0, 0.0, 0.0, 10.0, 10.0)
 	f.Add(-10.0, 5.0, 20.0, 5.0, 0.0, 0.0, 10.0, 10.0)

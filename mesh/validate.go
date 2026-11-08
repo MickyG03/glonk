@@ -3,8 +3,9 @@ package mesh
 import "fmt"
 
 // Validate checks a mesh that was built by hand or by other code, and returns an
-// error describing the first problem: a vertex that is not a finite number, or an
-// edge or face that names a vertex the mesh does not have.
+// error describing the first problem: a Transform that cannot be applied (a number
+// that is not finite, or a negative Scale), a vertex that is not a finite number, or
+// an edge or face that names a vertex the mesh does not have.
 //
 // Drawing skips edges and faces with a bad index instead of failing, so Validate is
 // how to find out that a mesh is broken. Meshes from LoadOBJ, Cube and Grid are
@@ -12,6 +13,9 @@ import "fmt"
 func (m Mesh) Validate() error {
 	n := len(m.Vertices)
 
+	if !m.Transform.valid() {
+		return fmt.Errorf("mesh: the transform has a number that is not finite or a negative scale: %+v", m.Transform)
+	}
 	for i, v := range m.Vertices {
 		if !finite(v.X, v.Y, v.Z) {
 			return fmt.Errorf("mesh: vertex %d is not a finite number: %v", i, v)

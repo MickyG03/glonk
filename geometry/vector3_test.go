@@ -77,3 +77,12 @@ func TestVector3Rotate(t *testing.T) {
 	assertVector3Equals(t, wantD, d.RotateY(math.Pi/2))
 	assertVector3Equals(t, wantE, d.RotateX(math.Pi/2))
 }
+
+func TestVector3RotateZ(t *testing.T) {
+	// Positive turns +x toward +y, and a point on the axis stays put.
+	assertVector3Equals(t, Vector3{0, 1, 0}, Vector3{1, 0, 0}.RotateZ(math.Pi/2))
+	assertVector3Equals(t, Vector3{-1, 0, 0}, Vector3{0, 1, 0}.RotateZ(math.Pi/2))
+	assertVector3Equals(t, Vector3{0, 0, 5}, Vector3{0, 0, 5}.RotateZ(1.3))
+	assertVector3Equals(t, Vector3{-1, -2, 3}, Vector3{1, 2, 3}.RotateZ(math.Pi))
+	assertVector3Equals(t, Vector3{1, 2, 3}, Vector3{1, 2, 3}.RotateZ(0))
+}

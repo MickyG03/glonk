@@ -59,14 +59,15 @@ type screenPoint struct {
 // have is skipped.
 func (m Mesh) eachShadedTriangle(cam Camera, light Light, w, h int, fn func(corners [3]screenPoint, intensity float64)) {
 	cam, ok := cam.withDefaults()
-	if !ok {
+	if !ok || !m.Transform.valid() {
 		return
 	}
 
+	place := m.Transform.placement()
 	world := make([]geometry.Vector3, len(m.Vertices))
 	view := make([]geometry.Vector3, len(m.Vertices))
 	for i, v := range m.Vertices {
-		world[i] = m.Transform.Apply(v)
+		world[i] = place.apply(v)
 		view[i] = cam.toView(world[i])
 	}
 
