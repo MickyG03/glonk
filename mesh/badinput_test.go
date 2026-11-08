@@ -109,7 +109,7 @@ func TestValidate(t *testing.T) {
 		{"edge negative", Mesh{Vertices: triangle(), Edges: [][2]int{{0, -1}}}, "mesh: edge 0 uses vertex -1, but only vertices 0 to 2 exist"},
 		{"face past the end", Mesh{Vertices: triangle(), Faces: [][3]int{{0, 1, 2}, {0, 1, 3}}}, "mesh: face 1 uses vertex 3, but only vertices 0 to 2 exist"},
 		{"face first corner", Mesh{Vertices: triangle(), Faces: [][3]int{{3, 1, 2}}}, "mesh: face 0 uses vertex 3, but only vertices 0 to 2 exist"},
-		{"face negative", Mesh{Vertices: triangle(), Faces: [][3]int{{0, math.MinInt, 2}}}, "mesh: face 0 uses vertex -9223372036854775808, but only vertices 0 to 2 exist"},
+		{"face negative", Mesh{Vertices: triangle(), Faces: [][3]int{{0, math.MinInt, 2}}}, fmt.Sprintf("mesh: face 0 uses vertex %d, but only vertices 0 to 2 exist", math.MinInt)},
 		{"edges without vertices", Mesh{Edges: [][2]int{{0, 1}}}, "mesh: edge 0 uses vertex 0, but the mesh has no vertices"},
 		{"faces without vertices", Mesh{Faces: [][3]int{{0, 1, 2}}}, "mesh: face 0 uses vertex 0, but the mesh has no vertices"},
 		{"edge reported before face", Mesh{Vertices: triangle(), Edges: [][2]int{{0, 8}}, Faces: [][3]int{{0, 1, 9}}}, "mesh: edge 0 uses vertex 8, but only vertices 0 to 2 exist"},
