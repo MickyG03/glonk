@@ -31,8 +31,16 @@ const maxFPS = 1000
 // timing-based handling every terminal supports, as an escape hatch for a
 // terminal that misbehaves.
 type Config struct {
-	Width, Height, FPS int
-	LegacyKeys         bool
+	// Width and Height are the size of the frame in cells. 0 fills the terminal on
+	// that axis.
+	Width, Height int
+
+	// FPS is how many times a second Run calls Update and Draw, from 1 to 1000.
+	FPS int
+
+	// LegacyKeys turns off the kitty keyboard protocol even where the terminal has
+	// it, and uses the timing-based key handling that every terminal supports.
+	LegacyKeys bool
 }
 
 // checkConfig rejects settings Run cannot honor.

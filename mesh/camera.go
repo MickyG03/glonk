@@ -21,11 +21,22 @@ import (
 // nothing and Project reports ok=false. So does a Position, Yaw or Pitch that is not
 // a finite number.
 type Camera struct {
+	// Position is where the camera is, in world coordinates.
 	Position geometry.Vector3
-	Yaw      float64
-	Pitch    float64
-	FOV      float64
-	Near     float64
+
+	// Yaw turns the camera about the vertical axis, in radians. Positive turns it
+	// right, toward +x.
+	Yaw float64
+
+	// Pitch tilts the camera, in radians. Positive tilts it up.
+	Pitch float64
+
+	// FOV is the vertical field of view in radians, between 0 and pi. 0 means pi/2.
+	FOV float64
+
+	// Near is the distance from the camera, along its view direction, of the plane
+	// nearer than which everything is cut away. It must be above 0; 0 means 0.1.
+	Near float64
 }
 
 // What a zero FOV and Near stand for.

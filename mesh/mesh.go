@@ -16,12 +16,27 @@ import (
 // either or both. Faces index into Vertices and are wound so the face normal,
 // (b-a)x(c-a), points out of the surface.
 type Mesh struct {
+	// Vertices are the points of the model, in model space: the space before
+	// Position, Yaw and Pitch are applied.
 	Vertices []geometry.Vector3
-	Edges    [][2]int
-	Faces    [][3]int
+
+	// Edges are pairs of indices into Vertices. Draw draws each as a line.
+	Edges [][2]int
+
+	// Faces are triples of indices into Vertices. DrawShaded fills each as a
+	// triangle.
+	Faces [][3]int
+
+	// Position is where the model's origin sits in the world.
 	Position geometry.Vector3
-	Yaw      float64
-	Pitch    float64
+
+	// Yaw turns the model about the y axis, in radians. Positive turns +z toward
+	// +x. It is applied after Pitch and before Position.
+	Yaw float64
+
+	// Pitch turns the model about the x axis, in radians. Positive turns +y toward
+	// +z. It is applied first.
+	Pitch float64
 
 	// DoubleSided draws faces from behind as well as from the front, lit as the
 	// side the camera sees. Use it for models wound the wrong way round (they

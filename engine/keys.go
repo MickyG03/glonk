@@ -11,17 +11,28 @@ type Key rune
 
 // Special keys. Negative values so they can never collide with a real rune.
 const (
+	// KeyUnknown stands for no particular key. Input never reports it as pressed.
 	KeyUnknown Key = -1 - iota
+	// KeyUp is the up arrow.
 	KeyUp
+	// KeyDown is the down arrow.
 	KeyDown
+	// KeyLeft is the left arrow.
 	KeyLeft
+	// KeyRight is the right arrow.
 	KeyRight
+	// KeyEscape is the Escape key. Where the terminal cannot tell it from the start
+	// of an arrow key, it counts after 50 ms with nothing following.
 	KeyEscape
+	// KeyEnter is the Enter (Return) key.
 	KeyEnter
+	// KeyBackspace is the Backspace key.
 	KeyBackspace
+	// KeyTab is the Tab key.
 	KeyTab
-	// Raw mode turns off the terminal's signal handling, so Ctrl-C arrives
-	// as a byte instead of SIGINT.
+	// KeyCtrlC is Ctrl-C. Raw mode turns off the terminal's own handling of it, so
+	// it arrives as a key; Run ends the program when it is pressed, so Update never
+	// sees it.
 	KeyCtrlC
 	// keyCtrlZ asks Run to suspend. Like Ctrl-C it is Run's, never the game's.
 	keyCtrlZ

@@ -1,3 +1,11 @@
+// Command cube3d is a walk around a floor with six shaded cubes.
+//
+//	go run ./examples/cube3d
+//
+// W and S move forward and back, A and D strafe, Q, E and the left and right
+// arrows turn, and the up and down arrows look up and down. M switches between
+// character shading and half-block pixels, B switches between exact and solid pixel
+// edges, and Esc quits.
 package main
 
 import (

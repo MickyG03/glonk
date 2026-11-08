@@ -1,3 +1,8 @@
+// Command bounce2d is a ball bouncing around inside a box, drawn as a sprite.
+//
+//	go run ./examples/bounce2d
+//
+// Esc quits.
 package main
 
 import (
