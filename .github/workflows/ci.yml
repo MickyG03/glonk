@@ -1,0 +1,61 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+# A newer push to the same branch or pull request makes the older run pointless.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Formatting, vet and the tests with the race detector, on the two systems the
+  # terminal handling is written for, with both supported Go releases.
+  test:
+    name: test (${{ matrix.os }}, go ${{ matrix.go }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        go: ["1.26", "1.27"]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: ${{ matrix.go }}
+      - run: make check
+
+  # Systems the tests cannot run on here are at least compiled and vetted, and the
+  # 32-bit build runs natively on the Linux runner.
+  cross:
+    name: other systems
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: "1.27"
+      - name: go.mod and go.sum are tidy
+        run: go mod tidy -diff
+      - name: vet for other systems
+        run: |
+          for target in windows/amd64 freebsd/amd64 darwin/amd64 linux/arm linux/386; do
+            echo "go vet ($target)"
+            GOOS=${target%/*} GOARCH=${target#*/} go vet ./...
+          done
+      - name: build for windows
+        run: GOOS=windows go build ./...
+      - name: test as a 32-bit program
+        run: GOARCH=386 go test ./...
