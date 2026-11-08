@@ -8,6 +8,12 @@ on:
 permissions:
   contents: read
 
+# Never download a different Go than the one a job asked for. Without this, a go.mod
+# that needs a newer Go would quietly make the Go 1.26 jobs run on that newer one;
+# with it, they fail and say so.
+env:
+  GOTOOLCHAIN: local
+
 # A newer push to the same branch or pull request makes the older run pointless.
 concurrency:
   group: ci-${{ github.ref }}
