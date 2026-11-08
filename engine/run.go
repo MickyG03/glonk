@@ -67,9 +67,27 @@ func handle(action inputAction, suspend func() error) (done bool, err error) {
 }
 
 // Run takes over the terminal and calls game.Update and game.Draw cfg.FPS times
-// a second. It returns nil when ctx is cancelled, Update returns ErrQuit, or the
-// user presses Ctrl-C; any other Update error is returned. The terminal is
-// restored on return, including when game code panics.
+// a second. It returns nil when ctx is cancelled, Update returns ErrQuit, the
+// user presses Ctrl-C, or the process receives SIGINT, SIGTERM or SIGHUP; any
+// other Update error is returned. The terminal is restored on return, including
+// when game code panics, and nothing reads it afterwards, so the program can read
+// its own input once Run is over.
+//
+// Those signals need no handler of your own. After the first one Run stops
+// catching them, so a second takes Go's default action and ends a game stuck in
+// Update. Catching them yourself (signal.Notify, signal.NotifyContext) keeps that
+// from working. A signal the process was started ignoring (nohup does this to
+// SIGHUP) stays ignored.
+//
+// Ctrl-Z suspends the program: the terminal is restored, the process stops until
+// the shell continues it (fg), and Run takes the terminal over again. A stop sent
+// from outside (kill -TSTP) is not caught, so it leaves the terminal as it is.
+// Windows has no suspend.
+//
+// Run cannot restore the terminal if the process ends without returning from it:
+// os.Exit or log.Fatal called by the game, a panic in a goroutine of your own,
+// SIGKILL, or SIGQUIT (which keeps Go's stack dump). Typing reset repairs the
+// terminal.
 func Run(ctx context.Context, game Game, cfg Config) error {
 	if cfg.FPS <= 0 {
 		return errors.New("invalid fps value given")
