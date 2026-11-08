@@ -149,11 +149,31 @@ func handle(action inputAction, suspend func() error) (done bool, err error) {
 }
 
 // Run takes over the terminal and calls game.Update and game.Draw cfg.FPS times
-// a second. It returns nil when ctx is cancelled, Update returns ErrQuit, the
-// user presses Ctrl-C, or the process receives SIGINT, SIGTERM or SIGHUP; any
-// other Update error is returned. The terminal is restored on return, including
-// when game code panics, and nothing reads it afterwards, so the program can read
-// its own input once Run is over.
+// a second, printing each frame. The terminal is restored when Run returns, and
+// nothing reads it afterwards, so the program can read its own input once Run is
+// over.
+//
+// # Calls to the game
+//
+// Resize (if the game has one), Update and Draw are called from the goroutine that
+// called Run, one at a time, and never after Run has returned. Run first calls
+// Resize with the frame's size, if the game has one; each frame then calls Resize
+// if the size changed, then Update, then Draw. Once ctx is done or a quit signal
+// arrives, no new frame starts; a frame already under way finishes, because Run
+// never interrupts a call into the game.
+//
+// # How Run ends
+//
+// Run returns nil when the player ends it: Update returns ErrQuit, the user
+// presses Ctrl-C, or the process receives SIGINT, SIGTERM or SIGHUP. It returns
+// ctx.Err(), which is context.Canceled or context.DeadlineExceeded, when ctx ends
+// it; if ctx is done before Run starts, it returns that at once and neither
+// touches the terminal nor calls the game. Any other Update error is returned as it
+// is. A panic in the game restores the terminal first and then carries on up the
+// stack. If the terminal cannot be restored, Run returns that error too, joined to
+// the one that ended the run, if there was one.
+//
+// # Signals
 //
 // Those signals need no handler of your own. After the first one Run stops
 // catching them, so a second takes Go's default action and ends a game stuck in
@@ -161,17 +181,20 @@ func handle(action inputAction, suspend func() error) (done bool, err error) {
 // from working. A signal the process was started ignoring (nohup does this to
 // SIGHUP) stays ignored.
 //
-// With a Config.Input or Config.Output that is not a terminal, Run runs headless:
-// none of what follows about the terminal, signals and Ctrl-Z applies, and the
-// frame size must be given.
+// # Ctrl-Z
 //
 // Ctrl-Z suspends the program: the terminal is restored, the process stops until
 // the shell continues it (fg), and Run takes the terminal over again. A stop sent
 // from outside (kill -TSTP) is not caught, so it leaves the terminal as it is.
 // Windows has no suspend.
 //
-// If the terminal cannot be restored, Run returns that error too, after the one that
-// ended the run, if there was one.
+// # Without a terminal
+//
+// With a Config.Input or Config.Output that is not a terminal, Run runs headless:
+// the frame size must be given, and nothing above about the terminal, signals and
+// Ctrl-Z applies. See Config.Output.
+//
+// # What cannot be restored
 //
 // Run cannot restore the terminal if the process ends without returning from it:
 // os.Exit or log.Fatal called by the game, a panic in a goroutine of your own,
@@ -179,6 +202,9 @@ func handle(action inputAction, suspend func() error) (done bool, err error) {
 // terminal.
 func Run(ctx context.Context, game Game, cfg Config) (err error) {
 	if err := checkConfig(cfg); err != nil {
+		return err
+	}
+	if err := ctx.Err(); err != nil {
 		return err
 	}
 
@@ -200,7 +226,7 @@ func Run(ctx context.Context, game Game, cfg Config) (err error) {
 
 	// From here a quit signal must reach the deferred Teardown, not kill the process
 	// with the terminal still taken over.
-	ctx, cancel := context.WithCancel(ctx)
+	runCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	if !tty.headless { // signals belong to the process, which a headless Run does not own
 		defer notifyQuit(cancel)()
@@ -282,9 +308,14 @@ func Run(ctx context.Context, game Game, cfg Config) (err error) {
 	dynamic := cfg.Width == 0 || cfg.Height == 0
 	for {
 		select {
-		case <-ctx.Done():
-			return nil
+		case <-runCtx.Done():
+			return ctx.Err() // nil when only a quit signal ended it
 		case now := <-ticker.C:
+			// select picks at random among what is ready, so a tick can win over a
+			// run that has ended.
+			if runCtx.Err() != nil {
+				return ctx.Err()
+			}
 			dt := frameDT(now, last)
 			last = now
 

@@ -307,3 +307,129 @@ func TestRunTellsTheGameItsSizeBeforeTheFirstUpdate(t *testing.T) {
 		t.Errorf("wanted calls\n%s\ngot\n%s", want, got)
 	}
 }
+
+func TestRunReturnsTheContextErrorThatEndedIt(t *testing.T) {
+	t.Run("cancelled", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		updates := 0
+		game := scriptedGame{update: func(float64, *Input) error {
+			if updates++; updates == 3 {
+				cancel()
+			}
+			return nil
+		}}
+
+		err := finished(t, startHeadless(ctx, game, Config{Input: strings.NewReader(""), Output: io.Discard}))
+
+		if err != context.Canceled {
+			t.Errorf("wanted context.Canceled, got %v", err)
+		}
+	})
+
+	t.Run("deadline", func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Millisecond)
+		defer cancel()
+
+		err := finished(t, startHeadless(ctx, scriptedGame{}, Config{Input: strings.NewReader(""), Output: io.Discard}))
+
+		if err != context.DeadlineExceeded {
+			t.Errorf("wanted context.DeadlineExceeded, got %v", err)
+		}
+	})
+
+	t.Run("the game quitting is not an error even with a context that is still live", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		game := scriptedGame{update: func(float64, *Input) error { return ErrQuit }}
+
+		err := finished(t, startHeadless(ctx, game, Config{Input: strings.NewReader(""), Output: io.Discard}))
+
+		if err != nil {
+			t.Errorf("wanted nil, got %v", err)
+		}
+	})
+}
+
+func TestRunWithAContextAlreadyDoneDoesNothing(t *testing.T) {
+	expired, cancelExpired := context.WithDeadline(context.Background(), time.Now().Add(-time.Second))
+	defer cancelExpired()
+	cancelled, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	tests := []struct {
+		name string
+		ctx  context.Context
+		want error
+	}{
+		{"cancelled", cancelled, context.Canceled},
+		{"past its deadline", expired, context.DeadlineExceeded},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			g := &sizedGame{}
+			g.update = func(float64, *Input) error { g.calls = append(g.calls, "update"); return nil }
+			g.draw = func(*FrameBuffer) { g.calls = append(g.calls, "draw") }
+			var out bytes.Buffer
+
+			err := Run(tt.ctx, g, Config{FPS: 30, Width: 3, Height: 2, Input: strings.NewReader(""), Output: &out})
+
+			if err != tt.want {
+				t.Errorf("wanted %v, got %v", tt.want, err)
+			}
+			if len(g.calls) != 0 || out.Len() != 0 {
+				t.Errorf("wanted the game and the output left alone, got calls=%v out=%q", g.calls, out.String())
+			}
+		})
+	}
+}
+
+func TestRunStartsNoFrameOnceTheContextEnds(t *testing.T) {
+	// With a tick already waiting when the context ends, select chooses between
+	// them at random, so run it enough times that a missing check cannot hide.
+	for range 20 {
+		ctx, cancel := context.WithCancel(context.Background())
+		updates, draws := 0, 0
+		game := scriptedGame{
+			update: func(float64, *Input) error {
+				if updates++; updates == 3 {
+					cancel()
+					time.Sleep(3 * time.Millisecond) // longer than a frame at maxFPS
+				}
+				return nil
+			},
+			draw: func(*FrameBuffer) { draws++ },
+		}
+
+		err := finished(t, startHeadless(ctx, game, Config{Input: strings.NewReader(""), Output: io.Discard}))
+		cancel()
+
+		if err != context.Canceled {
+			t.Fatalf("wanted context.Canceled, got %v", err)
+		}
+		// The frame under way finishes, and no other starts.
+		if updates != 3 || draws != 3 {
+			t.Fatalf("wanted 3 updates and 3 draws, got %d and %d", updates, draws)
+		}
+	}
+}
+
+func TestRunNeverCallsTheGameOnceItHasReturned(t *testing.T) {
+	var calls atomic.Int64
+	game := &sizedGame{}
+	game.update = func(float64, *Input) error {
+		if calls.Add(1) == 5 {
+			return ErrQuit
+		}
+		return nil
+	}
+	game.draw = func(*FrameBuffer) { calls.Add(1) }
+
+	err := runHeadless(t, game, Config{Input: strings.NewReader(""), Output: io.Discard})
+	atReturn := calls.Load()
+	time.Sleep(30 * time.Millisecond) // thirty frames at maxFPS
+
+	if err != nil || calls.Load() != atReturn {
+		t.Errorf("wanted nil and no calls after Run returned, got err=%v and %d more calls", err, calls.Load()-atReturn)
+	}
+}

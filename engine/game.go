@@ -2,10 +2,12 @@ package engine
 
 import "errors"
 
-// ErrQuit, returned from Update, ends Run without an error.
+// ErrQuit, returned from Update, ends Run with a nil error, as the player quitting
+// does.
 var ErrQuit = errors.New("quit")
 
-// Game is what Run drives: Update advances state, Draw renders it.
+// Game is what Run drives: Update advances state, Draw renders it. Run calls them
+// one at a time from its own goroutine, never after it has returned; see Run.
 // An error returned from Update ends Run with that error, except ErrQuit, which
 // ends it cleanly. A game that needs to know the size of the frame can also have a
 // Resize method; see Resizer.
