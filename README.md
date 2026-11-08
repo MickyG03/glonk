@@ -57,7 +57,7 @@ viewer controls:
 | C | change color |
 | Esc | quit |
 
-Ctrl-C quits any program built on glonk.
+Letters work in either case. Ctrl-C quits any program built on glonk.
 
 ## Loading models
 

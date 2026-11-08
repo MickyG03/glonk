@@ -5,7 +5,7 @@
 // W and S move forward and back, A and D strafe, Q, E and the left and right
 // arrows turn, and the up and down arrows look up and down. M switches between
 // character shading and half-block pixels, B switches between exact and solid pixel
-// edges, and Esc quits.
+// edges, and Esc quits. Letters work in either case.
 package main
 
 import (
@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"unicode"
 
 	"github.com/kyrokohan/glonk/engine"
 	"github.com/kyrokohan/glonk/geometry"
@@ -51,6 +52,13 @@ type cubeGame struct {
 	flipEdges bool
 }
 
+// keyDown reports whether a letter key counts as down or pressed, in either case.
+// Terminals that cannot report keys exactly send a capital for Shift or Caps Lock.
+// held is Input.IsDown or Input.Pressed.
+func keyDown(held func(engine.Key) bool, letter rune) bool {
+	return held(engine.Key(letter)) || held(engine.Key(unicode.ToUpper(letter)))
+}
+
 // newCube returns a cube of the given size resting on the floor at (x, z).
 func newCube(size, x, z float64, color uint8) object {
 	m := mesh.Cube(size)
@@ -62,11 +70,10 @@ func (g *cubeGame) Update(dt float64, in *engine.Input) error {
 	if in.Pressed(engine.KeyEscape) {
 		return engine.ErrQuit
 	}
-	// Without release events shift+m arrives as 'M'.
-	if in.Pressed('m') || in.Pressed('M') {
+	if keyDown(in.Pressed, 'm') {
 		g.halfBlocks = !g.halfBlocks
 	}
-	if g.halfBlocks && (in.Pressed('b') || in.Pressed('B')) {
+	if g.halfBlocks && keyDown(in.Pressed, 'b') {
 		g.flipEdges = true
 	}
 
@@ -76,16 +83,16 @@ func (g *cubeGame) Update(dt float64, in *engine.Input) error {
 	const maxPitch = 1.5 // just short of straight up or down, where the view would flip
 
 	move := geometry.Vector3{}
-	if in.IsDown('w') {
+	if keyDown(in.IsDown, 'w') {
 		move = move.Add(g.cam.Forward())
 	}
-	if in.IsDown('s') {
+	if keyDown(in.IsDown, 's') {
 		move = move.Sub(g.cam.Forward())
 	}
-	if in.IsDown('d') {
+	if keyDown(in.IsDown, 'd') {
 		move = move.Add(g.cam.Right())
 	}
-	if in.IsDown('a') {
+	if keyDown(in.IsDown, 'a') {
 		move = move.Sub(g.cam.Right())
 	}
 	// Normalized so moving diagonally is not ~1.41x faster.
@@ -93,10 +100,10 @@ func (g *cubeGame) Update(dt float64, in *engine.Input) error {
 	g.cam.Position.X = max(-walkLimit, min(walkLimit, g.cam.Position.X))
 	g.cam.Position.Z = max(-walkLimit, min(walkLimit, g.cam.Position.Z))
 
-	if in.IsDown('e') || in.IsDown(engine.KeyRight) {
+	if keyDown(in.IsDown, 'e') || in.IsDown(engine.KeyRight) {
 		g.cam.Yaw += turnSpeed * dt
 	}
-	if in.IsDown('q') || in.IsDown(engine.KeyLeft) {
+	if keyDown(in.IsDown, 'q') || in.IsDown(engine.KeyLeft) {
 		g.cam.Yaw -= turnSpeed * dt
 	}
 	if in.IsDown(engine.KeyUp) {
@@ -140,7 +147,8 @@ func (g *cubeGame) Draw(fb *engine.FrameBuffer) {
 
 	fb.DrawBox(0, 0, fb.Width(), fb.Height(), 0)
 	fb.DrawText(1, 1, fmt.Sprintf("%.0f fps  %s", g.fps, mode), 0)
-	fb.DrawText(1, fb.Height()-2, "WASD move  arrows look  M mode  B edges  Esc quit", 0)
+	fb.DrawText(1, fb.Height()-3, "WASD move  Q/E turn  arrows look", 0)
+	fb.DrawText(1, fb.Height()-2, "M mode  B edges  Esc quit", 0)
 }
 
 // newCubeGame returns the scene main runs: a floor and six cubes, seen from just

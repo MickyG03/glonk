@@ -79,3 +79,75 @@ func TestSceneDrawsAndStartsWithGlyphs(t *testing.T) {
 		t.Errorf("wanted the floor and cubes on screen, got an empty scene")
 	}
 }
+
+// held returns a lookup that reports exactly the given keys as down.
+func held(keys ...engine.Key) func(engine.Key) bool {
+	set := map[engine.Key]bool{}
+	for _, k := range keys {
+		set[k] = true
+	}
+	return func(k engine.Key) bool { return set[k] }
+}
+
+func TestKeyDownTakesEitherCase(t *testing.T) {
+	tests := []struct {
+		name   string
+		down   []engine.Key
+		letter rune
+		want   bool
+	}{
+		{"lower case", []engine.Key{'w'}, 'w', true},
+		{"upper case", []engine.Key{'W'}, 'w', true},
+		{"both cases", []engine.Key{'w', 'W'}, 'w', true},
+		{"nothing down", nil, 'w', false},
+		{"another letter", []engine.Key{'s'}, 'w', false},
+		{"another letter in upper case", []engine.Key{'S'}, 'w', false},
+		{"an arrow is not a letter", []engine.Key{engine.KeyUp}, 'w', false},
+		{"q", []engine.Key{'Q'}, 'q', true},
+		{"e", []engine.Key{'E'}, 'e', true},
+		{"a digit has no other case", []engine.Key{'1'}, '1', true},
+		{"a digit that is not down", []engine.Key{'2'}, '1', false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := keyDown(held(tt.down...), tt.letter); got != tt.want {
+				t.Errorf("wanted keyDown(%v, %q) = %v, got %v", tt.down, tt.letter, tt.want, got)
+			}
+		})
+	}
+}
+
+func TestHelpListsEveryKeyAndFitsANarrowWindow(t *testing.T) {
+	for _, width := range []int{80, 40, 30} {
+		fb := newFrame(t, width, 24)
+		newCubeGame().Draw(fb)
+
+		first, second := row(fb, fb.Height()-3), row(fb, fb.Height()-2)
+		if width >= 40 {
+			for _, want := range []string{"WASD move", "Q/E turn", "arrows look"} {
+				if !strings.Contains(first, want) {
+					t.Errorf("width %d: wanted %q in %q", width, want, first)
+				}
+			}
+		}
+		for _, want := range []string{"M mode", "B edges", "Esc quit"} {
+			if !strings.Contains(second, want) {
+				t.Errorf("width %d: wanted %q in %q", width, want, second)
+			}
+		}
+	}
+}
+
+// With no keys held nothing moves, however long the frame.
+func TestUpdateWithoutKeysStandsStill(t *testing.T) {
+	g := newCubeGame()
+	before := g.cam
+
+	if err := g.Update(0.1, &engine.Input{}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if g.cam != before {
+		t.Errorf("wanted the camera unmoved, got %+v from %+v", g.cam, before)
+	}
+}
