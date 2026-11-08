@@ -3,6 +3,7 @@ package engine
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"time"
 )
@@ -16,8 +17,13 @@ const maxDT = 0.25
 // protocol probe. Terminals answer in milliseconds; this only matters when one never does.
 const probeTimeout = 250 * time.Millisecond
 
+// maxFPS is the highest frame rate Run accepts. A terminal cannot show more, and the
+// frame timer needs an interval of at least a nanosecond.
+const maxFPS = 1000
+
 // Config sets up Run. A Width or Height of 0 fills the terminal on that axis
-// and follows resizes; a nonzero value fixes that axis. FPS must be positive.
+// and follows resizes; a nonzero value fixes that axis. FPS must be between 1 and
+// 1000.
 //
 // Where the terminal supports the kitty keyboard protocol, Run uses it so Input
 // can tell exactly which keys are down. LegacyKeys turns that off and uses the
@@ -26,6 +32,14 @@ const probeTimeout = 250 * time.Millisecond
 type Config struct {
 	Width, Height, FPS int
 	LegacyKeys         bool
+}
+
+// checkConfig rejects settings Run cannot honor.
+func checkConfig(cfg Config) error {
+	if cfg.FPS < 1 || cfg.FPS > maxFPS {
+		return fmt.Errorf("fps must be between 1 and %d, got %d", maxFPS, cfg.FPS)
+	}
+	return nil
 }
 
 // frameDT returns the seconds between two frames, capped at maxDT.
@@ -89,8 +103,8 @@ func handle(action inputAction, suspend func() error) (done bool, err error) {
 // SIGKILL, or SIGQUIT (which keeps Go's stack dump). Typing reset repairs the
 // terminal.
 func Run(ctx context.Context, game Game, cfg Config) error {
-	if cfg.FPS <= 0 {
-		return errors.New("invalid fps value given")
+	if err := checkConfig(cfg); err != nil {
+		return err
 	}
 
 	tty := newTerminal(os.Stdin, os.Stdout)

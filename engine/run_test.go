@@ -58,3 +58,48 @@ func TestFrameDT(t *testing.T) {
 		})
 	}
 }
+
+func TestCheckConfigFPS(t *testing.T) {
+	tests := []struct {
+		fps     int
+		wantErr bool
+	}{
+		{math.MinInt, true},
+		{-1, true},
+		{0, true},
+		{1, false},
+		{30, false},
+		{60, false},
+		{maxFPS, false},
+		{maxFPS + 1, true},
+		{2_000_000_000, true},
+		{math.MaxInt, true},
+	}
+
+	for _, tt := range tests {
+		err := checkConfig(Config{FPS: tt.fps})
+		if (err != nil) != tt.wantErr {
+			t.Errorf("fps %d: wanted error=%v, got %v", tt.fps, tt.wantErr, err)
+		}
+	}
+}
+
+func TestCheckConfigNamesTheRange(t *testing.T) {
+	err := checkConfig(Config{FPS: 5000})
+	if err == nil {
+		t.Fatalf("wanted an error for 5000 fps")
+	}
+	if want := "fps must be between 1 and 1000, got 5000"; err.Error() != want {
+		t.Errorf("wanted %q, got %q", want, err)
+	}
+}
+
+// Every accepted rate must give the frame timer a positive interval; a zero one
+// makes time.NewTicker panic.
+func TestEveryAcceptedFPSHasAPositiveInterval(t *testing.T) {
+	for fps := 1; fps <= maxFPS; fps++ {
+		if time.Second/time.Duration(fps) <= 0 {
+			t.Fatalf("wanted a positive interval for %d fps", fps)
+		}
+	}
+}
