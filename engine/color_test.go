@@ -164,13 +164,15 @@ func TestColorZeroValueIsTheDefault(t *testing.T) {
 }
 
 func TestColorsCompareByWhatTheyAre(t *testing.T) {
-	if Palette(208) != Palette(208) {
+	orange, sameOrange := Palette(208), Palette(208)
+	if orange != sameOrange {
 		t.Errorf("wanted equal palette colors to be equal")
 	}
 	if Palette(208) == Palette(209) {
 		t.Errorf("wanted different palette colors to differ")
 	}
-	if RGB(1, 2, 3) != RGB(1, 2, 3) {
+	rgb, sameRGB := RGB(1, 2, 3), RGB(1, 2, 3)
+	if rgb != sameRGB {
 		t.Errorf("wanted equal RGB colors to be equal")
 	}
 	if RGB(1, 2, 3) == RGB(3, 2, 1) {

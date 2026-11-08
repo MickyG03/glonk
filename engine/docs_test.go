@@ -6,7 +6,8 @@ import (
 	"go/doc"
 	"go/parser"
 	"go/token"
-	"io/fs"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
@@ -131,11 +132,10 @@ func docProblems(fset *token.FileSet, files []*ast.File) []string {
 	private := privateNames(files)
 	problems := undocumentedMembers(files)
 
-	pkgFiles := map[string]*ast.File{}
-	for _, f := range files {
-		pkgFiles[fset.File(f.Pos()).Name()] = f
+	pkg, err := doc.NewFromFiles(fset, files, "example.com/"+files[0].Name.Name)
+	if err != nil {
+		return append(problems, fmt.Sprintf("cannot read the documentation: %v", err))
 	}
-	pkg := doc.New(&ast.Package{Name: files[0].Name.Name, Files: pkgFiles}, "example.com/"+files[0].Name.Name, 0)
 
 	check := func(what, text string) {
 		if strings.TrimSpace(text) == "" {
@@ -189,23 +189,47 @@ func parseSource(t *testing.T, src string) (*token.FileSet, []*ast.File) {
 	return fset, []*ast.File{f}
 }
 
+// parseDir parses the Go files of dir that keep accepts, build tags ignored, and
+// returns them grouped by package, in the order of their names.
+func parseDir(t *testing.T, fset *token.FileSet, dir string, keep func(name string) bool) [][]*ast.File {
+	t.Helper()
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	byPackage := map[string][]*ast.File{}
+	var order []string
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".go") || !keep(e.Name()) {
+			continue
+		}
+		f, err := parser.ParseFile(fset, filepath.Join(dir, e.Name()), nil, parser.ParseComments)
+		if err != nil {
+			t.Fatal(err)
+		}
+		name := f.Name.Name
+		if _, seen := byPackage[name]; !seen {
+			order = append(order, name)
+		}
+		byPackage[name] = append(byPackage[name], f)
+	}
+	out := make([][]*ast.File, 0, len(order))
+	for _, name := range order {
+		out = append(out, byPackage[name])
+	}
+	return out
+}
+
 // The documentation of every package must describe each exported name and must not
 // point at names a reader cannot see.
 func TestDocumentation(t *testing.T) {
 	for _, dir := range []string{".", "../geometry", "../mesh", "../sprite"} {
 		t.Run(dir, func(t *testing.T) {
 			fset := token.NewFileSet()
-			pkgs, err := parser.ParseDir(fset, dir, func(fi fs.FileInfo) bool {
-				return !strings.HasSuffix(fi.Name(), "_test.go")
-			}, parser.ParseComments)
-			if err != nil {
-				t.Fatal(err)
-			}
-			for _, p := range pkgs {
-				var files []*ast.File
-				for _, f := range p.Files {
-					files = append(files, f)
-				}
+			pkgs := parseDir(t, fset, dir, func(name string) bool {
+				return !strings.HasSuffix(name, "_test.go")
+			})
+			for _, files := range pkgs {
 				for _, problem := range docProblems(fset, files) {
 					t.Error(problem)
 				}
@@ -286,18 +310,11 @@ func TestExamplesAreRun(t *testing.T) {
 	for _, dir := range []string{".", "../geometry", "../mesh", "../sprite"} {
 		t.Run(dir, func(t *testing.T) {
 			fset := token.NewFileSet()
-			pkgs, err := parser.ParseDir(fset, dir, func(fi fs.FileInfo) bool {
-				return strings.HasSuffix(fi.Name(), "example_test.go")
-			}, parser.ParseComments)
-			if err != nil {
-				t.Fatal(err)
-			}
+			pkgs := parseDir(t, fset, dir, func(name string) bool {
+				return strings.HasSuffix(name, "example_test.go")
+			})
 			found := 0
-			for _, p := range pkgs {
-				var files []*ast.File
-				for _, f := range p.Files {
-					files = append(files, f)
-				}
+			for _, files := range pkgs {
 				found += len(doc.Examples(files...))
 				for _, problem := range uncheckedExamples(files) {
 					t.Error(problem)
