@@ -16,9 +16,15 @@ import (
 // does not matter. With no lights, every face is as dark as can be shown.
 type Light interface {
 	// Brightness returns how bright this light makes a surface, from 0 (dark) to 1
-	// (fully lit). point is the middle of the face and normal is its unit normal,
-	// pointing out of the surface toward the viewer, both in world space. A result
-	// outside 0 to 1 is clamped, and NaN counts as 0.
+	// (fully lit). point and normal are in world space, and normal is a unit vector
+	// pointing out of the surface toward the viewer. A result outside 0 to 1 is
+	// clamped, and NaN counts as 0.
+	//
+	// For a mesh without Normals, point is the middle of a face and normal is the
+	// face's normal. For a mesh with them, the light is asked about every cell
+	// instead: point is where on the surface that cell is, and normal is the
+	// surface's normal there, blended from the face's corners (the zero vector in the
+	// rare case that they cancel out).
 	Brightness(point, normal geometry.Vector3) float64
 }
 
@@ -95,11 +101,12 @@ type screenPoint struct {
 }
 
 // eachShadedTriangle does the work shared by every solid drawing mode. For each
-// face turned toward the camera it lights the face, cuts it at the near plane,
-// projects the pieces onto a w x h grid of cells, and hands each to fn along with
-// the face's brightness from 0 to 1. A face that names a vertex the mesh does not
-// have is skipped.
-func (m Mesh) eachShadedTriangle(cam Camera, lights []Light, w, h int, fn func(corners [3]screenPoint, intensity float64)) {
+// face turned toward the camera it cuts the face at the near plane, projects the
+// pieces onto a w x h grid of cells, and hands each to fn. A mesh without Normals is
+// lit here, once for each face, and fn gets the brightness from 0 to 1; a mesh with
+// them is lit by fn, cell by cell, from the corners' places and normals. A face that
+// names a vertex the mesh does not have is skipped.
+func (m Mesh) eachShadedTriangle(cam Camera, lights []Light, w, h int, fn func(t *shadedTriangle)) {
 	cam, ok := cam.withDefaults()
 	if !ok || !m.Transform.valid() {
 		return
@@ -115,8 +122,12 @@ func (m Mesh) eachShadedTriangle(cam Camera, lights []Light, w, h int, fn func(c
 		world[i] = place.apply(v)
 		view[i] = eye.apply(world[i])
 	}
+	normals := s.worldNormals(m, place) // nil: shade flat
+	smooth := normals != nil
 
 	var tris [2][3]clipVert
+	tri := &s.tri // in the scratch, because a pointer handed to fn would move a local to the heap
+	tri.smooth = smooth
 	for _, f := range m.Faces {
 		if !validIndex(f[0], len(view)) || !validIndex(f[1], len(view)) || !validIndex(f[2], len(view)) {
 			continue
@@ -134,46 +145,75 @@ func (m Mesh) eachShadedTriangle(cam Camera, lights []Light, w, h int, fn func(c
 		if !front {
 			normal = normal.Neg() // light the side the camera is looking at
 		}
-		center := w0.Add(w1).Add(w2).Scale(1.0 / 3)
-		intensity := brightness(lights, center, normal)
 
-		n := clipTriangleNear(clipVert{view: v0}, clipVert{view: v1}, clipVert{view: v2}, cam.Near, false, &tris)
+		a, b, c := clipVert{view: v0}, clipVert{view: v1}, clipVert{view: v2}
+		if smooth {
+			a.world, b.world, c.world = w0, w1, w2
+			a.normal = cornerNormal(normals[f[0]], normal, front)
+			b.normal = cornerNormal(normals[f[1]], normal, front)
+			c.normal = cornerNormal(normals[f[2]], normal, front)
+		} else {
+			center := w0.Add(w1).Add(w2).Scale(1.0 / 3)
+			tri.intensity = brightness(lights, center, normal)
+		}
+
+		n := clipTriangleNear(a, b, c, cam.Near, smooth, &tris)
 		for _, t := range tris[:n] {
-			var corners [3]screenPoint
 			for i, v := range t {
 				x, y := proj.project(v.view)
-				corners[i] = screenPoint{x, y, v.view.Z}
+				tri.corners[i] = screenPoint{x, y, v.view.Z}
+				if smooth {
+					tri.world[i], tri.normal[i] = v.world, v.normal
+				}
 			}
-			fn(corners, intensity)
+			fn(tri)
 		}
 	}
 }
 
-// DrawShaded renders the mesh's faces as solid triangles, flat shaded by the lights
-// and drawn in the mesh's Material. Nearer surfaces hide farther ones, faces turned away
+// DrawShaded renders the mesh's faces as solid triangles, shaded by the lights and
+// drawn in the mesh's Material. Nearer surfaces hide farther ones, faces turned away
 // from the camera are skipped (unless the mesh is DoubleSided), and faces crossing
 // the near plane are cut where they cross it. A mesh without Faces draws nothing; use
 // Draw for wireframes.
+//
+// A mesh without Normals is shaded flat, each face lit as a whole. One with Normals
+// is shaded smooth, every cell lit on its own; see Mesh.Normals.
 //
 // Brightness is shown by the character: a ramp from dim to bright, Material.Ramp.
 func (m Mesh) DrawShaded(fb *engine.FrameBuffer, cam Camera, lights ...Light) {
 	rs := getScratch(0)
 	defer rs.release()
 	ramp := rs.rampFor(m.Material)
-	m.eachShadedTriangle(cam, lights, fb.Width(), fb.Height(), func(c [3]screenPoint, intensity float64) {
-		cell := engine.Cell{Character: shadeChar(ramp, intensity), Foreground: m.Material.Color}
-		fb.FillTriangle(c[0].x, c[0].y, c[0].z, c[1].x, c[1].y, c[1].z, c[2].x, c[2].y, c[2].z, cell)
+	color := m.Material.Color
+	m.eachShadedTriangle(cam, lights, fb.Width(), fb.Height(), func(t *shadedTriangle) {
+		c := &t.corners
+		if !t.smooth {
+			cell := engine.Cell{Character: shadeChar(ramp, t.intensity), Foreground: color}
+			fb.FillTriangle(c[0].x, c[0].y, c[0].z, c[1].x, c[1].y, c[1].z, c[2].x, c[2].y, c[2].z, cell)
+			return
+		}
+		fb.FillTriangleFunc(c[0].x, c[0].y, c[0].z, c[1].x, c[1].y, c[1].z, c[2].x, c[2].y, c[2].z, func(b0, b1, b2 float64) engine.Cell {
+			return engine.Cell{Character: shadeChar(ramp, t.brightnessAt(lights, b0, b1, b2)), Foreground: color}
+		})
 	})
 }
 
 // DrawShadedPixels is DrawShaded for a pixel Canvas: the same faces, culling,
-// clipping and depth rules, but brightness is shown by the color (a darker or
-// lighter shade of Material.Color) and there are twice as many rows, so edges are
+// clipping, depth and smoothing rules, but brightness is shown by the color (a darker
+// or lighter shade of Material.Color) and there are twice as many rows, so edges are
 // finer. Call Canvas.Compose afterwards to put the pixels into the FrameBuffer.
 func (m Mesh) DrawShadedPixels(c *engine.Canvas, cam Camera, lights ...Light) {
+	color := m.Material.Color
 	// Project onto the cell grid the canvas belongs to, then stretch y to pixel rows.
-	m.eachShadedTriangle(cam, lights, c.Width(), c.Height()/2, func(p [3]screenPoint, intensity float64) {
-		shade := engine.Shade(m.Material.Color, intensity)
-		c.FillTriangle(p[0].x, 2*p[0].y, p[0].z, p[1].x, 2*p[1].y, p[1].z, p[2].x, 2*p[2].y, p[2].z, shade)
+	m.eachShadedTriangle(cam, lights, c.Width(), c.Height()/2, func(t *shadedTriangle) {
+		p := &t.corners
+		if !t.smooth {
+			c.FillTriangle(p[0].x, 2*p[0].y, p[0].z, p[1].x, 2*p[1].y, p[1].z, p[2].x, 2*p[2].y, p[2].z, engine.Shade(color, t.intensity))
+			return
+		}
+		c.FillTriangleFunc(p[0].x, 2*p[0].y, p[0].z, p[1].x, 2*p[1].y, p[1].z, p[2].x, 2*p[2].y, p[2].z, func(b0, b1, b2 float64) engine.Color {
+			return engine.Shade(color, t.brightnessAt(lights, b0, b1, b2))
+		})
 	})
 }

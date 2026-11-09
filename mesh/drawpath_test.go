@@ -85,14 +85,25 @@ func TestDrawingAllocatesNothing(t *testing.T) {
 	ramped.Material.Ramp = " .oO@"
 	both := m
 	both.DoubleSided = true
+	smooth := m.SmoothNormals()
+	smoothRamped := ramped.SmoothNormals()
+	smoothBoth := both.SmoothNormals()
+	sphere := uvSphereForTest(1.5, 12, 6)
+	sphere.Transform = Transform{Position: geometry.Vector3{X: 0.3, Z: 1}, Yaw: 0.4, Scale: 1.2}
 
 	tests := map[string]func(){
-		"wireframe":         func() { m.Draw(fb, cam, engine.Cell{Character: '#'}) },
-		"shaded":            func() { m.DrawShaded(fb, cam, lights...) },
-		"shaded, a ramp":    func() { ramped.DrawShaded(fb, cam, lights...) },
-		"shaded, two-sided": func() { both.DrawShaded(fb, cam, lights...) },
-		"pixels":            func() { m.DrawShadedPixels(canvas, cam, lights...) },
-		"nothing to draw":   func() { Mesh{}.DrawShaded(fb, cam, lights...) },
+		"wireframe":             func() { m.Draw(fb, cam, engine.Cell{Character: '#'}) },
+		"shaded":                func() { m.DrawShaded(fb, cam, lights...) },
+		"shaded, a ramp":        func() { ramped.DrawShaded(fb, cam, lights...) },
+		"shaded, two-sided":     func() { both.DrawShaded(fb, cam, lights...) },
+		"pixels":                func() { m.DrawShadedPixels(canvas, cam, lights...) },
+		"smooth":                func() { smooth.DrawShaded(fb, cam, lights...) },
+		"smooth, a ramp":        func() { smoothRamped.DrawShaded(fb, cam, lights...) },
+		"smooth, two-sided":     func() { smoothBoth.DrawShaded(fb, cam, lights...) },
+		"smooth sphere":         func() { sphere.DrawShaded(fb, cam, lights...) },
+		"smooth pixels":         func() { smooth.DrawShadedPixels(canvas, cam, lights...) },
+		"smooth sphere, pixels": func() { sphere.DrawShadedPixels(canvas, cam, lights...) },
+		"nothing to draw":       func() { Mesh{}.DrawShaded(fb, cam, lights...) },
 	}
 	for name, draw := range tests {
 		t.Run(name, func(t *testing.T) {
@@ -109,9 +120,10 @@ func TestDrawingFromSeveralGoroutinesGivesTheSamePictures(t *testing.T) {
 	t.Setenv("TERM_PROGRAM", "")
 	cam := Camera{Position: geometry.Vector3{Z: -2}, Near: 0.5}
 	lights := []Light{Ambient{Level: 0.2}, Directional{Direction: geometry.Vector3{X: 0.4, Y: -1, Z: 0.6}}}
-	meshes := []Mesh{drawPathMesh(), Cube(1), Grid(6, 3)}
+	meshes := []Mesh{drawPathMesh(), Cube(1), Grid(6, 3), uvSphereForTest(1.5, 12, 6), drawPathMesh().SmoothNormals()}
 	meshes[1].Transform.Position = geometry.Vector3{Z: 4}
 	meshes[2].Transform = Transform{Position: geometry.Vector3{Y: -1, Z: 5}}
+	meshes[3].Transform = Transform{Position: geometry.Vector3{X: 0.3, Z: 3}, Yaw: 0.4}
 
 	render := func(m Mesh) string {
 		fb := newShadeBuffer(t)

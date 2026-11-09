@@ -114,6 +114,9 @@ func FuzzDraw(f *testing.F) {
 			cube.DoubleSided = true
 			cube.withColor(engine.Palette(1)).DrawShaded(fb, cam, light)
 			cube.withColor(engine.Palette(1)).DrawShadedPixels(fb.Canvas(), cam, light)
+			smooth := cube.SmoothNormals().withColor(engine.Palette(1))
+			smooth.DrawShaded(fb, cam, light)
+			smooth.DrawShadedPixels(fb.Canvas(), cam, light)
 			fb.Canvas().Compose()
 		}()
 
@@ -444,6 +447,13 @@ func FuzzDrawBadMesh(f *testing.F) {
 			m.DoubleSided = true
 			m.withColor(engine.Palette(1)).DrawShaded(fb, cam, light)
 			m.withColor(engine.Palette(1)).DrawShadedPixels(fb.Canvas(), cam, light)
+			smooth := m.SmoothNormals()
+			smooth.DrawShaded(fb, cam, light)
+			smooth.DrawShadedPixels(fb.Canvas(), cam, light)
+			if len(smooth.Normals) > 0 {
+				smooth.Normals = smooth.Normals[1:] // one too few: shaded flat
+				smooth.DrawShaded(fb, cam, light)
+			}
 			fb.Canvas().Compose()
 		}()
 
@@ -451,6 +461,141 @@ func FuzzDrawBadMesh(f *testing.F) {
 		case <-done:
 		case <-time.After(3 * time.Second):
 			t.Fatalf("wanted drawing to finish for %d vertices, edges %v and faces %v", len(m.Vertices), m.Edges, m.Faces)
+		}
+	})
+}
+
+// floatsFrom reads n float64s from data, eight bytes each, as the fuzzer made them: any
+// bit pattern, so NaN, infinities and denormals included. Missing bytes read as zero.
+func floatsFrom(data []byte, n int) []float64 {
+	out := make([]float64, n)
+	for i := range out {
+		if 8*i+8 <= len(data) {
+			out[i] = math.Float64frombits(binary.LittleEndian.Uint64(data[8*i:]))
+		}
+	}
+	return out
+}
+
+// checkLight fails the test if it is asked about a point or normal that is not finite,
+// or a normal that is neither a unit vector nor zero: the promise made to a Light.
+type checkLight struct {
+	t     *testing.T
+	asked int
+}
+
+func (c *checkLight) Brightness(point, normal geometry.Vector3) float64 {
+	c.asked++
+	if !finite(point.X, point.Y, point.Z, normal.X, normal.Y, normal.Z) {
+		c.t.Errorf("wanted a finite point and normal, got %v and %v", point, normal)
+	}
+	if l := normal.Length(); l != 0 && math.Abs(l-1) > 1e-6 {
+		c.t.Errorf("wanted a unit normal or zero, got %v of length %v", normal, l)
+	}
+	return 0.5
+}
+
+// Whatever normals a mesh is given, in whatever number, drawing must not panic, must
+// finish, and must only ever ask a light about finite points and unit (or zero) normals.
+func FuzzDrawNormals(f *testing.F) {
+	f.Add(uint8(3), uint8(0), []byte{})
+	f.Add(uint8(3), uint8(1), floatBytes(0, 0, -1, 1, 0, -1, 0, 1, -1))
+	f.Add(uint8(3), uint8(0), floatBytes(math.NaN(), 0, 0, 0, 0, 0, 0, 0, 0))
+	f.Add(uint8(3), uint8(0), floatBytes(math.Inf(1), 0, 0, 1, 1, 1, 0, 0, 0))
+	f.Add(uint8(3), uint8(0), floatBytes(math.MaxFloat64, math.MaxFloat64, math.MaxFloat64, 5e-324, 0, 0, -1, 1e-200, 0))
+	f.Add(uint8(3), uint8(1), floatBytes(0, 0, -1, 0, 0, 1, 0, 0, -1)) // cancelling
+	f.Add(uint8(2), uint8(0), floatBytes(0, 0, -1, 0, 0, -1))          // too few
+	f.Add(uint8(4), uint8(0), floatBytes(0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1))
+	f.Add(uint8(3), uint8(2), floatBytes(1, 1, 1, 1, 1, 1, 1, 1, 1))
+
+	f.Fuzz(func(t *testing.T, count, flags uint8, data []byte) {
+		m := Mesh{
+			Vertices:    []geometry.Vector3{{X: -3, Y: -2, Z: 3}, {Y: 3, Z: 6}, {X: 3, Y: -2, Z: 9}},
+			Faces:       [][3]int{{0, 1, 2}},
+			DoubleSided: flags&1 != 0,
+		}
+		if flags&2 != 0 {
+			m.Transform = Transform{Position: geometry.Vector3{X: 1}, Yaw: 0.7, Roll: 0.2, Scale: 1e-200}
+		}
+		n := int(count % 5)
+		fl := floatsFrom(data, 3*n)
+		for i := range n {
+			m.Normals = append(m.Normals, geometry.Vector3{X: fl[3*i], Y: fl[3*i+1], Z: fl[3*i+2]})
+		}
+
+		fb, err := engine.NewFrameBuffer(20, 8)
+		if err != nil {
+			t.Fatalf("unable to initialize frame buffer: %v", err)
+		}
+		cam := Camera{FOV: math.Pi / 2, Near: 0.1}
+		light := &checkLight{t: t}
+
+		done := make(chan struct{})
+		go func() {
+			defer close(done)
+			m.DrawShaded(fb, cam, light)
+			m.DrawShadedPixels(fb.Canvas(), cam, light)
+		}()
+		select {
+		case <-done:
+		case <-time.After(3 * time.Second):
+			t.Fatalf("wanted drawing to finish for normals %v", m.Normals)
+		}
+	})
+}
+
+func floatBytes(vs ...float64) []byte {
+	out := make([]byte, 0, 8*len(vs))
+	for _, v := range vs {
+		out = binary.LittleEndian.AppendUint64(out, math.Float64bits(v))
+	}
+	return out
+}
+
+// SmoothNormals must give one normal per vertex, each finite and either zero or of
+// length 1, whatever the vertices and faces, and must leave the mesh it is called on alone.
+func FuzzSmoothNormals(f *testing.F) {
+	f.Add(uint8(3), floatBytes(0, 0, 0, 1, 0, 0, 0, 1, 0), []byte{0, 1, 2})
+	f.Add(uint8(4), floatBytes(0, 0, 0, 1e308, 1e308, 1e308, -1e308, 1e308, 1e308, 1, 1, 1), []byte{0, 1, 2, 0, 2, 3})
+	f.Add(uint8(3), floatBytes(math.NaN(), 0, 0, 1, 0, 0, 0, 1, 0), []byte{0, 1, 2})
+	f.Add(uint8(3), floatBytes(5e-324, 0, 0, 0, 5e-324, 0, 0, 0, 5e-324), []byte{0, 1, 2, 2, 1, 0})
+	f.Add(uint8(2), floatBytes(0, 0, 0, 1, 1, 1), []byte{0, 0, 1, 9, 200, 3})
+	f.Add(uint8(0), []byte{}, []byte{0, 1, 2})
+
+	f.Fuzz(func(t *testing.T, vertices uint8, coords, faces []byte) {
+		n := int(vertices % 9)
+		fl := floatsFrom(coords, 3*n)
+		m := Mesh{}
+		for i := range n {
+			m.Vertices = append(m.Vertices, geometry.Vector3{X: fl[3*i], Y: fl[3*i+1], Z: fl[3*i+2]})
+		}
+		// Each face is three bytes; reading a little past the vertices names ones that do not exist.
+		for i := 0; i+3 <= len(faces) && i < 3*20; i += 3 {
+			m.Faces = append(m.Faces, [3]int{int(faces[i]) % (n + 2), int(faces[i+1]) % (n + 2), int(faces[i+2]) % (n + 2)})
+		}
+		before := m.Clone()
+
+		got := m.SmoothNormals()
+
+		if len(got.Normals) != n {
+			t.Fatalf("wanted %d normals, got %d", n, len(got.Normals))
+		}
+		for i, nm := range got.Normals {
+			if !finite(nm.X, nm.Y, nm.Z) {
+				t.Fatalf("vertex %d: wanted a finite normal, got %v", i, nm)
+			}
+			if l := nm.Length(); l != 0 && math.Abs(l-1) > 1e-9 {
+				t.Fatalf("vertex %d: wanted a unit normal or zero, got %v of length %v", i, nm, l)
+			}
+		}
+		for i, v := range m.Vertices {
+			b := before.Vertices[i]
+			if math.Float64bits(v.X) != math.Float64bits(b.X) || math.Float64bits(v.Y) != math.Float64bits(b.Y) || math.Float64bits(v.Z) != math.Float64bits(b.Z) {
+				t.Fatalf("wanted the mesh left alone, vertex %d changed", i)
+			}
+		}
+		if m.Normals != nil {
+			t.Fatalf("wanted the mesh left alone, it gained normals")
 		}
 	})
 }

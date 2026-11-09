@@ -65,3 +65,48 @@ func BenchmarkDraw3D(b *testing.B) {
 		}
 	}
 }
+
+// BenchmarkDrawSmooth3D draws the same scene with a sphere of 24 by 12 segments in
+// place of each cube, once with normals (lit at every cell) and once without (lit at
+// every face), into cells and into pixels, at two sizes.
+func BenchmarkDrawSmooth3D(b *testing.B) {
+	_, cubes, cam, lights := benchScene()
+	var smooth, faceted []Mesh
+	for _, c := range cubes {
+		s := uvSphereForTest(1.2, 24, 12)
+		s.Transform, s.Material = c.Transform, c.Material
+		f := s.Clone()
+		f.Normals = nil
+		smooth, faceted = append(smooth, s), append(faceted, f)
+	}
+	for _, size := range []struct{ w, h int }{{80, 24}, {200, 60}} {
+		fb, err := engine.NewFrameBuffer(size.w, size.h)
+		if err != nil {
+			b.Fatal(err)
+		}
+		for _, v := range []struct {
+			name   string
+			meshes []Mesh
+			pixels bool
+		}{
+			{"faceted shaded", faceted, false},
+			{"smooth shaded", smooth, false},
+			{"faceted pixels", faceted, true},
+			{"smooth pixels", smooth, true},
+		} {
+			b.Run(fmt.Sprintf("%s %dx%d", v.name, size.w, size.h), func(b *testing.B) {
+				b.ReportAllocs()
+				for b.Loop() {
+					fb.Clear()
+					for _, m := range v.meshes {
+						if v.pixels {
+							m.DrawShadedPixels(fb.Canvas(), cam, lights...)
+						} else {
+							m.DrawShaded(fb, cam, lights...)
+						}
+					}
+				}
+			})
+		}
+	}
+}

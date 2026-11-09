@@ -159,6 +159,38 @@ var goldenScenes = []struct {
 		cube.withColor(engine.Palette(208)).DrawShaded(fb, shadeCam(), goldenAmbientOnly)
 		return fb
 	}},
+	{"smooth-sphere", func(t *testing.T) *engine.FrameBuffer {
+		fb := goldenBuffer(t)
+		ball := uvSphereForTest(2, 24, 12)
+		ball.Transform.Position = geometry.Vector3{Z: 5}
+		ball.withColor(engine.Palette(33)).DrawShaded(fb, shadeCam(), goldenSun)
+		return fb
+	}},
+	{"faceted-sphere", func(t *testing.T) *engine.FrameBuffer {
+		fb := goldenBuffer(t)
+		ball := uvSphereForTest(2, 24, 12)
+		ball.Normals = nil // the same sphere, lit face by face
+		ball.Transform.Position = geometry.Vector3{Z: 5}
+		ball.withColor(engine.Palette(33)).DrawShaded(fb, shadeCam(), goldenSun)
+		return fb
+	}},
+	{"smooth-sphere-pixels", func(t *testing.T) *engine.FrameBuffer {
+		t.Setenv("TERM_PROGRAM", "") // Canvas.Seamless depends on the terminal running the tests
+		fb := goldenBuffer(t)
+		ball := uvSphereForTest(2, 24, 12)
+		ball.Transform.Position = geometry.Vector3{Z: 5}
+		canvas := fb.Canvas()
+		ball.withColor(engine.Palette(33)).DrawShadedPixels(canvas, shadeCam(), goldenSun)
+		canvas.Compose()
+		return fb
+	}},
+	{"smooth-sphere-cut-by-near-plane", func(t *testing.T) *engine.FrameBuffer {
+		fb := goldenBuffer(t)
+		ball := uvSphereForTest(2, 24, 12)
+		ball.Transform.Position = geometry.Vector3{X: 0.5, Z: 3.2} // its near side reaches in front of the near plane
+		ball.withColor(engine.Palette(46)).DrawShaded(fb, Camera{FOV: 1.4, Near: 1.6}, goldenSun)
+		return fb
+	}},
 }
 
 func TestGoldenPictures(t *testing.T) {

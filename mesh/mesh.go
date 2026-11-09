@@ -27,6 +27,21 @@ type Mesh struct {
 	// triangle.
 	Faces [][3]int
 
+	// Normals are the directions the surface faces at each vertex, in model space,
+	// and turn shaded drawing smooth. With none (the default) every face is lit as
+	// a whole, one brightness per face, so a round shape shows its facets. With one
+	// normal per vertex the lights are asked about every cell instead, using the
+	// normal and position blended across the face from its corners, so a round
+	// shape looks round. Normals can be any length: a zero normal means "none
+	// here" and that corner takes the face's own normal.
+	//
+	// Where a surface has a hard edge, as a cube does, give each side its own
+	// vertices so that each can face its own way; SmoothNormals averages across
+	// shared vertices only. A list of any other length, or with a number that is
+	// not finite, is not used (the mesh is shaded flat) and Validate reports it.
+	// Normals follow Transform: turned with the model, unaffected by its scale.
+	Normals []geometry.Vector3
+
 	// Transform places the model in the world.
 	Transform Transform
 
@@ -99,13 +114,15 @@ func Cube(size float64) Mesh {
 }
 
 // Clone returns a copy of the mesh that shares nothing with it, so changing the
-// copy's Vertices, Edges or Faces leaves the original alone. Assigning a Mesh to a
-// new variable copies the struct but not these lists, which both would still share.
+// copy's Vertices, Edges, Faces or Normals leaves the original alone. Assigning a
+// Mesh to a new variable copies the struct but not these lists, which both would
+// still share.
 func (m Mesh) Clone() Mesh {
 	out := m
 	out.Vertices = slices.Clone(m.Vertices)
 	out.Edges = slices.Clone(m.Edges)
 	out.Faces = slices.Clone(m.Faces)
+	out.Normals = slices.Clone(m.Normals)
 	return out
 }
 

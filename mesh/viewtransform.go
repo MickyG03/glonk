@@ -67,9 +67,11 @@ func (p projector) project(v geometry.Vector3) (x, y float64) {
 // scratch holds the lists a draw call needs, kept between calls so that drawing stops
 // allocating once they have grown to the size of the meshes drawn.
 type scratch struct {
-	world []geometry.Vector3
-	view  []geometry.Vector3
-	ramp  []rune
+	world  []geometry.Vector3
+	view   []geometry.Vector3
+	normal []geometry.Vector3 // the mesh's normals in world space, for smooth shading
+	ramp   []rune
+	tri    shadedTriangle // the triangle being handed to the fill
 }
 
 var scratchPool = sync.Pool{New: func() any { return new(scratch) }}
