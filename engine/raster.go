@@ -153,15 +153,46 @@ const triangleEps = 1e-9
 // each cell is drawn with SetDepth, so nearer surfaces win. Either winding works.
 // A triangle with no area, or with a non-positive or NaN corner depth, draws nothing.
 func (fb *FrameBuffer) FillTriangle(x0, y0, z0, x1, y1, z1, x2, y2, z2 float64, cell Cell) {
-	scanTriangle(fb.width, fb.height, x0, y0, z0, x1, y1, z1, x2, y2, z2, func(x, y int, z float64) {
+	scanTriangle(fb.width, fb.height, x0, y0, z0, x1, y1, z1, x2, y2, z2, func(x, y int, z, _, _, _ float64) {
 		fb.SetDepth(x, y, z, cell)
 	})
 }
 
+// FillTriangleFunc fills the triangle like FillTriangle, but asks cell what to draw
+// in each covered cell instead of drawing one cell everywhere. cell is given the
+// weights b0, b1 and b2 of the three corners at the middle of that cell: they sum to
+// 1, and b0*a0 + b1*a1 + b2*a2 is the value at the cell of anything that has the
+// value a0, a1, a2 at the corners, taking the perspective of z0, z1 and z2 into
+// account. A cell centre exactly on an edge can get a weight a hair below zero.
+//
+// The depth test comes first: cell is called only for a cell that is nearer than what
+// is there, and so is never asked about one that would be hidden. The cell it returns
+// is drawn, with the depth, as SetDepth would. A nil cell draws nothing.
+func (fb *FrameBuffer) FillTriangleFunc(x0, y0, z0, x1, y1, z1, x2, y2, z2 float64, cell func(b0, b1, b2 float64) Cell) {
+	if cell == nil {
+		return
+	}
+	scanTriangle(fb.width, fb.height, x0, y0, z0, x1, y1, z1, x2, y2, z2, func(x, y int, z, p0, p1, p2 float64) {
+		// scanTriangle only visits cells inside the buffer.
+		i := y*fb.width + x
+		if !(z < fb.depth[i]) {
+			return
+		}
+		c := cell(p0*z, p1*z, p2*z)
+		fb.depth[i] = z
+		fb.frame[i] = c
+	})
+}
+
 // scanTriangle walks the w x h grid and calls plot for every cell whose centre
-// lies inside the triangle, with the interpolated depth there. It does the
+// lies inside the triangle, with the interpolated depth z there. It does the
 // geometry for every kind of target; the caller decides what a cell holds.
-func scanTriangle(w, h int, x0, y0, z0, x1, y1, z1, x2, y2, z2 float64, plot func(x, y int, z float64)) {
+//
+// p0, p1 and p2 are the corners' screen-space weights divided by their depths. Times
+// z they are the perspective-correct weights of the corners: they sum to 1 and
+// attributes blend with them as they do in the scene. They are left unmultiplied so
+// that a fill that does not want them pays nothing for them.
+func scanTriangle(w, h int, x0, y0, z0, x1, y1, z1, x2, y2, z2 float64, plot func(x, y int, z, p0, p1, p2 float64)) {
 	if !(z0 > 0 && z1 > 0 && z2 > 0) {
 		return
 	}
@@ -194,8 +225,8 @@ func scanTriangle(w, h int, x0, y0, z0, x1, y1, z1, x2, y2, z2 float64, plot fun
 
 			// 1/z is the quantity that varies linearly across the screen, so
 			// interpolate it and invert; interpolating z itself would skew depth.
-			invZ := w0/z0 + w1/z1 + w2/z2
-			plot(x, y, 1/invZ)
+			p0, p1, p2 := w0/z0, w1/z1, w2/z2
+			plot(x, y, 1/(p0+p1+p2), p0, p1, p2)
 		}
 	}
 }

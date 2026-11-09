@@ -125,8 +125,29 @@ func (c *Canvas) SetDepth(x, y int, z float64, color Color) bool {
 // pixel coordinates, like FrameBuffer.FillTriangle but into pixels. The z values
 // are the corners' distances from the camera and must be positive.
 func (c *Canvas) FillTriangle(x0, y0, z0, x1, y1, z1, x2, y2, z2 float64, color Color) {
-	scanTriangle(c.width, c.height, x0, y0, z0, x1, y1, z1, x2, y2, z2, func(x, y int, z float64) {
+	scanTriangle(c.width, c.height, x0, y0, z0, x1, y1, z1, x2, y2, z2, func(x, y int, z, _, _, _ float64) {
 		c.SetDepth(x, y, z, color)
+	})
+}
+
+// FillTriangleFunc fills the triangle like FillTriangle, but asks color what to draw
+// in each covered pixel, with the weights of the three corners there. See
+// FrameBuffer.FillTriangleFunc for what the weights are and for the order of the
+// depth test and the call: color is never asked about a hidden pixel. A nil color
+// draws nothing.
+func (c *Canvas) FillTriangleFunc(x0, y0, z0, x1, y1, z1, x2, y2, z2 float64, color func(b0, b1, b2 float64) Color) {
+	if color == nil {
+		return
+	}
+	scanTriangle(c.width, c.height, x0, y0, z0, x1, y1, z1, x2, y2, z2, func(x, y int, z, p0, p1, p2 float64) {
+		// scanTriangle only visits pixels inside the canvas.
+		i := y*c.width + x
+		if !(z < c.depth[i]) {
+			return
+		}
+		col := color(p0*z, p1*z, p2*z)
+		c.depth[i] = z
+		c.pixels[i] = col
 	})
 }
 

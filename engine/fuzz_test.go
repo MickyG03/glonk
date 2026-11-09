@@ -158,6 +158,85 @@ func finite(vs ...float64) bool {
 	return true
 }
 
+// FuzzFillTriangleFunc checks FillTriangleFunc against FillTriangle on whatever corners
+// the fuzzer finds: the same cells and depths, nothing asked for a bad depth, and for
+// corners of a sane size weights that are finite and sum to 1.
+func FuzzFillTriangleFunc(f *testing.F) {
+	nan, inf := math.NaN(), math.Inf(1)
+	f.Add(0.0, 0.0, 1.0, 4.0, 0.0, 1.0, 0.0, 4.0, 1.0)
+	f.Add(-3.0, -2.0, 1.0, 9.0, -1.0, 7.0, 2.0, 8.0, 3.0)
+	f.Add(-100.0, -100.0, 1.0, 300.0, -100.0, 2.0, -100.0, 300.0, 3.0)
+	f.Add(-1e12, -1e12, 1.0, 3e12, -1e12, 1.0, -1e12, 3e12, 1.0)
+	f.Add(0.0, 0.0, 1.0, nan, 0.0, 1.0, 0.0, 4.0, 1.0)
+	f.Add(0.0, 0.0, 1.0, inf, 0.0, 1.0, 0.0, 4.0, 1.0)
+	f.Add(0.0, 0.0, 0.0, 4.0, 0.0, 1.0, 0.0, 4.0, 1.0)
+	f.Add(0.0, 0.0, 1.0, 2.0, 2.0, 1.0, 4.0, 4.0, 1.0)
+	f.Add(1e300, 1e300, 1e-300, -1e300, 1e300, 1e300, 0.0, -1e300, 1.0)
+
+	f.Fuzz(func(t *testing.T, x0, y0, z0, x1, y1, z1, x2, y2, z2 float64) {
+		const w, h = 7, 5
+		mark := Cell{Character: '#'}
+		paint := RGB(1, 2, 3)
+
+		sane := true
+		for _, v := range []float64{x0, y0, x1, y1, x2, y2} {
+			sane = sane && math.Abs(v) <= 100
+		}
+		for _, z := range []float64{z0, z1, z2} {
+			sane = sane && z >= 0.01 && z <= 1000
+		}
+		area := (x1-x0)*(y2-y0) - (x2-x0)*(y1-y0)
+		sane = sane && math.Abs(area) >= 1
+
+		calls := 0
+		check := func(b0, b1, b2 float64) {
+			calls++
+			if !sane {
+				return
+			}
+			for _, b := range []float64{b0, b1, b2} {
+				if math.IsNaN(b) || math.IsInf(b, 0) {
+					t.Fatalf("wanted finite weights for sane corners, got %v %v %v", b0, b1, b2)
+				}
+			}
+			if sum := b0 + b1 + b2; math.Abs(sum-1) > 1e-6 {
+				t.Fatalf("wanted weights summing to 1, got %v %v %v (sum %v)", b0, b1, b2, sum)
+			}
+		}
+
+		plain, err := NewFrameBuffer(w, h)
+		if err != nil {
+			t.Fatalf("unable to initialize frame buffer: %v", err)
+		}
+		fn, err := NewFrameBuffer(w, h)
+		if err != nil {
+			t.Fatalf("unable to initialize frame buffer: %v", err)
+		}
+		plain.FillTriangle(x0, y0, z0, x1, y1, z1, x2, y2, z2, mark)
+		fn.FillTriangleFunc(x0, y0, z0, x1, y1, z1, x2, y2, z2, func(b0, b1, b2 float64) Cell {
+			check(b0, b1, b2)
+			return mark
+		})
+		if !slices.Equal(plain.frame, fn.frame) || !slices.Equal(plain.depth, fn.depth) {
+			t.Fatalf("wanted the same cells and depths as FillTriangle\n%s\nwanted\n%s", fn.String(), plain.String())
+		}
+
+		pc, fc := plain.Canvas(), fn.Canvas()
+		pc.FillTriangle(x0, y0, z0, x1, y1, z1, x2, y2, z2, paint)
+		fc.FillTriangleFunc(x0, y0, z0, x1, y1, z1, x2, y2, z2, func(b0, b1, b2 float64) Color {
+			check(b0, b1, b2)
+			return paint
+		})
+		if !slices.Equal(pc.pixels, fc.pixels) || !slices.Equal(pc.depth, fc.depth) {
+			t.Fatalf("wanted the same pixels and depths as FillTriangle")
+		}
+
+		if !(z0 > 0 && z1 > 0 && z2 > 0) && calls != 0 {
+			t.Fatalf("wanted a bad depth to ask for nothing, got %d calls", calls)
+		}
+	})
+}
+
 func FuzzFillTriangle(f *testing.F) {
 	nan, inf := math.NaN(), math.Inf(1)
 	f.Add(0.0, 0.0, 1.0, 4.0, 0.0, 1.0, 0.0, 4.0, 1.0)
