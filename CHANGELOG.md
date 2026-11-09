@@ -23,6 +23,7 @@ All notable changes to glonk are written here. The format follows [Keep a Change
 
 ### Changed
 
+- The viewer reads OBJ files up to 128 MiB, where it stopped at 64, so a model of 800,000 triangles (81 MB) loads.
 - A model file whose faces refer to normals now comes back with `Normals`, and so is drawn smooth where it used to be drawn flat. A file whose faces use no normals loads as it did, with no `Normals`, in the same time and with a little less memory (93 MB for the 3.7 MB benchmark file, 20% fewer allocations). Memory use is roughly 25 times the input size, up to about 35 for a file that gives most corners a normal of their own; `LoadOBJLimit` now says 35.
 - Drawing a mesh allocates nothing once warm, where it took 7 to 40 allocations a draw, and is up to about 20% faster on the benchmark scene. The camera's trigonometry is worked out once per draw instead of once per vertex, with the same arithmetic in the same order, so no picture moved.
 - `Canvas.Compose` also records depth: each cell it fills gets the depth of its nearer pixel in the `FrameBuffer`, in place of the depth it had. Anything drawn into the cells afterwards with a depth (`FillTriangle`, `DrawLineDepth`, `SetDepth`) is now hidden behind pixels that are nearer; before, it always landed on top. Drawing without a depth (`Set`, `DrawLine`, `DrawText`) is unaffected, and the cells Compose writes are the same. A pixel set with `Set` has no depth and counts as infinitely far. `Compose` takes about 10 microseconds longer on a full 200x60 canvas.

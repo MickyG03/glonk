@@ -76,8 +76,10 @@ type model struct {
 
 // maxModelBytes bounds the OBJ files the viewer reads. A model larger than this is
 // more likely a mistake than something to look at in a terminal, and loading one
-// takes 25 to 35 times as much memory. It is a variable so tests can lower it.
-var maxModelBytes int64 = 64 << 20
+// takes up to 35 times as much memory (about 4.5 GB at the limit). 128 MiB lets
+// through a model of 800,000 triangles (81 MB), which draws at about 20 frames a
+// second. It is a variable so tests can lower it.
+var maxModelBytes int64 = 128 << 20
 
 // loadModel reads one OBJ file from fsys, up to maxModelBytes, with the colors of the
 // materials in the MTL files beside it, and fits it to modelSize.

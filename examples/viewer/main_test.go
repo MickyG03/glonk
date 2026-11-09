@@ -425,8 +425,8 @@ func TestOversizedModelIsRefused(t *testing.T) {
 }
 
 func TestDefaultLimitSuitsTheSamplesAndIsGenerous(t *testing.T) {
-	if maxModelBytes != 64<<20 {
-		t.Errorf("wanted the default limit to be 64 MiB, got %d", maxModelBytes)
+	if maxModelBytes != 128<<20 {
+		t.Errorf("wanted the default limit to be 128 MiB, got %d", maxModelBytes)
 	}
 	loadSamples(t) // the bundled models are tiny and must load under it
 }
