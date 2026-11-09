@@ -213,6 +213,20 @@ var goldenScenes = []struct {
 		solid.withColor(engine.Palette(208)).DrawShaded(fb, shadeCam(), goldenSun)
 		return fb
 	}},
+	{"colored-cube", func(t *testing.T) *engine.FrameBuffer {
+		fb := goldenBuffer(t)
+		cube := coloredCube()
+		cube.DrawShaded(fb, shadeCam(), goldenSun)
+		return fb
+	}},
+	{"colored-cube-pixels", func(t *testing.T) *engine.FrameBuffer {
+		t.Setenv("TERM_PROGRAM", "") // Canvas.Seamless depends on the terminal running the tests
+		fb := goldenBuffer(t)
+		canvas := fb.Canvas()
+		coloredCube().DrawShadedPixels(canvas, shadeCam(), goldenSun)
+		canvas.Compose()
+		return fb
+	}},
 }
 
 func TestGoldenPictures(t *testing.T) {
@@ -245,3 +259,16 @@ var (
 	goldenSun         = sunAndFill(geometry.Vector3{X: 0.4, Y: -1, Z: 0.6}, 0.2)
 	goldenAmbientOnly = sunAndFill(geometry.Vector3{}, 0.5)
 )
+
+// coloredCube is the turned cube of the shaded pictures with a color for each side, the
+// -y side left to the mesh's own color.
+func coloredCube() Mesh {
+	cube := Cube(2)
+	cube.Transform = Transform{Position: geometry.Vector3{Z: 5}, Yaw: 0.6, Pitch: -0.4}
+	cube.Material.Color = engine.Palette(208)
+	sides := []engine.Color{engine.RGB(230, 60, 50), engine.RGB(50, 200, 90), {}, engine.RGB(60, 110, 230), engine.RGB(240, 200, 40), engine.RGB(170, 70, 200)}
+	for _, side := range sides { // two triangles for each side, in the order Cube lists them
+		cube.FaceColors = append(cube.FaceColors, side, side)
+	}
+	return cube
+}

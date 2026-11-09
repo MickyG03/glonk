@@ -42,6 +42,15 @@ type Mesh struct {
 	// Normals follow Transform: turned with the model, unaffected by its scale.
 	Normals []geometry.Vector3
 
+	// FaceColors are the colors of the faces, in the order of Faces: one for each, or
+	// none. A face's color is the color of its surface where the light meets it
+	// fully, as Material.Color is for the whole mesh, and replaces it for that face;
+	// brightness is still shown by the character or the shade. A zero entry means
+	// "none here", and that face takes Material.Color. A list of any other length is
+	// not used (every face takes Material.Color) and Validate reports it. LoadOBJFS
+	// fills it from a model's materials.
+	FaceColors []engine.Color
+
 	// Transform places the model in the world.
 	Transform Transform
 
@@ -114,15 +123,16 @@ func Cube(size float64) Mesh {
 }
 
 // Clone returns a copy of the mesh that shares nothing with it, so changing the
-// copy's Vertices, Edges, Faces or Normals leaves the original alone. Assigning a
-// Mesh to a new variable copies the struct but not these lists, which both would
-// still share.
+// copy's Vertices, Edges, Faces, Normals or FaceColors leaves the original alone.
+// Assigning a Mesh to a new variable copies the struct but not these lists, which
+// both would still share.
 func (m Mesh) Clone() Mesh {
 	out := m
 	out.Vertices = slices.Clone(m.Vertices)
 	out.Edges = slices.Clone(m.Edges)
 	out.Faces = slices.Clone(m.Faces)
 	out.Normals = slices.Clone(m.Normals)
+	out.FaceColors = slices.Clone(m.FaceColors)
 	return out
 }
 

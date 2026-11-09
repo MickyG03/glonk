@@ -5,8 +5,8 @@ import "fmt"
 // Validate checks a mesh that was built by hand or by other code, and returns an
 // error describing the first problem: a Transform that cannot be applied (a number
 // that is not finite, or a negative Scale), a vertex that is not a finite number,
-// normals that are not one per vertex or not finite numbers, or an edge or face that
-// names a vertex the mesh does not have.
+// normals that are not one per vertex or not finite numbers, face colors that are not
+// one per face, or an edge or face that names a vertex the mesh does not have.
 //
 // Drawing skips edges and faces with a bad index instead of failing, so Validate is
 // how to find out that a mesh is broken. Meshes from LoadOBJ, Cube and Grid are
@@ -29,6 +29,9 @@ func (m Mesh) Validate() error {
 		if !finite(v.X, v.Y, v.Z) {
 			return fmt.Errorf("mesh: normal %d is not a finite number: %v", i, v)
 		}
+	}
+	if len(m.FaceColors) != 0 && len(m.FaceColors) != len(m.Faces) {
+		return fmt.Errorf("mesh: %d face colors for %d faces: wanted none, or one for each face", len(m.FaceColors), len(m.Faces))
 	}
 	for i, e := range m.Edges {
 		for _, v := range e {

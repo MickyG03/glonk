@@ -86,25 +86,33 @@ func TestDrawingAllocatesNothing(t *testing.T) {
 	both := m
 	both.DoubleSided = true
 	smooth := m.SmoothNormals()
+	colored := m.Clone()
+	colored.FaceColors = colorsCycling(len(colored.Faces))
+	smoothColored := smooth.Clone()
+	smoothColored.FaceColors = colorsCycling(len(smoothColored.Faces))
 	smoothRamped := ramped.SmoothNormals()
 	smoothBoth := both.SmoothNormals()
 	sphere := Sphere(1.5, 12, 6)
 	sphere.Transform = Transform{Position: geometry.Vector3{X: 0.3, Z: 1}, Yaw: 0.4, Scale: 1.2}
 
 	tests := map[string]func(){
-		"wireframe":             func() { m.Draw(fb, cam, engine.Cell{Character: '#'}) },
-		"depth wireframe":       func() { m.DrawDepth(fb, cam, engine.Cell{Character: '#'}) },
-		"shaded":                func() { m.DrawShaded(fb, cam, lights...) },
-		"shaded, a ramp":        func() { ramped.DrawShaded(fb, cam, lights...) },
-		"shaded, two-sided":     func() { both.DrawShaded(fb, cam, lights...) },
-		"pixels":                func() { m.DrawShadedPixels(canvas, cam, lights...) },
-		"smooth":                func() { smooth.DrawShaded(fb, cam, lights...) },
-		"smooth, a ramp":        func() { smoothRamped.DrawShaded(fb, cam, lights...) },
-		"smooth, two-sided":     func() { smoothBoth.DrawShaded(fb, cam, lights...) },
-		"smooth sphere":         func() { sphere.DrawShaded(fb, cam, lights...) },
-		"smooth pixels":         func() { smooth.DrawShadedPixels(canvas, cam, lights...) },
-		"smooth sphere, pixels": func() { sphere.DrawShadedPixels(canvas, cam, lights...) },
-		"nothing to draw":       func() { Mesh{}.DrawShaded(fb, cam, lights...) },
+		"wireframe":              func() { m.Draw(fb, cam, engine.Cell{Character: '#'}) },
+		"depth wireframe":        func() { m.DrawDepth(fb, cam, engine.Cell{Character: '#'}) },
+		"shaded":                 func() { m.DrawShaded(fb, cam, lights...) },
+		"shaded, a ramp":         func() { ramped.DrawShaded(fb, cam, lights...) },
+		"shaded, two-sided":      func() { both.DrawShaded(fb, cam, lights...) },
+		"pixels":                 func() { m.DrawShadedPixels(canvas, cam, lights...) },
+		"smooth":                 func() { smooth.DrawShaded(fb, cam, lights...) },
+		"face colors":            func() { colored.DrawShaded(fb, cam, lights...) },
+		"face colors, pixels":    func() { colored.DrawShadedPixels(canvas, cam, lights...) },
+		"smooth, face colors":    func() { smoothColored.DrawShaded(fb, cam, lights...) },
+		"smooth, colors, pixels": func() { smoothColored.DrawShadedPixels(canvas, cam, lights...) },
+		"smooth, a ramp":         func() { smoothRamped.DrawShaded(fb, cam, lights...) },
+		"smooth, two-sided":      func() { smoothBoth.DrawShaded(fb, cam, lights...) },
+		"smooth sphere":          func() { sphere.DrawShaded(fb, cam, lights...) },
+		"smooth pixels":          func() { smooth.DrawShadedPixels(canvas, cam, lights...) },
+		"smooth sphere, pixels":  func() { sphere.DrawShadedPixels(canvas, cam, lights...) },
+		"nothing to draw":        func() { Mesh{}.DrawShaded(fb, cam, lights...) },
 	}
 	for name, draw := range tests {
 		t.Run(name, func(t *testing.T) {

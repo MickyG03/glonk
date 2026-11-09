@@ -3,6 +3,7 @@ package mesh
 import (
 	"math"
 
+	"github.com/kyrokohan/glonk/engine"
 	"github.com/kyrokohan/glonk/geometry"
 )
 
@@ -99,6 +100,9 @@ func (s *scratch) worldNormals(m Mesh, place placement) []geometry.Vector3 {
 // shadedTriangle is a piece of a face on screen, ready to be filled.
 type shadedTriangle struct {
 	corners [3]screenPoint
+
+	// The color of the face this piece belongs to, where the light meets it fully.
+	color engine.Color
 
 	// A flat triangle is lit once, as a whole.
 	smooth    bool

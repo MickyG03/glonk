@@ -186,7 +186,8 @@ func (m Mesh) eachShadedTriangle(cam Camera, lights []Light, w, h int, fn func(t
 	var tris [2][3]clipVert
 	tri := &s.tri // in the scratch, because a pointer handed to fn would move a local to the heap
 	tri.smooth = smooth
-	for _, f := range m.Faces {
+	faceColors := len(m.FaceColors) == len(m.Faces) // otherwise they are not used
+	for i, f := range m.Faces {
 		if !validIndex(f[0], len(view)) || !validIndex(f[1], len(view)) || !validIndex(f[2], len(view)) {
 			continue
 		}
@@ -202,6 +203,11 @@ func (m Mesh) eachShadedTriangle(cam Camera, lights []Light, w, h int, fn func(t
 		normal := w1.Sub(w0).Cross(w2.Sub(w0)).Normalize()
 		if !front {
 			normal = normal.Neg() // light the side the camera is looking at
+		}
+
+		tri.color = m.Material.Color
+		if faceColors && !m.FaceColors[i].IsDefault() {
+			tri.color = m.FaceColors[i]
 		}
 
 		a, b, c := clipVert{view: v0}, clipVert{view: v1}, clipVert{view: v2}
@@ -243,16 +249,15 @@ func (m Mesh) DrawShaded(fb *engine.FrameBuffer, cam Camera, lights ...Light) {
 	rs := getScratch(0)
 	defer rs.release()
 	ramp := rs.rampFor(m.Material)
-	color := m.Material.Color
 	m.eachShadedTriangle(cam, lights, fb.Width(), fb.Height(), func(t *shadedTriangle) {
 		c := &t.corners
 		if !t.smooth {
-			cell := engine.Cell{Character: shadeChar(ramp, t.intensity), Foreground: color}
+			cell := engine.Cell{Character: shadeChar(ramp, t.intensity), Foreground: t.color}
 			fb.FillTriangle(c[0].x, c[0].y, c[0].z, c[1].x, c[1].y, c[1].z, c[2].x, c[2].y, c[2].z, cell)
 			return
 		}
 		fb.FillTriangleFunc(c[0].x, c[0].y, c[0].z, c[1].x, c[1].y, c[1].z, c[2].x, c[2].y, c[2].z, func(b0, b1, b2 float64) engine.Cell {
-			return engine.Cell{Character: shadeChar(ramp, t.brightnessAt(lights, b0, b1, b2)), Foreground: color}
+			return engine.Cell{Character: shadeChar(ramp, t.brightnessAt(lights, b0, b1, b2)), Foreground: t.color}
 		})
 	})
 }
@@ -262,16 +267,15 @@ func (m Mesh) DrawShaded(fb *engine.FrameBuffer, cam Camera, lights ...Light) {
 // or lighter shade of Material.Color) and there are twice as many rows, so edges are
 // finer. Call Canvas.Compose afterwards to put the pixels into the FrameBuffer.
 func (m Mesh) DrawShadedPixels(c *engine.Canvas, cam Camera, lights ...Light) {
-	color := m.Material.Color
 	// Project onto the cell grid the canvas belongs to, then stretch y to pixel rows.
 	m.eachShadedTriangle(cam, lights, c.Width(), c.Height()/2, func(t *shadedTriangle) {
 		p := &t.corners
 		if !t.smooth {
-			c.FillTriangle(p[0].x, 2*p[0].y, p[0].z, p[1].x, 2*p[1].y, p[1].z, p[2].x, 2*p[2].y, p[2].z, engine.Shade(color, t.intensity))
+			c.FillTriangle(p[0].x, 2*p[0].y, p[0].z, p[1].x, 2*p[1].y, p[1].z, p[2].x, 2*p[2].y, p[2].z, engine.Shade(t.color, t.intensity))
 			return
 		}
 		c.FillTriangleFunc(p[0].x, 2*p[0].y, p[0].z, p[1].x, 2*p[1].y, p[1].z, p[2].x, 2*p[2].y, p[2].z, func(b0, b1, b2 float64) engine.Color {
-			return engine.Shade(color, t.brightnessAt(lights, b0, b1, b2))
+			return engine.Shade(t.color, t.brightnessAt(lights, b0, b1, b2))
 		})
 	})
 }
