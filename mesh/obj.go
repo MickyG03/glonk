@@ -5,10 +5,13 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"math"
+	"path"
 	"strconv"
 	"strings"
 
+	"github.com/kyrokohan/glonk/engine"
 	"github.com/kyrokohan/glonk/geometry"
 )
 
@@ -27,6 +30,9 @@ const maxOBJLine = 1 << 20
 // normals) read so far. A face with more than three corners is cut into triangles,
 // which are used for shading, while Edges follows the face's outline so a wireframe
 // shows the original polygons, with shared edges listed once.
+//
+// Materials (mtllib, usemtl) are skipped as well, because an MTL file sits beside the
+// OBJ and a reader has nowhere to look for it. LoadOBJFS reads them.
 //
 // Normals make the Mesh shaded smooth (see Mesh.Normals). A Mesh holds one normal per
 // vertex, while an OBJ file gives each corner of each face its own, so where a file
@@ -51,7 +57,7 @@ const maxOBJLine = 1 << 20
 // file of quads like that used 233 MB). LoadOBJ reads until the reader ends, so for a
 // source you do not control use LoadOBJLimit.
 func LoadOBJ(r io.Reader) (Mesh, error) {
-	return readOBJ(r, 0)
+	return readOBJ(r, 0, nil)
 }
 
 // ErrOBJTooLarge is wrapped by the error LoadOBJLimit returns when its input is
@@ -70,7 +76,54 @@ func LoadOBJLimit(r io.Reader, maxBytes int64) (Mesh, error) {
 	if maxBytes <= 0 {
 		return Mesh{}, fmt.Errorf("obj: limit must be positive, got %d", maxBytes)
 	}
-	return readOBJ(r, maxBytes)
+	return readOBJ(r, maxBytes, nil)
+}
+
+// LoadOBJFS is LoadOBJLimit for a model that comes with materials: it opens the OBJ
+// called name in fsys (an os.DirFS, an embed.FS, a zip) and gives each face the color
+// of its material, in Mesh.FaceColors. maxBytes limits the OBJ as it does for
+// LoadOBJLimit, and name must satisfy fs.ValidPath.
+//
+// A material is named by usemtl, and defined in an MTL file that an mtllib statement
+// names and that sits beside the OBJ. Only the diffuse color, Kd, is read: three
+// numbers from 0 to 1, or one for a gray. Textures and everything else about a
+// material are skipped, so a textured material shows whatever plain Kd it has. The
+// colors are used as they are, with no gamma conversion. A polygon cut into triangles
+// gives them all its color.
+//
+// The MTL files are as untrusted as the OBJ, and a model that has no colors is still
+// a model, so a problem with one does not fail the load; the faces it would have
+// colored come out without. That covers a name that is not a plain path inside the
+// OBJ's directory (a leading /, a leading .., a backslash), a file that is missing, a
+// material that is not defined, a Kd that is not understood, and a file that is longer
+// than 1 MiB (or maxBytes, if less) or cannot be read, which is skipped whole. At most
+// 8 files are read per OBJ and 10,000 materials kept, so the memory of LoadOBJLimit
+// grows by at most about 10 MiB while loading. An mtllib is read where it stands, so
+// it must come before the usemtl that uses it. A file name with a space in it cannot
+// be used, for spaces separate the names. os.DirFS follows symbolic links inside its
+// folder, so give it a folder you trust.
+//
+// A model with no usable material loads as LoadOBJLimit would, with no FaceColors.
+func LoadOBJFS(fsys fs.FS, name string, maxBytes int64) (Mesh, error) {
+	if maxBytes <= 0 {
+		return Mesh{}, fmt.Errorf("obj: limit must be positive, got %d", maxBytes)
+	}
+	if !fs.ValidPath(name) {
+		return Mesh{}, fmt.Errorf("obj: invalid file name %q", name)
+	}
+	f, err := fsys.Open(name)
+	if err != nil {
+		return Mesh{}, err
+	}
+	defer f.Close()
+
+	lib := &materialLibrary{
+		fsys:   fsys,
+		dir:    path.Dir(name),
+		limit:  min(maxBytes, maxMTLBytes),
+		colors: map[string]engine.Color{},
+	}
+	return readOBJ(f, maxBytes, lib)
 }
 
 // limitReader passes through at most limit bytes and fails on the first byte past
@@ -100,8 +153,9 @@ func (l *limitReader) Read(p []byte) (int, error) {
 	return n, err
 }
 
-// readOBJ is LoadOBJ and LoadOBJLimit; a limit of 0 means none.
-func readOBJ(r io.Reader, limit int64) (Mesh, error) {
+// readOBJ is LoadOBJ, LoadOBJLimit and LoadOBJFS; a limit of 0 means none. Materials
+// are read from lib, which is nil for the first two: they skip mtllib and usemtl.
+func readOBJ(r io.Reader, limit int64, lib *materialLibrary) (Mesh, error) {
 	var (
 		m          Mesh
 		seen       = map[[2]int]bool{}
@@ -112,6 +166,7 @@ func readOBJ(r io.Reader, limit int64) (Mesh, error) {
 		normals    []geometry.Vector3 // every vn, Z already negated
 		sm         smoothing          // how corners with normals become vertices; see there
 		cornerBuf  []objCorner        // the corners of the face being read, kept to read the next
+		material   engine.Color       // the Kd of the usemtl in effect; zero for none
 	)
 
 	// The scanner reads through lr. When the limit is hit it sees a read error, which
@@ -192,10 +247,29 @@ func readOBJ(r io.Reader, limit int64) (Mesh, error) {
 					corners[i].vertex = sm.vertexFor(c, &m)
 				}
 			}
+			// FaceColors starts at the first face with a color, and the faces before it
+			// get none, so a file without any never has the list.
+			if m.FaceColors == nil && !material.IsDefault() {
+				m.FaceColors = make([]engine.Color, len(m.Faces))
+			}
 			// Fan from the first corner. Each triangle is listed backwards because
 			// the Z flip mirrors the model.
 			for i := 1; i+1 < len(corners); i++ {
 				m.Faces = append(m.Faces, [3]int{corners[0].vertex, corners[i+1].vertex, corners[i].vertex})
+			}
+			for m.FaceColors != nil && len(m.FaceColors) < len(m.Faces) {
+				m.FaceColors = append(m.FaceColors, material)
+			}
+
+		case "mtllib":
+			if lib != nil {
+				lib.load(fields[1:])
+			}
+
+		case "usemtl":
+			// An unknown name, or none, means no color.
+			if lib != nil {
+				material = lib.colors[argument(text, "usemtl")]
 			}
 
 		case "l":
