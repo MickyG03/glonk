@@ -191,6 +191,28 @@ var goldenScenes = []struct {
 		ball.withColor(engine.Palette(46)).DrawShaded(fb, Camera{FOV: 1.4, Near: 1.6}, goldenSun)
 		return fb
 	}},
+	{"depth-wire-behind-solid", func(t *testing.T) *engine.FrameBuffer {
+		fb := goldenBuffer(t)
+		solid := Cube(2)
+		solid.Transform = Transform{Position: geometry.Vector3{Z: 5}, Yaw: 0.6, Pitch: -0.4}
+		wire := Cube(2)
+		wire.Transform = Transform{Position: geometry.Vector3{X: 1.6, Y: 0.4, Z: 7}, Yaw: 0.3}
+		// The wireframe is drawn after the solid it is behind: Draw would show it through.
+		solid.withColor(engine.Palette(208)).DrawShaded(fb, shadeCam(), goldenSun)
+		wire.DrawDepth(fb, shadeCam(), engine.Cell{Character: '#', Foreground: engine.Palette(46)})
+		return fb
+	}},
+	{"depth-wire-in-front-of-solid", func(t *testing.T) *engine.FrameBuffer {
+		fb := goldenBuffer(t)
+		solid := Cube(2)
+		solid.Transform = Transform{Position: geometry.Vector3{Z: 5}, Yaw: 0.6, Pitch: -0.4}
+		wire := Cube(1)
+		wire.Transform = Transform{Position: geometry.Vector3{X: 0.3, Z: 2.8}, Yaw: 0.6, Pitch: -0.3}
+		// The wireframe is drawn before the solid behind it: Draw would cover it.
+		wire.DrawDepth(fb, shadeCam(), engine.Cell{Character: '#', Foreground: engine.Palette(46)})
+		solid.withColor(engine.Palette(208)).DrawShaded(fb, shadeCam(), goldenSun)
+		return fb
+	}},
 }
 
 func TestGoldenPictures(t *testing.T) {

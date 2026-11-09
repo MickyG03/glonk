@@ -93,6 +93,7 @@ func TestDrawingAllocatesNothing(t *testing.T) {
 
 	tests := map[string]func(){
 		"wireframe":             func() { m.Draw(fb, cam, engine.Cell{Character: '#'}) },
+		"depth wireframe":       func() { m.DrawDepth(fb, cam, engine.Cell{Character: '#'}) },
 		"shaded":                func() { m.DrawShaded(fb, cam, lights...) },
 		"shaded, a ramp":        func() { ramped.DrawShaded(fb, cam, lights...) },
 		"shaded, two-sided":     func() { both.DrawShaded(fb, cam, lights...) },

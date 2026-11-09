@@ -137,7 +137,32 @@ func validIndex(i, n int) bool {
 // edges entirely behind it are skipped, and so are edges that name a vertex the
 // mesh does not have (Validate finds them). An edge that ends far off screen
 // costs no more than one that stays on screen.
+//
+// Draw ignores depth: the lines land on top of whatever is already drawn, so a
+// wireframe shows through solids, and it neither hides nor is hidden by anything drawn
+// after it. Use DrawDepth for lines that are hidden by nearer surfaces.
 func (m Mesh) Draw(fb *engine.FrameBuffer, cam Camera, cell engine.Cell) {
+	m.drawEdges(fb, cam, cell, false)
+}
+
+// DrawDepth is Draw with depth: an edge is drawn where it is nearer than what is
+// already there, and a surface or line drawn later hides it where that is nearer. So
+// the order of drawing does not matter, a wireframe behind a solid is hidden by it, and
+// it hides what is behind it. Solids drawn into a Canvas hide it too, once Canvas.Compose
+// has been called.
+//
+// The depth of each cell is perspective-correct along the edge (see
+// FrameBuffer.DrawLineDepth), and the edges are stored with their depth, so a farther
+// solid drawn later does not cover them. A tie keeps what is there, so a line lying
+// exactly on a surface, a grid on a floor, flickers between the two: lift it a little.
+// Edges drawn over the mesh's own faces are best drawn with Draw, which does not depend
+// on how those cells happen to compare.
+func (m Mesh) DrawDepth(fb *engine.FrameBuffer, cam Camera, cell engine.Cell) {
+	m.drawEdges(fb, cam, cell, true)
+}
+
+// drawEdges is Draw and DrawDepth.
+func (m Mesh) drawEdges(fb *engine.FrameBuffer, cam Camera, cell engine.Cell, depth bool) {
 	cam, ok := cam.withDefaults()
 	if !ok || !m.Transform.valid() {
 		return
@@ -173,7 +198,11 @@ func (m Mesh) Draw(fb *engine.FrameBuffer, cam Camera, cell engine.Cell) {
 
 		ax, ay := proj.project(a)
 		bx, by := proj.project(b)
-		drawEdge(fb, ax, ay, bx, by, cell)
+		if depth {
+			drawEdgeDepth(fb, ax, ay, a.Z, bx, by, b.Z, cell)
+		} else {
+			drawEdge(fb, ax, ay, bx, by, cell)
+		}
 	}
 }
 
@@ -182,25 +211,76 @@ func (m Mesh) Draw(fb *engine.FrameBuffer, cam Camera, cell engine.Cell) {
 // handles exactly.
 const farEdge = 1e8
 
-// drawEdge draws the line between two projected points. A point almost on the
-// camera's plane projects absurdly far away, or to infinity; such an edge is cut
-// back to the screen first so that it keeps its direction instead of being bent by
-// DrawLine's coordinate limit. An edge with a non-finite end cannot be drawn.
-func drawEdge(fb *engine.FrameBuffer, ax, ay, bx, by float64, cell engine.Cell) {
+// trimEdge returns the part of the edge between two projected points that is worth
+// handing to the line drawer, and whether there is any. A point almost on the camera's
+// plane projects absurdly far away, or to infinity; such an edge is cut back to the
+// screen first so that it keeps its direction instead of being bent by DrawLine's
+// coordinate limit. An edge with a non-finite end cannot be drawn.
+func trimEdge(w, h int, ax, ay, bx, by float64) (cx0, cy0, cx1, cy1 float64, ok bool) {
 	for _, v := range [...]float64{ax, ay, bx, by} {
 		if math.IsNaN(v) || math.IsInf(v, 0) {
-			return
+			return 0, 0, 0, 0, false
 		}
 	}
-
 	if math.Abs(ax) > farEdge || math.Abs(ay) > farEdge || math.Abs(bx) > farEdge || math.Abs(by) > farEdge {
-		var ok bool
 		// A cell of margin keeps the cut ends outside the visible area.
-		ax, ay, bx, by, ok = clipSegment(ax, ay, bx, by, -1, -1, float64(fb.Width()), float64(fb.Height()))
-		if !ok {
-			return
-		}
+		return clipSegment(ax, ay, bx, by, -1, -1, float64(w), float64(h))
+	}
+	return ax, ay, bx, by, true
+}
+
+// drawEdge draws the line between two projected points; see trimEdge.
+func drawEdge(fb *engine.FrameBuffer, ax, ay, bx, by float64, cell engine.Cell) {
+	cx0, cy0, cx1, cy1, ok := trimEdge(fb.Width(), fb.Height(), ax, ay, bx, by)
+	if !ok {
+		return
+	}
+	fb.DrawLine(int(math.Floor(cx0)), int(math.Floor(cy0)), int(math.Floor(cx1)), int(math.Floor(cy1)), cell)
+}
+
+// drawEdgeDepth is drawEdge for an edge whose ends are za and zb away from the camera.
+// 1/z runs evenly along the edge on the screen, so where trimming has cut an end short,
+// the depth there is worked out from how far along the edge the cut is, and the
+// line drawer is handed the depth the edge has at the place it now starts and stops.
+func drawEdgeDepth(fb *engine.FrameBuffer, ax, ay, za, bx, by, zb float64, cell engine.Cell) {
+	cx0, cy0, cx1, cy1, ok := trimEdge(fb.Width(), fb.Height(), ax, ay, bx, by)
+	if !ok {
+		return
 	}
 
-	fb.DrawLine(int(math.Floor(ax)), int(math.Floor(ay)), int(math.Floor(bx)), int(math.Floor(by)), cell)
+	// How far along the edge a point on it is, from 0 at a to 1 at b, by the longer axis.
+	along := func(x, y float64) float64 {
+		dx, dy := bx-ax, by-ay
+		switch {
+		case math.Abs(dx) >= math.Abs(dy) && dx != 0:
+			return (x - ax) / dx
+		case math.Abs(dy) > math.Abs(dx):
+			return (y - ay) / dy
+		}
+		return 0 // the edge is a point
+	}
+	// An end that trimming left alone is exactly a or b.
+	t0, t1 := 0.0, 1.0
+	if cx0 != ax || cy0 != ay {
+		t0 = along(cx0, cy0)
+	}
+	if cx1 != bx || cy1 != by {
+		t1 = along(cx1, cy1)
+	}
+	fb.DrawLineDepth(
+		int(math.Floor(cx0)), int(math.Floor(cy0)), depthAlong(za, zb, t0),
+		int(math.Floor(cx1)), int(math.Floor(cy1)), depthAlong(za, zb, t1),
+		cell)
+}
+
+// depthAlong is the depth a fraction t of the way along an edge from depth za to depth
+// zb, on the screen: 1/z is what runs evenly. The ends are exact.
+func depthAlong(za, zb, t float64) float64 {
+	switch {
+	case t <= 0:
+		return za
+	case t >= 1:
+		return zb
+	}
+	return 1 / ((1-t)/za + t/zb)
 }

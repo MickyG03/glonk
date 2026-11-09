@@ -110,6 +110,19 @@ func FuzzDraw(f *testing.F) {
 		go func() {
 			defer close(done)
 			cube.Draw(fb, cam, engine.Cell{Character: '#'})
+			deep, err := engine.NewFrameBuffer(20, 8)
+			if err == nil {
+				// On a blank frame DrawDepth draws no cell that Draw does not, and the same ones
+				// unless a depth is infinite, which only a size beyond 1e100 can make.
+				cube.DrawDepth(deep, cam, engine.Cell{Character: '#'})
+				plain, _ := engine.NewFrameBuffer(20, 8)
+				cube.Draw(plain, cam, engine.Cell{Character: '#'})
+				if big := math.Abs(size) > 1e100 || math.Abs(mx) > 1e100 || math.Abs(my) > 1e100 || math.Abs(mz) > 1e100 || math.Abs(cx) > 1e100 || math.Abs(cy) > 1e100 || math.Abs(cz) > 1e100; !big {
+					if deep.String() != plain.String() {
+						t.Errorf("wanted DrawDepth to draw what Draw does\n%s\nwanted\n%s", deep.String(), plain.String())
+					}
+				}
+			}
 			cube.withColor(engine.Palette(1)).DrawShaded(fb, cam, light)
 			cube.DoubleSided = true
 			cube.withColor(engine.Palette(1)).DrawShaded(fb, cam, light)

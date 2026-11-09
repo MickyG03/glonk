@@ -316,3 +316,38 @@ func ExamplePlane() {
 	// x from -5 to 5 and z from -3 to 3
 	// {0 1 0}
 }
+
+// DrawDepth is Draw with depth: a wireframe is hidden by solids in front of it, whichever
+// is drawn first.
+func ExampleMesh_DrawDepth() {
+	fb, err := engine.NewFrameBuffer(50, 15)
+	if err != nil {
+		panic(err)
+	}
+	cam := mesh.Camera{Position: geometry.Vector3{Y: 2.5}, Pitch: -0.5, FOV: 0.9}
+
+	cube := mesh.Cube(2.4)
+	cube.Transform.Position = geometry.Vector3{X: -0.8, Z: 5}
+	floor := mesh.Grid(9, 6)
+	floor.Transform.Position = geometry.Vector3{Y: -1.2, Z: 6}
+
+	// The floor comes second. Draw would run its lines on across the cube; DrawDepth
+	// stops them at the cube's edge, because the cube is nearer.
+	cube.DrawShaded(fb, cam, mesh.Ambient{Level: 0.2}, mesh.Directional{Direction: geometry.Vector3{X: 0.4, Y: -1, Z: 0.6}})
+	floor.DrawDepth(fb, cam, engine.Cell{Character: '+'})
+
+	fmt.Println(fb)
+	// Output:
+	//              %%%%%%%%%%%%%%
+	//           %%%%%%%%%%%%%%%%%%+++++++++++
+	//          +******************+++++++++++++
+	//        +++******************+++++++++++++++
+	//      ++    *****************   +     +     ++
+	//    ++++++++*****************+++++++++++++++++++
+	//  ++      +  ****************    +       +      ++
+	// ++++++++++++****************++++++++++++++++++++++
+	//       ++     **************       +       ++
+	//      +         +         +        +         +
+	// ++++++++++++++++++++++++++++++++++++++++++++++++++
+	//   +          +           +          +          +
+}
