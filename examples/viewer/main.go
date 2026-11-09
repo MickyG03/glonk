@@ -18,7 +18,7 @@ import (
 	"github.com/kyrokohan/glonk/mesh"
 )
 
-//go:embed models/*.obj
+//go:embed models/*.obj models/*.mtl
 var samples embed.FS
 
 // modelSize is the length of a model's longest side after Fit.
@@ -62,6 +62,10 @@ type model struct {
 	verts int
 	faces int
 
+	// colored is whether the file gave its faces colors of their own (see
+	// mesh.LoadOBJFS), which C can show or put aside for the palette.
+	colored bool
+
 	// smooth is whether the model is shaded smooth, which F switches. A model that came
 	// with normals starts smooth. One that did not starts faceted, as it always has,
 	// and smoothing it finds its normals from its faces (SmoothNormals), which is done
@@ -75,19 +79,17 @@ type model struct {
 // takes 25 to 35 times as much memory. It is a variable so tests can lower it.
 var maxModelBytes int64 = 64 << 20
 
-// loadModel reads one OBJ file from fsys, up to maxModelBytes, and fits it to modelSize.
+// loadModel reads one OBJ file from fsys, up to maxModelBytes, with the colors of the
+// materials in the MTL files beside it, and fits it to modelSize.
 func loadModel(fsys fs.FS, name string) (model, error) {
-	f, err := fsys.Open(name)
+	m, err := mesh.LoadOBJFS(fsys, name, maxModelBytes)
 	if err != nil {
 		return model{}, err
 	}
-	defer f.Close()
-
-	m, err := mesh.LoadOBJLimit(f, maxModelBytes)
-	if err != nil {
-		return model{}, err
-	}
-	return model{name: path.Base(name), mesh: m.Fit(modelSize), verts: len(m.Vertices), faces: len(m.Faces), smooth: len(m.Normals) > 0}, nil
+	return model{
+		name: path.Base(name), mesh: m.Fit(modelSize), verts: len(m.Vertices), faces: len(m.Faces),
+		colored: len(m.FaceColors) > 0, smooth: len(m.Normals) > 0,
+	}, nil
 }
 
 // shapeModels are the shapes the mesh package makes, to browse beside the OBJ samples.
@@ -131,6 +133,9 @@ func loadModels(args []string) ([]model, error) {
 			return nil, err
 		}
 		for _, e := range entries {
+			if path.Ext(e.Name()) != ".obj" { // the .mtl files beside them are not models
+				continue
+			}
 			m, err := loadModel(samples, path.Join("models", e.Name()))
 			if err != nil {
 				return nil, fmt.Errorf("%s: %w", e.Name(), err)
@@ -168,7 +173,8 @@ type viewer struct {
 	halfBlocks  bool
 	doubleSided bool
 	lamp        bool // lit by a lamp that follows the camera, not the sun
-	color       int
+	color       int  // the palette color, for a model without colors of its own and for the wireframe
+	ownColors   bool // a model that has colors of its own shows them, not the palette color
 	fps         float64
 
 	// flipEdges is set when B is pressed. The next half-block frame then switches the
@@ -178,7 +184,7 @@ type viewer struct {
 }
 
 func newViewer(models []model) *viewer {
-	return &viewer{models: models, pitch: -0.5, dist: 5, spin: true, fps: 30}
+	return &viewer{models: models, pitch: -0.5, dist: 5, spin: true, ownColors: true, fps: 30}
 }
 
 func (v *viewer) Update(dt float64, in *engine.Input) error {
@@ -204,7 +210,7 @@ func (v *viewer) Update(dt float64, in *engine.Input) error {
 		v.doubleSided = !v.doubleSided
 	}
 	if pressed('c', 'C') {
-		v.color = (v.color + 1) % len(palette)
+		v.nextColor()
 	}
 	if pressed('f', 'F') {
 		v.models[v.current].smooth = !v.models[v.current].smooth
@@ -253,6 +259,26 @@ func (v *viewer) Update(dt float64, in *engine.Input) error {
 	return nil
 }
 
+// nextColor is C: the next palette color. A model with colors of its own goes from them
+// to the first palette color and, after the last, back to them.
+func (v *viewer) nextColor() {
+	switch {
+	case !v.models[v.current].colored:
+		v.color = (v.color + 1) % len(palette)
+	case v.ownColors:
+		v.ownColors, v.color = false, 0
+	case v.color == len(palette)-1:
+		v.ownColors, v.color = true, 0
+	default:
+		v.color++
+	}
+}
+
+// showsModelColors is whether the current model is drawn in the colors its file gave it.
+func (v *viewer) showsModelColors() bool {
+	return v.ownColors && v.models[v.current].colored
+}
+
 // camera returns the camera for the current orbit: it looks at the origin from dist away.
 func (v *viewer) camera() mesh.Camera {
 	cam := mesh.Camera{Yaw: v.yaw, Pitch: v.pitch, FOV: 1.2, Near: 0.1}
@@ -293,7 +319,11 @@ func (v *viewer) Draw(fb *engine.FrameBuffer) {
 	m := v.shown()
 	m.DoubleSided = v.doubleSided
 	color := palette[v.color]
+	// The palette color also covers any face the file gave no color.
 	m.Material.Color = color
+	if !v.showsModelColors() {
+		m.FaceColors = nil
+	}
 
 	mode := "characters"
 	switch {
@@ -328,6 +358,9 @@ func (v *viewer) Draw(fb *engine.FrameBuffer) {
 			light = "lamp"
 		}
 		mode += ", " + shading + ", " + light
+		if v.showsModelColors() {
+			mode += ", model colors"
+		}
 	}
 
 	cur := v.models[v.current]

@@ -1,5 +1,6 @@
 # A small house. Front (the door) faces +Z, the chimney is on the +X side.
 # CC0: public domain, made for glonk.
+mtllib house.mtl
 v -1.0000 0.0000 -0.8000
 v 1.0000 0.0000 -0.8000
 v 1.0000 1.0000 -0.8000
@@ -30,23 +31,27 @@ v -0.3500 0.0000 0.8800
 v 0.0500 0.0000 0.8800
 v 0.0500 0.7500 0.8800
 v -0.3500 0.7500 0.8800
+usemtl walls
 f 5 6 7 8
 f 1 4 3 2
 f 2 3 7 6
 f 1 5 8 4
 f 4 8 7 3
 f 1 2 6 5
+usemtl roof
 f 9 12 13 10
 f 9 10 11
 f 12 14 13
 f 10 13 14 11
 f 9 11 14 12
+usemtl chimney
 f 19 20 21 22
 f 15 18 17 16
 f 16 17 21 20
 f 15 19 22 18
 f 18 22 21 17
 f 15 16 20 19
+usemtl door
 f 27 28 29 30
 f 23 26 25 24
 f 24 25 29 28

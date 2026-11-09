@@ -1,0 +1,12 @@
+# Materials for house.obj. CC0: public domain, made for glonk.
+newmtl walls
+Kd 0.91 0.80 0.60
+
+newmtl roof
+Kd 0.75 0.20 0.15
+
+newmtl chimney
+Kd 0.55 0.55 0.58
+
+newmtl door
+Kd 0.40 0.25 0.12

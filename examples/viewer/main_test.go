@@ -329,7 +329,7 @@ func TestColorAndDrawStyleReachTheScreen(t *testing.T) {
 
 	for i, want := range palette {
 		v := newViewer(models)
-		v.color = i
+		v.color, v.ownColors = i, false // the house has colors of its own, which would show instead
 
 		fb := drawAll(t, v)
 		for _, c := range modelCells(fb) {
@@ -378,7 +378,7 @@ func TestColorReachesHalfBlockPixels(t *testing.T) {
 
 	shades := func(color int) map[engine.Color]bool {
 		v := newViewer(models)
-		v.halfBlocks, v.color = true, color
+		v.halfBlocks, v.color, v.ownColors = true, color, false
 		fb := drawAll(t, v)
 
 		seen := map[engine.Color]bool{}
@@ -566,6 +566,7 @@ func TestNextModelCyclesAndWraps(t *testing.T) {
 
 func TestColorKeyCyclesThroughThePalette(t *testing.T) {
 	v := quiet(t)
+	v.current = 1 // the icosphere has no colors of its own
 	kb := engine.NewKeyboard()
 
 	for i := 1; i <= len(palette)+1; i++ {
@@ -574,6 +575,9 @@ func TestColorKeyCyclesThroughThePalette(t *testing.T) {
 		kb.Release('c')
 		if want := i % len(palette); v.color != want {
 			t.Fatalf("after %d presses: wanted color %d, got %d", i, want, v.color)
+		}
+		if !v.ownColors {
+			t.Fatalf("after %d presses: wanted the setting for models with colors of their own left alone", i)
 		}
 	}
 }
@@ -1146,4 +1150,295 @@ func TestHelpMentionsTheShadingAndLightKeys(t *testing.T) {
 	if !strings.HasSuffix(strings.TrimRight(got, " "), "F smooth  L lamp") {
 		t.Errorf("wanted the help to end with F and L, whole, got %q", got)
 	}
+}
+
+// The four materials of house.mtl, as the loader must read them from its Kd lines.
+var houseColors = map[string]engine.Color{
+	"walls":   engine.RGB(232, 204, 153),
+	"roof":    engine.RGB(191, 51, 38),
+	"chimney": engine.RGB(140, 140, 148),
+	"door":    engine.RGB(102, 64, 31),
+}
+
+// foregrounds returns the foreground colors of the model's cells.
+func foregrounds(fb *engine.FrameBuffer) map[engine.Color]bool {
+	seen := map[engine.Color]bool{}
+	for _, c := range modelCells(fb) {
+		seen[fb.At(c[0], c[1]).Foreground] = true
+	}
+	return seen
+}
+
+func TestOnlyTheHouseHasColorsOfItsOwn(t *testing.T) {
+	for _, m := range loadSamples(t) {
+		if want := m.name == "house.obj"; m.colored != want {
+			t.Errorf("%s: wanted colored=%v, got %v", m.name, want, m.colored)
+		}
+		if m.colored && len(m.mesh.FaceColors) != m.faces {
+			t.Errorf("%s: wanted a color for each of %d faces, got %d", m.name, m.faces, len(m.mesh.FaceColors))
+		}
+	}
+	for _, m := range shapeModels() {
+		if m.colored {
+			t.Errorf("%s: wanted a shape to have no colors of its own", m.name)
+		}
+	}
+}
+
+func TestHouseOpensInItsOwnColors(t *testing.T) {
+	v := newViewer(loadSamples(t))
+	fb := drawAll(t, v)
+
+	// Flat shading shows each face in its color, so the screen holds exactly the four.
+	got := foregrounds(fb)
+	if len(got) != len(houseColors) {
+		t.Errorf("wanted the 4 colors of the materials, got %v", got)
+	}
+	for name, want := range houseColors {
+		if !got[want] {
+			t.Errorf("wanted the %s in %v, got %v", name, want, got)
+		}
+	}
+	if got := hudText(fb, 2); !strings.Contains(got, "characters, faceted, sun, model colors") {
+		t.Errorf("wanted the HUD to say the model's colors are shown, got %q", got)
+	}
+}
+
+func TestModelColorsReachHalfBlockPixels(t *testing.T) {
+	v := newViewer(loadSamples(t))
+	v.halfBlocks = true
+	fb := drawAll(t, v)
+
+	shown := map[engine.Color]bool{}
+	for _, c := range modelCells(fb) {
+		cell := fb.At(c[0], c[1])
+		shown[cell.Foreground], shown[cell.Background] = true, true
+	}
+	// Each material shows as some shade of its color; shades below a third are too dark
+	// to tell the materials apart.
+	for name, kd := range houseColors {
+		found := false
+		for i := 600; i <= 2000 && !found; i++ {
+			found = shown[engine.Shade(kd, float64(i)/2000)]
+		}
+		if !found {
+			t.Errorf("wanted a shade of the %s %v among the pixels, got %v", name, kd, shown)
+		}
+	}
+	if got := hudText(fb, 2); !strings.Contains(got, "model colors") {
+		t.Errorf("wanted the HUD to say the model's colors are shown, got %q", got)
+	}
+}
+
+func TestModelsWithoutColorsAreDrawnInThePaletteColor(t *testing.T) {
+	models := browseAll(t).models
+	for i, m := range models {
+		if m.colored {
+			continue
+		}
+		v := newViewer(models)
+		v.current = i
+		fb := drawAll(t, v)
+
+		if got := foregrounds(fb); len(got) != 1 || !got[palette[0]] {
+			t.Errorf("%s: wanted only %v, got %v", m.name, palette[0], got)
+		}
+		if got := hudText(fb, 2); strings.Contains(got, "model colors") {
+			t.Errorf("%s: wanted no mention of model colors, got %q", m.name, got)
+		}
+	}
+}
+
+// C goes from the model's colors through the six palette colors and back to them.
+func TestColorKeyCyclesAModelsColorsAndThePalette(t *testing.T) {
+	v := quiet(t) // the house
+	kb := engine.NewKeyboard()
+
+	for i := 1; i <= 2*(len(palette)+1); i++ {
+		kb.Press('c')
+		step(v, kb, 0.1)
+		kb.Release('c')
+
+		// Press 1 is the first palette color, 6 the last, 7 the model's own again.
+		k := (i - 1) % (len(palette) + 1)
+		wantOwn, wantColor := k == len(palette), k
+		if k == len(palette) {
+			wantColor = 0
+		}
+		if v.ownColors != wantOwn || v.color != wantColor {
+			t.Fatalf("after %d presses: wanted own=%v color=%d, got own=%v color=%d", i, wantOwn, wantColor, v.ownColors, v.color)
+		}
+
+		fb := drawAll(t, v)
+		got := foregrounds(fb)
+		if wantOwn {
+			if len(got) != len(houseColors) || got[palette[0]] {
+				t.Fatalf("after %d presses: wanted the house's own colors, got %v", i, got)
+			}
+		} else if len(got) != 1 || !got[palette[wantColor]] {
+			t.Fatalf("after %d presses: wanted only %v, got %v", i, palette[wantColor], got)
+		}
+	}
+
+	// The capital letter works too.
+	kb.Press('C')
+	step(v, kb, 0.1)
+	if v.ownColors {
+		t.Errorf("wanted a capital C to leave the model's colors too")
+	}
+}
+
+func TestWireframeKeepsThePaletteColorAndSaysNothingOfModelColors(t *testing.T) {
+	v := newViewer(loadSamples(t))
+	v.wire = true
+	fb := drawAll(t, v)
+
+	if got := foregrounds(fb); len(got) != 1 || !got[palette[0]] {
+		t.Errorf("wanted a wireframe in %v, got %v", palette[0], got)
+	}
+	if got := hudText(fb, 2); strings.Contains(got, "model colors") {
+		t.Errorf("wanted no mention of model colors on a wireframe, got %q", got)
+	}
+}
+
+// The setting is the viewer's, not each model's: leaving the house for the palette and
+// coming back to it finds it still in the palette.
+func TestModelColorsSettingIsKeptAcrossModels(t *testing.T) {
+	v := newViewer(browseAll(t).models)
+	kb := engine.NewKeyboard()
+
+	press := func() {
+		kb.Press('c')
+		step(v, kb, 0.1)
+		kb.Release('c')
+	}
+
+	press() // the house: palette color 0
+	v.current = 1
+	press() // the icosphere: palette color 1
+	v.current = 0
+
+	if v.ownColors || v.color != 1 {
+		t.Errorf("wanted the house to find the palette at color 1, got own=%v color=%d", v.ownColors, v.color)
+	}
+	if got := foregrounds(drawAll(t, v)); len(got) != 1 || !got[palette[1]] {
+		t.Errorf("wanted the house in %v, got %v", palette[1], got)
+	}
+
+	// Back to the house's colors and out again starts the palette over at its first color,
+	// whatever another model has moved it to.
+	for range len(palette) - 1 { // from color 1 round to the house's own colors
+		press()
+	}
+	v.current = 1
+	press()
+	press() // color 2
+	v.current = 0
+	press() // the house: the palette from its first color
+	if v.ownColors || v.color != 0 {
+		t.Errorf("wanted the house to start the palette at color 0, got own=%v color=%d", v.ownColors, v.color)
+	}
+}
+
+// writeModel writes an OBJ and the files beside it into one folder and returns the OBJ's path.
+func writeModel(t *testing.T, obj string, beside map[string]string) string {
+	t.Helper()
+	dir := t.TempDir()
+	for name, text := range beside {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(text), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	p := filepath.Join(dir, "m.obj")
+	if err := os.WriteFile(p, []byte(obj), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return p
+}
+
+func TestAFileGetsItsColorsFromTheMTLBesideIt(t *testing.T) {
+	const obj = "mtllib m.mtl\nv 0 0 0\nv 4 0 0\nv 0 2 0\nusemtl red\nf 1 2 3\n"
+	with := writeModel(t, obj, map[string]string{"m.mtl": "newmtl red\nKd 1 0 0\n"})
+	without := writeModel(t, obj, nil)
+
+	models, err := loadModels([]string{with, without})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !models[0].colored || !slices.Equal(models[0].mesh.FaceColors, []engine.Color{engine.RGB(255, 0, 0)}) {
+		t.Errorf("wanted the file with its MTL colored red, got colored=%v %v", models[0].colored, models[0].mesh.FaceColors)
+	}
+	if models[1].colored {
+		t.Errorf("wanted the file without its MTL uncolored, got %v", models[1].mesh.FaceColors)
+	}
+
+	v := newViewer(models[:1])
+	v.pitch, v.yaw = 0, 0
+	if got := foregrounds(drawAll(t, v)); len(got) != 1 || !got[engine.RGB(255, 0, 0)] {
+		t.Errorf("wanted the triangle drawn red, got %v", got)
+	}
+}
+
+func TestAMTLNamedOutsideTheFilesFolderIsNotRead(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "secret.mtl"), []byte("newmtl red\nKd 1 0 0\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	sub := filepath.Join(dir, "sub")
+	if err := os.Mkdir(sub, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	obj := filepath.Join(sub, "m.obj")
+	if err := os.WriteFile(obj, []byte("mtllib ../secret.mtl\nv 0 0 0\nv 4 0 0\nv 0 2 0\nusemtl red\nf 1 2 3\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	models, err := loadModels([]string{obj})
+	if err != nil || models[0].colored {
+		t.Errorf("wanted the model without colors, got colored=%v and err %v", models[0].colored, err)
+	}
+}
+
+// A face the file gave no color takes the palette color, beside the colored ones.
+func TestFacesWithoutAColorTakeThePaletteColorBesideColoredOnes(t *testing.T) {
+	obj := writeModel(t, "mtllib m.mtl\nv 0 0 0\nv 4 0 0\nv 0 2 0\nv 0 0 3\nusemtl red\nf 1 2 3\nusemtl none\nf 1 3 4\n",
+		map[string]string{"m.mtl": "newmtl red\nKd 1 0 0\n"})
+	models, err := loadModels([]string{obj})
+	if err != nil || !models[0].colored {
+		t.Fatalf("wanted a model with some colors, got colored=%v and err %v", models[0].colored, err)
+	}
+
+	for _, halfBlocks := range []bool{false, true} {
+		v := newViewer(models)
+		v.pitch, v.yaw, v.halfBlocks, v.doubleSided = -0.3, 0.7, halfBlocks, true
+		fb := drawAll(t, v)
+
+		var palettes, reds int
+		for _, c := range modelCells(fb) {
+			cell := fb.At(c[0], c[1])
+			for _, got := range []engine.Color{cell.Foreground, cell.Background} {
+				// Pixels are shades in RGB, where red has no green or blue and the orange of
+				// the palette color has some green. Characters have the exact colors.
+				r, g, b := rgbOf(got)
+				switch {
+				case got == palette[0] || (halfBlocks && g > 0):
+					palettes++
+				case got == engine.RGB(255, 0, 0) || (halfBlocks && r > 0 && g == 0 && b == 0):
+					reds++
+				}
+			}
+		}
+		if palettes == 0 || reds == 0 {
+			t.Errorf("halfBlocks=%v: wanted both the palette color and red on screen, got %d and %d", halfBlocks, palettes, reds)
+		}
+	}
+}
+
+// rgbOf reads the red, green and blue of a color from its "#rrggbb" text, the only
+// way the engine shows them.
+func rgbOf(c engine.Color) (r, g, b int) {
+	if _, err := fmt.Sscanf(c.String(), "#%02x%02x%02x", &r, &g, &b); err != nil {
+		return 0, 0, 0 // a default or palette color
+	}
+	return r, g, b
 }
