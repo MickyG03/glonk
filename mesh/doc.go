@@ -8,6 +8,10 @@
 // lit by any number of lights, each a [Light] such as [Directional], [Ambient] or
 // [Point], or one of your own, into cells or into a half-block pixel Canvas.
 //
+// [Mesh.Draw] paints edges over whatever is already drawn. [Mesh.DrawDepth] gives each cell
+// of each edge a depth instead, so nearer surfaces hide it and it hides farther ones, in
+// whatever order things are drawn.
+//
 // A mesh with no [Mesh.Normals] is lit face by face, one brightness for each, so a
 // round shape shows its facets. Give it a normal for each vertex and every cell is lit
 // by itself, from the position and the normal blended across the face, so the shape

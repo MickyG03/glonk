@@ -7,7 +7,7 @@ A terminal rendering engine for Go. Draw 2D, 3D, or both in the same frame, usin
 ## What it does
 
 - **2D:** cells with foreground and background colors (the 256-color palette, or exact RGB on terminals with true color) and text attributes (bold, dim, underline, reverse), lines, boxes, text, and sprites.
-- **3D:** wireframe or solid meshes through a perspective camera, with near-plane clipping. Solid meshes are shaded by any number of lights (directional, ambient, point, or your own) into an ASCII brightness ramp, face by face or, with normals, smoothly across each face. They hide each other by depth and skip faces turned away.
+- **3D:** wireframe or solid meshes through a perspective camera, with near-plane clipping. Solid meshes are shaded by any number of lights (directional, ambient, point, or your own) into an ASCII brightness ramp, face by face or, with normals, smoothly across each face. They hide each other by depth and skip faces turned away. A wireframe drawn with depth is hidden by nearer solids too.
 - **Shapes and models:** a cube, sphere, cylinder, cone, plane and grid, or OBJ files from any `io.Reader` (a file, `//go:embed`, a download), centered and scaled and drawn wireframe or shaded.
 - **Half blocks:** a pixel `Canvas` with two square-ish pixels per cell, drawn with `▀` and a background color, for twice the vertical detail and shading by color instead of by character.
 - **Mixed:** draw a 3D scene first, then a 2D HUD on top, into the same frame.
@@ -110,6 +110,20 @@ A mesh with no `Normals` is lit face by face, one brightness for each, so a roun
 - **Cost:** about 12 to 23% more than facets on a scene of spheres, and none for a mesh without normals. Drawing allocates nothing either way.
 - **Shape limits:** segments go from 3 to 512 and rings from 2 to 512, so a careless argument cannot ask for gigabytes, and a size that is negative or not a finite number counts as 0. `Point` lights: `Range` 0 means no fading, and a negative `Range` gives no light.
 - **Your own lights:** `Light.Brightness(point, normal)` is asked about every cell of a mesh with normals, with the place on the surface and the unit normal there, and once for each face of one without.
+
+## Wireframes and depth
+
+`Mesh.Draw` paints a mesh's edges over whatever is already on screen, so a wireframe shows through solids and has to be drawn first to stay behind them. `Mesh.DrawDepth` gives each cell of each edge a depth instead: a nearer surface hides it, it hides a farther one, and the order of drawing stops mattering.
+
+```go
+cube.DrawShaded(fb, cam, lights...)
+ghost.DrawDepth(fb, cam, engine.Cell{Character: '#'}) // hidden where the cube is nearer
+```
+
+- **Half-block pixels count.** `Canvas.Compose` gives each cell it fills the depth of its nearer pixel, so anything drawn with a depth afterwards (`DrawDepth`, `FillTriangle`, `FrameBuffer.DrawLineDepth`, `SetDepth`) is hidden behind pixel solids that are nearer. The wireframe itself is still drawn in cells, as characters.
+- **Ties keep what is there.** A line lying exactly on a surface, a grid on a floor, flickers between the two: lift it a little. There is no bias, because depth changes too fast across a floor seen at a shallow angle for any constant to cover.
+- **Not for a mesh's own faces.** To draw a mesh's edges over its own shaded faces, use `Draw`, which does not depend on how those cells compare.
+- **Off-screen meshes are skipped.** Drawing starts by asking whether any of a mesh can be on screen, so a scene of many meshes costs little for those out of view. No picture changes.
 
 ## Quickstart
 
