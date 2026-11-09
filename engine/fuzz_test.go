@@ -227,8 +227,17 @@ func FuzzShade(f *testing.F) {
 	f.Fuzz(func(t *testing.T, color uint8, intensity float64) {
 		got := Shade(Palette(color), intensity)
 
-		if index, ok := got.paletteIndex(); !ok || got.kind() != colorPalette || index < 16 {
-			t.Fatalf("wanted a palette color in 16..255, got %v for color %d at %v", got, color, intensity)
+		if got.kind() != colorRGB {
+			t.Fatalf("wanted an RGB color, got %v for color %d at %v", got, color, intensity)
+		}
+		if index, ok := got.paletteIndex(); !ok || index < 16 {
+			t.Fatalf("wanted a shade that shows as a palette color in 16..255, got %v for color %d at %v", got, color, intensity)
+		}
+		// Shading never brightens.
+		r, g, b := Palette(color).rgb()
+		sr, sg, sb := got.rgb()
+		if sr > r || sg > g || sb > b {
+			t.Fatalf("wanted no channel brighter than %v, got %v at %v", Palette(color), got, intensity)
 		}
 		if again := Shade(Palette(color), intensity); again != got {
 			t.Fatalf("wanted Shade to be deterministic, got %v then %v", got, again)

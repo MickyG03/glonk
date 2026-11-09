@@ -145,11 +145,13 @@ func ExampleCanvas() {
 	//   ▀▄  ▀▄
 }
 
+// A shade is an exact RGB color, so brightness runs smoothly on a terminal with true
+// color and is rounded to the palette on one without.
 func ExampleShade() {
 	red := engine.Palette(196)
 	fmt.Println(engine.Shade(red, 1), engine.Shade(red, 0.5), engine.Shade(red, 0))
 	// Output:
-	// palette(196) palette(88) palette(16)
+	// #ff0000 #800000 #000000
 }
 
 func ExamplePalette() {

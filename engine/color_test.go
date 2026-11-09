@@ -62,17 +62,48 @@ func TestShade(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := Shade(Palette(tt.color), tt.intensity); got != Palette(tt.want) {
-				t.Errorf("wanted %v, got %v", Palette(tt.want), got)
+			got := Shade(Palette(tt.color), tt.intensity)
+
+			// What a terminal with 256 colors shows.
+			if index, ok := got.paletteIndex(); !ok || index != tt.want {
+				t.Errorf("wanted %v (as palette %d), got %v (as palette %d)", Palette(tt.want), tt.want, got, index)
+			}
+		})
+	}
+}
+
+// The shade itself is an exact RGB: smooth on a terminal with true color.
+func TestShadeOfAPaletteColorIsExactRGB(t *testing.T) {
+	tests := []struct {
+		name      string
+		color     Color
+		intensity float64
+		want      Color
+	}{
+		{"full intensity is the palette color's own RGB", Palette(208), 1, RGB(255, 135, 0)},
+		{"half", Palette(196), 0.5, RGB(128, 0, 0)},
+		{"a quarter of a gray", Palette(240), 0.25, RGB(22, 22, 22)},
+		{"a system color is read as xterm's default", Palette(1), 1, RGB(205, 0, 0)},
+		{"zero is black, which is a color", Palette(208), 0, RGB(0, 0, 0)},
+		{"two nearby brightnesses are two colors", Palette(208), 0.501, RGB(128, 68, 0)},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := Shade(tt.color, tt.intensity); got != tt.want {
+				t.Errorf("wanted %v, got %v", tt.want, got)
 			}
 		})
 	}
 }
 
 func TestShadeOfTheDefaultColorIsReadAsBlack(t *testing.T) {
-	for _, intensity := range []float64{0, 0.5, 1} {
-		if got := Shade(Color{}, intensity); got != Palette(16) {
-			t.Errorf("wanted black (palette 16) at intensity %v, got %v", intensity, got)
+	for _, intensity := range []float64{0, 0.3, 1, 5, math.NaN()} {
+		got := Shade(Color{}, intensity)
+		if got != RGB(0, 0, 0) {
+			t.Errorf("at %v: wanted black, got %v", intensity, got)
+		}
+		if index, _ := got.paletteIndex(); index != 16 {
+			t.Errorf("at %v: wanted black to be palette 16 on a 256-color terminal, got %d", intensity, index)
 		}
 	}
 }
@@ -106,8 +137,8 @@ func TestShadeEveryColor(t *testing.T) {
 	shaded := func(c uint8, intensity float64) int {
 		got := Shade(Palette(c), intensity)
 		index, ok := got.paletteIndex()
-		if !ok || got.kind() != colorPalette {
-			t.Fatalf("color %d at %v: wanted a palette color, got %v", c, intensity, got)
+		if !ok || got.kind() != colorRGB {
+			t.Fatalf("color %d at %v: wanted an RGB color, got %v", c, intensity, got)
 		}
 		return int(index)
 	}
@@ -333,17 +364,44 @@ func TestNearestPaletteIsAsNearAsTheScan(t *testing.T) {
 	}
 }
 
-func TestShadeMatchesTheScan(t *testing.T) {
+// shadeBeforeTrueColor is what Shade did with a palette color: scale the color's RGB
+// as exact numbers and take the nearest palette color from 16 to 255. Shade now
+// rounds the scaled color to whole RGB values first and leaves the choice of palette
+// color to a terminal with 256 colors.
+func shadeBeforeTrueColor(c uint8, intensity float64) uint8 {
+	p := paletteRGB[c]
+	return nearestPalette(float64(p[0])*intensity, float64(p[1])*intensity, float64(p[2])*intensity)
+}
+
+// On a terminal with 256 colors the shades must look as they did. Rounding to whole RGB
+// values can send a shade that sits almost exactly between two palette colors to the
+// other one, so a few differ. Moving the target by less than one RGB unit in total
+// (half a unit in each channel at most) cannot make the new choice more than twice that
+// farther from the true color than the old one, which is what is checked.
+func TestShadeOnA256ColorTerminalMatchesWhatItWasBefore(t *testing.T) {
+	total, differ := 0, 0
 	for c := range 256 {
-		for _, intensity := range []float64{0, 0.1, 0.25, 0.5, 0.75, 0.9, 1} {
-			base := paletteRGB[c]
-			want := nearestPaletteScan(float64(base[0])*intensity, float64(base[1])*intensity, float64(base[2])*intensity)
-			r, g, b := float64(base[0])*intensity, float64(base[1])*intensity, float64(base[2])*intensity
+		for k := 0; k <= 255; k++ {
+			intensity := float64(k) / 255
+			want := shadeBeforeTrueColor(uint8(c), intensity)
 			got, _ := Shade(Palette(uint8(c)), intensity).paletteIndex()
-			if !sameNearest(r, g, b, got, want) {
-				t.Fatalf("wanted Shade(%d, %v) = %d (or as near), got %d", c, intensity, want, got)
+			total++
+			if got == want {
+				continue
+			}
+			differ++
+			p := paletteRGB[c]
+			r, g, b := float64(p[0])*intensity, float64(p[1])*intensity, float64(p[2])*intensity
+			const slack = 2 * 0.8661 // twice half a unit in each of three channels
+			if extra := math.Sqrt(distance(r, g, b, got)) - math.Sqrt(distance(r, g, b, want)); extra > slack {
+				t.Fatalf("color %d at %v: wanted palette %d or one as near, got %d, %.2f units farther", c, intensity, want, got, extra)
 			}
 		}
+	}
+	t.Logf("%d of %d shades differ", differ, total)
+	// Measured: 1267 of 65536 (1.9%), every one of them a near tie.
+	if differ*100 > 3*total {
+		t.Errorf("wanted at most 3%% of shades to differ from before, got %d of %d", differ, total)
 	}
 }
 

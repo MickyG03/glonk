@@ -18,8 +18,8 @@ const (
 // or an RGB color. The zero Color is the default, so a Cell or a Config that leaves a
 // color out gets the terminal's own. Make the others with Palette and RGB.
 //
-// Colors compare with ==. Until truecolor output is supported, an RGB color is shown
-// as the closest of the palette colors 16 to 255.
+// Colors compare with ==. An RGB color is shown exactly on a terminal with true color
+// (see Config.Colors) and as the closest of the palette colors 16 to 255 on one without.
 type Color struct {
 	// bits holds the kind in the top byte, and below it the palette index, or the red,
 	// green and blue. One word, so that comparing two colors is one comparison, which
@@ -143,10 +143,11 @@ func nearestPalette(r, g, b float64) uint8 {
 // Shade returns color scaled to the given brightness: 1 is color as it is, 0 is
 // black. Intensity outside 0 to 1 is clamped and NaN is treated as 0.
 //
-// A palette color gives the palette color from 16 to 255 closest to the scaled color,
-// never colors 0 to 15, which vary with the user's theme (they are read as xterm's
-// defaults). An RGB color gives the RGB color scaled exactly. The default color is
-// read as black. Black comes out as Palette(16), or RGB(0, 0, 0) for an RGB color.
+// The result is an exact RGB color, whatever color is: a palette color is read as
+// xterm defines it (colors 0 to 15 as xterm's defaults, though the user's theme may
+// differ) and the default color as black. On a terminal with true color the shades
+// run smoothly; on one without, each is shown as the nearest of the palette colors
+// 16 to 255, as any RGB color is. Black comes out as RGB(0, 0, 0).
 func Shade(color Color, intensity float64) Color {
 	if math.IsNaN(intensity) {
 		intensity = 0
@@ -154,9 +155,6 @@ func Shade(color Color, intensity float64) Color {
 	intensity = min(max(intensity, 0), 1)
 
 	r, g, b := color.rgb()
-	if color.kind() == colorRGB {
-		scale := func(v uint8) uint8 { return uint8(math.Round(float64(v) * intensity)) }
-		return RGB(scale(r), scale(g), scale(b))
-	}
-	return Palette(nearestPalette(float64(r)*intensity, float64(g)*intensity, float64(b)*intensity))
+	scale := func(v uint8) uint8 { return uint8(math.Round(float64(v) * intensity)) }
+	return RGB(scale(r), scale(g), scale(b))
 }
