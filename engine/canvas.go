@@ -19,7 +19,10 @@ const (
 // included, is a pixel.
 //
 // Get one with FrameBuffer.Canvas. It keeps its own depth per pixel, separate from
-// the FrameBuffer's, so solids drawn on a Canvas hide each other but not the cells.
+// the FrameBuffer's, so solids drawn on a Canvas hide each other, but not the cells
+// until Compose: it then gives every cell it fills the depth of its nearer pixel, and
+// depth-tested drawing into cells afterwards (FillTriangle, DrawLineDepth, SetDepth) is
+// hidden behind the pixels where they are nearer.
 type Canvas struct {
 	// Seamless makes Compose draw solid cells only, with no half-block characters.
 	// Some terminals draw those characters a little short of the cell and leave a
@@ -153,15 +156,31 @@ func (c *Canvas) FillTriangleFunc(x0, y0, z0, x1, y1, z1, x2, y2, z2 float64, co
 
 // Compose writes the pixels into the FrameBuffer's cells as half-block characters,
 // or as solid cells if Seamless is set. Cells whose two pixels are both empty are
-// left alone; every other cell is replaced. Call it at the point in drawing where
-// the pixels should sit: anything drawn into the FrameBuffer afterwards lands on
-// top of them.
+// left alone; every other cell is replaced, and takes the depth of its nearer pixel
+// in place of whatever depth it had. Call it at the point in drawing where the pixels
+// should sit: anything drawn into the FrameBuffer afterwards lands on top of them,
+// unless it is drawn with a depth (FillTriangle, DrawLineDepth, SetDepth) and is
+// farther than the pixels there.
+//
+// A pixel set with Set has no depth, so it is as far away as can be: depth-tested
+// drawing afterwards lands on top of it.
 func (c *Canvas) Compose() {
 	fb := c.fb
 	for row := range fb.height {
 		for x := range fb.width {
 			topIdx, bottomIdx := (2*row)*c.width+x, (2*row+1)*c.width+x
 			top, bottom := c.pixels[topIdx], c.pixels[bottomIdx]
+			cellIdx := row*fb.width + x
+
+			// The depth of the cell is its nearer pixel's. A pixel that was erased leaves
+			// its old depth behind, so only a pixel that is there counts.
+			z := math.Inf(1)
+			if !top.IsDefault() {
+				z = c.depth[topIdx]
+			}
+			if !bottom.IsDefault() {
+				z = min(z, c.depth[bottomIdx])
+			}
 
 			if c.Seamless && (!top.IsDefault() || !bottom.IsDefault()) {
 				// One color for the whole cell: the nearer pixel, or the only one set.
@@ -169,7 +188,8 @@ func (c *Canvas) Compose() {
 				if top.IsDefault() || (!bottom.IsDefault() && c.depth[bottomIdx] < c.depth[topIdx]) {
 					color = bottom
 				}
-				fb.frame[row*fb.width+x] = Cell{Character: ' ', Background: color}
+				fb.frame[cellIdx] = Cell{Character: ' ', Background: color}
+				fb.depth[cellIdx] = z
 				continue
 			}
 
@@ -187,7 +207,8 @@ func (c *Canvas) Compose() {
 			default:
 				cell = Cell{Character: lowerHalfBlock, Foreground: bottom}
 			}
-			fb.frame[row*fb.width+x] = cell
+			fb.frame[cellIdx] = cell
+			fb.depth[cellIdx] = z
 		}
 	}
 }
