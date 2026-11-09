@@ -73,7 +73,7 @@ func BenchmarkDrawSmooth3D(b *testing.B) {
 	_, cubes, cam, lights := benchScene()
 	var smooth, faceted []Mesh
 	for _, c := range cubes {
-		s := uvSphereForTest(1.2, 24, 12)
+		s := Sphere(1.2, 24, 12)
 		s.Transform, s.Material = c.Transform, c.Material
 		f := s.Clone()
 		f.Normals = nil

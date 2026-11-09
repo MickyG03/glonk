@@ -3,7 +3,8 @@
 //
 // A [Mesh] holds vertices, the edges and triangular faces between them, where it
 // sits in the world (its [Transform]) and how it looks (its [Material]). [Cube],
-// [Grid] and [LoadOBJ] make meshes; [Mesh.Draw] draws the edges, and
+// [Sphere], [Cylinder], [Cone], [Plane], [Grid] and [LoadOBJ] make meshes;
+// [Mesh.Draw] draws the edges, and
 // [Mesh.DrawShaded] and [Mesh.DrawShadedPixels] draw the faces lit by any number of
 // lights, each a [Light] such as [Directional] or [Ambient] or one of your own, into
 // cells or into a half-block pixel Canvas.

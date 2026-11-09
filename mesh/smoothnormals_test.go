@@ -117,7 +117,7 @@ func TestSmoothNormalsLeaveOutFacesThatCannotBeUsed(t *testing.T) {
 }
 
 func TestSmoothNormalsAreUnitOrZero(t *testing.T) {
-	m := uvSphereForTest(3, 9, 5)
+	m := Sphere(3, 9, 5)
 	m.Vertices = append(m.Vertices, v3(100, 100, 100)) // used by nothing
 
 	for i, n := range m.SmoothNormals().Normals {
@@ -135,13 +135,10 @@ func TestSmoothNormalsAreUnitOrZero(t *testing.T) {
 // On a sphere the normals found from the faces point out of the middle, close to the
 // ones a sphere is made with.
 func TestSmoothNormalsOfASphereAreCloseToTheTrueOnes(t *testing.T) {
-	m := uvSphereForTest(2, 24, 12)
+	m := Sphere(2, 24, 12)
 	smooth := m.SmoothNormals()
 
 	for i, n := range smooth.Normals {
-		if m.Vertices[i].Y > 1.99 || m.Vertices[i].Y < -1.99 {
-			continue // the poles repeat a vertex, which splits its faces between copies
-		}
 		if d := n.Dot(m.Normals[i]); d < 0.99 {
 			t.Fatalf("vertex %d: wanted a normal within 8 degrees of %v, got %v", i, m.Normals[i], n)
 		}

@@ -88,7 +88,7 @@ func TestDrawingAllocatesNothing(t *testing.T) {
 	smooth := m.SmoothNormals()
 	smoothRamped := ramped.SmoothNormals()
 	smoothBoth := both.SmoothNormals()
-	sphere := uvSphereForTest(1.5, 12, 6)
+	sphere := Sphere(1.5, 12, 6)
 	sphere.Transform = Transform{Position: geometry.Vector3{X: 0.3, Z: 1}, Yaw: 0.4, Scale: 1.2}
 
 	tests := map[string]func(){
@@ -120,7 +120,7 @@ func TestDrawingFromSeveralGoroutinesGivesTheSamePictures(t *testing.T) {
 	t.Setenv("TERM_PROGRAM", "")
 	cam := Camera{Position: geometry.Vector3{Z: -2}, Near: 0.5}
 	lights := []Light{Ambient{Level: 0.2}, Directional{Direction: geometry.Vector3{X: 0.4, Y: -1, Z: 0.6}}}
-	meshes := []Mesh{drawPathMesh(), Cube(1), Grid(6, 3), uvSphereForTest(1.5, 12, 6), drawPathMesh().SmoothNormals()}
+	meshes := []Mesh{drawPathMesh(), Cube(1), Grid(6, 3), Sphere(1.5, 12, 6), drawPathMesh().SmoothNormals()}
 	meshes[1].Transform.Position = geometry.Vector3{Z: 4}
 	meshes[2].Transform = Transform{Position: geometry.Vector3{Y: -1, Z: 5}}
 	meshes[3].Transform = Transform{Position: geometry.Vector3{X: 0.3, Z: 3}, Yaw: 0.4}

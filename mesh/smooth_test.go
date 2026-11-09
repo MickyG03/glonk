@@ -8,49 +8,6 @@ import (
 	"github.com/kyrokohan/glonk/geometry"
 )
 
-// uvSphereForTest is a sphere of latitude rings and longitude segments with outward
-// faces and a normal at every vertex. The poles are rows of repeated vertices, so
-// the faces touching them include some with no area.
-func uvSphereForTest(radius float64, segments, rings int) Mesh {
-	var m Mesh
-	for r := 0; r <= rings; r++ {
-		theta := math.Pi * float64(r) / float64(rings)
-		for s := 0; s <= segments; s++ {
-			phi := 2 * math.Pi * float64(s) / float64(segments)
-			n := geometry.Vector3{X: math.Sin(theta) * math.Cos(phi), Y: math.Cos(theta), Z: math.Sin(theta) * math.Sin(phi)}
-			m.Vertices = append(m.Vertices, n.Scale(radius))
-			m.Normals = append(m.Normals, n)
-		}
-	}
-	row := segments + 1
-	for r := 0; r < rings; r++ {
-		for s := 0; s < segments; s++ {
-			a, b, c, d := r*row+s, (r+1)*row+s, (r+1)*row+s+1, r*row+s+1
-			m.Faces = append(m.Faces, [3]int{a, c, b}, [3]int{a, d, c})
-		}
-	}
-	return m
-}
-
-func TestTestSphereFacesPointOutward(t *testing.T) {
-	m := uvSphereForTest(2, 12, 6)
-	solid := 0
-	for _, f := range m.Faces {
-		a, b, c := m.Vertices[f[0]], m.Vertices[f[1]], m.Vertices[f[2]]
-		n := b.Sub(a).Cross(c.Sub(a))
-		if n.Length() < 1e-9 {
-			continue // at a pole
-		}
-		solid++
-		if n.Dot(a.Add(b).Add(c)) <= 0 {
-			t.Fatalf("wanted every face to point out of the sphere, face %v does not", f)
-		}
-	}
-	if solid < 60 {
-		t.Errorf("wanted most of the faces to have an area, got %d", solid)
-	}
-}
-
 // call is one question a light was asked.
 type call struct{ point, normal geometry.Vector3 }
 
@@ -370,7 +327,7 @@ func TestSmoothShadingChangesWithinAFace(t *testing.T) {
 // A smooth sphere shows most of the ramp, a faceted one of the same shape only as many
 // shades as it has facets that differ.
 func TestSmoothSphereUsesMoreShadesThanFaceted(t *testing.T) {
-	sphere := uvSphereForTest(2, 10, 5)
+	sphere := Sphere(2, 10, 5)
 	sphere.Transform.Position = geometry.Vector3{Z: 5}
 	faceted := sphere.Clone()
 	faceted.Normals = nil

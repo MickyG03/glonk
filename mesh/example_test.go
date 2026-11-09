@@ -214,3 +214,67 @@ func ExampleLight() {
 	// │                            │
 	// └────────────────────────────┘
 }
+
+func ExampleSphere() {
+	fb, err := engine.NewFrameBuffer(30, 13)
+	if err != nil {
+		panic(err)
+	}
+	fb.DrawBox(0, 0, fb.Width(), fb.Height(), engine.Color{})
+
+	// A sphere comes with normals, so it is shaded smooth.
+	ball := mesh.Sphere(1.6, 24, 12)
+	ball.Transform.Position = geometry.Vector3{Z: 2.7}
+	ball.DrawShaded(fb, mesh.Camera{},
+		mesh.Ambient{Level: 0.1},
+		mesh.Directional{Direction: geometry.Vector3{X: 0.5, Y: -0.7, Z: 0.5}})
+
+	fmt.Println(fb)
+	// Output:
+	// ┌────────────────────────────┐
+	// │                            │
+	// │         @%%%%####*         │
+	// │       %%%%%####****+       │
+	// │      %%%#####****+++=      │
+	// │     %#####*****++++==-     │
+	// │     ###******++++===--     │
+	// │     *****++++++===---:     │
+	// │      ++++++=====---::      │
+	// │       ======----::::       │
+	// │         :---::::::         │
+	// │                            │
+	// └────────────────────────────┘
+}
+
+func ExampleCylinder() {
+	can := mesh.Cylinder(1, 2, 16)
+
+	fmt.Println(len(can.Vertices), "vertices,", len(can.Faces), "faces,", len(can.Edges), "edges")
+	fmt.Println(can.Validate())
+	// Output:
+	// 66 vertices, 64 faces, 48 edges
+	// <nil>
+}
+
+func ExampleCone() {
+	cone := mesh.Cone(1, 2, 16)
+	lo, hi := cone.Bounds()
+
+	fmt.Println(len(cone.Vertices), "vertices,", len(cone.Faces), "faces")
+	fmt.Println("base at y", lo.Y, "and tip at y", hi.Y)
+	// Output:
+	// 49 vertices, 32 faces
+	// base at y -1 and tip at y 1
+}
+
+func ExamplePlane() {
+	floor := mesh.Plane(10, 6)
+	floor.Transform.Position = geometry.Vector3{Y: -1.5}
+
+	lo, hi := floor.Bounds()
+	fmt.Println("x from", lo.X, "to", hi.X, "and z from", lo.Z, "to", hi.Z)
+	fmt.Println(floor.Normals[0])
+	// Output:
+	// x from -5 to 5 and z from -3 to 3
+	// {0 1 0}
+}
