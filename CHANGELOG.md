@@ -4,7 +4,13 @@ All notable changes to glonk are written here. The format follows [Keep a Change
 
 ## [Unreleased]
 
+### Added
+
+- True color. An `RGB` color is sent exactly (`ESC[38;2;r;g;b m`) when `COLORTERM` is `truecolor` or `24bit` or `TERM` names true color, and as the nearest palette color otherwise, as before. `Config.Colors` (`ColorsAuto`, `Colors256`, `ColorsTrue`) overrides the detection, for tmux and ssh where `COLORTERM` often does not arrive. `Palette` colors are never sent as RGB, so the user's theme still applies to them. A headless `Run` uses 256 colors unless `ColorsTrue` is set, so what it writes never depends on the environment.
+
 ### Changed
+
+- `Shade` returns an exact RGB color for every kind of color (a palette color is read as xterm defines it, the default color as black), so shades are finer on a true color terminal. On a terminal with 256 colors the shades look as before; about 2% of them land on the neighboring palette color, always one as near to the true shade. Code that compared `Shade(Palette(n), x)` with a palette color needs to change.
 
 - `Run` sends a terminal only the cells that changed since the last frame, as one synchronized update (terminal mode 2026, which terminals that do not know it ignore), instead of every cell of every frame. A screen that does not change writes nothing, and the example programs write 74% to 100% fewer bytes. The screen is drawn again in full after a resize, after Ctrl-Z, after a failed write and when the terminal reports the window regained focus. A headless `Run` still writes every frame whole. Text that something else prints to the terminal during a run is no longer overwritten by the next frame.
 - Escape sequences are built without `fmt` into a buffer that is reused from frame to frame, and a change of colors or attributes is written as one sequence. A frame takes 2 to 7 times less time to produce, allocates nothing once running, and a color-heavy frame is up to 9% smaller.

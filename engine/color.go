@@ -37,7 +37,9 @@ func Palette(index uint8) Color {
 	return Color{bits: uint32(colorPalette)<<24 | uint32(index)}
 }
 
-// RGB returns the color with the given red, green and blue, each 0 to 255.
+// RGB returns the color with the given red, green and blue, each 0 to 255. A
+// terminal with true color shows it exactly; one without shows the nearest of the
+// palette colors 16 to 255 (see Config.Colors).
 func RGB(r, g, b uint8) Color {
 	return Color{bits: uint32(colorRGB)<<24 | uint32(r)<<16 | uint32(g)<<8 | uint32(b)}
 }
