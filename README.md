@@ -28,7 +28,7 @@ Requires Go 1.26 or newer.
 ```
 make run                                      # bounce2d: a ball in a box that fills the window (Esc quits)
 make run EXAMPLE=./examples/cube3d            # cube3d: walk around a floor with six shaded cubes
-make run EXAMPLE=./examples/viewer            # viewer: look at the bundled OBJ models
+make run EXAMPLE=./examples/viewer            # viewer: look at the bundled OBJ models and shapes
 make run EXAMPLE=./examples/viewer ARGS=my.obj  # viewer: look at your own model
 ```
 
@@ -51,11 +51,13 @@ viewer controls:
 | Arrows | orbit the model |
 | + / - or W / S | zoom |
 | R | spin on and off |
-| N | next model |
+| N | next model (the bundled ones end with a sphere, a cylinder and a cone) |
 | V | wireframe or solid |
 | M, B | character shading or half-block pixels; exact or solid pixel edges |
 | D | draw both sides of every face (for models that look inside out) |
 | C | change color |
+| F | smooth or faceted shading for this model (a model without normals is smoothed from its faces) |
+| L | light from the sun, or from a lamp held up and to the left of the camera |
 | Esc | quit |
 
 Letters work in either case. Ctrl-C quits any program built on glonk.

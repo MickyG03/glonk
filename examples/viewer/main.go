@@ -1,6 +1,6 @@
 // Command viewer shows OBJ models in the terminal.
 //
-//	go run ./examples/viewer                 browse the bundled samples
+//	go run ./examples/viewer                 browse the bundled samples and shapes
 //	go run ./examples/viewer model.obj ...   view your own models
 package main
 
@@ -30,18 +30,44 @@ var palette = []engine.Color{
 	engine.Palette(201), engine.Palette(226), engine.Palette(255),
 }
 
-// lights light the model: some ambient fill, and a sun from above, to one side and
+// sun lights the model: some ambient fill, and a sun from above, to one side and
 // slightly ahead.
-var lights = []mesh.Light{
+var sun = []mesh.Light{
 	mesh.Ambient{Level: 0.2},
 	mesh.Directional{Direction: geometry.Vector3{X: 0.4, Y: -1, Z: 0.6}},
 }
 
+// How far up and to the left of the camera the lamp is held, and how far it reaches in
+// units of how far back the camera is. Far enough aside that the lit side of a round
+// shape is clearly its upper left, and a reach long enough that the lamp is not dim.
+const (
+	lampAside = 2.0
+	lampUp    = 2.0
+	lampReach = 8.0
+)
+
+// lampLights is the ambient fill and a lamp held by the viewer, up and to the left of the
+// camera, so that it moves with it. dist is how far back the camera is.
+func lampLights(cam mesh.Camera, dist float64) []mesh.Light {
+	position := cam.Position.Add(cam.Right().Scale(-lampAside)).Add(geometry.Vector3{Y: lampUp})
+	return []mesh.Light{
+		mesh.Ambient{Level: 0.2},
+		mesh.Point{Position: position, Range: lampReach * dist},
+	}
+}
+
 type model struct {
 	name  string
-	mesh  mesh.Mesh
+	mesh  mesh.Mesh // fitted to modelSize; it has Normals if the file or shape came with them
 	verts int
 	faces int
+
+	// smooth is whether the model is shaded smooth, which F switches. A model that came
+	// with normals starts smooth. One that did not starts faceted, as it always has,
+	// and smoothing it finds its normals from its faces (SmoothNormals), which is done
+	// the first time and kept in smoothed.
+	smooth   bool
+	smoothed *mesh.Mesh
 }
 
 // maxModelBytes bounds the OBJ files the viewer reads. A model larger than this is
@@ -61,7 +87,38 @@ func loadModel(fsys fs.FS, name string) (model, error) {
 	if err != nil {
 		return model{}, err
 	}
-	return model{name: path.Base(name), mesh: m.Fit(modelSize), verts: len(m.Vertices), faces: len(m.Faces)}, nil
+	return model{name: path.Base(name), mesh: m.Fit(modelSize), verts: len(m.Vertices), faces: len(m.Faces), smooth: len(m.Normals) > 0}, nil
+}
+
+// shapeModels are the shapes the mesh package makes, to browse beside the OBJ samples.
+// They come with normals, so they start smooth.
+func shapeModels() []model {
+	var models []model
+	for _, s := range []struct {
+		name string
+		mesh mesh.Mesh
+	}{
+		{"sphere", mesh.Sphere(modelSize/2, 24, 12)},
+		{"cylinder", mesh.Cylinder(0.8, modelSize, 24)},
+		{"cone", mesh.Cone(0.9, modelSize, 24)},
+	} {
+		// Built at modelSize and centered, so there is nothing to fit.
+		models = append(models, model{name: s.name, mesh: s.mesh, verts: len(s.mesh.Vertices), faces: len(s.mesh.Faces), smooth: true})
+	}
+	return models
+}
+
+// browseModels is what the viewer shows: the models named in args, or with none the
+// bundled samples and the shapes.
+func browseModels(args []string) ([]model, error) {
+	models, err := loadModels(args)
+	if err != nil {
+		return nil, err
+	}
+	if len(args) == 0 {
+		models = append(models, shapeModels()...)
+	}
+	return models, nil
 }
 
 // loadModels loads the files named in args, or the bundled samples if there are none.
@@ -110,6 +167,7 @@ type viewer struct {
 	wire        bool
 	halfBlocks  bool
 	doubleSided bool
+	lamp        bool // lit by a lamp that follows the camera, not the sun
 	color       int
 	fps         float64
 
@@ -147,6 +205,12 @@ func (v *viewer) Update(dt float64, in *engine.Input) error {
 	}
 	if pressed('c', 'C') {
 		v.color = (v.color + 1) % len(palette)
+	}
+	if pressed('f', 'F') {
+		v.models[v.current].smooth = !v.models[v.current].smooth
+	}
+	if pressed('l', 'L') {
+		v.lamp = !v.lamp
 	}
 	if v.halfBlocks && !v.wire && pressed('b', 'B') {
 		v.flipEdges = true
@@ -196,9 +260,37 @@ func (v *viewer) camera() mesh.Camera {
 	return cam
 }
 
+// shown returns the current model as it is to be drawn: with normals if it is smooth,
+// without if it is faceted.
+func (v *viewer) shown() mesh.Mesh {
+	cur := &v.models[v.current]
+	if cur.smooth {
+		if len(cur.mesh.Normals) > 0 {
+			return cur.mesh
+		}
+		if cur.smoothed == nil {
+			smoothed := cur.mesh.SmoothNormals()
+			cur.smoothed = &smoothed
+		}
+		return *cur.smoothed
+	}
+	faceted := cur.mesh
+	faceted.Normals = nil
+	return faceted
+}
+
+// lights returns the lights for a camera: the sun, or the lamp that follows it.
+func (v *viewer) lights(cam mesh.Camera) []mesh.Light {
+	if v.lamp {
+		return lampLights(cam, v.dist)
+	}
+	return sun
+}
+
 func (v *viewer) Draw(fb *engine.FrameBuffer) {
 	cam := v.camera()
-	m := v.models[v.current].mesh
+	lights := v.lights(cam)
+	m := v.shown()
 	m.DoubleSided = v.doubleSided
 	color := palette[v.color]
 	m.Material.Color = color
@@ -227,17 +319,27 @@ func (v *viewer) Draw(fb *engine.FrameBuffer) {
 	if v.doubleSided {
 		mode += ", two-sided"
 	}
+	if !v.wire { // a wireframe has no shading and no light
+		shading, light := "faceted", "sun"
+		if v.models[v.current].smooth {
+			shading = "smooth"
+		}
+		if v.lamp {
+			light = "lamp"
+		}
+		mode += ", " + shading + ", " + light
+	}
 
 	cur := v.models[v.current]
 	fb.DrawBox(0, 0, fb.Width(), fb.Height(), engine.Color{})
 	fb.DrawText(1, 1, fmt.Sprintf("%s (%d/%d)  %d vertices, %d faces", cur.name, v.current+1, len(v.models), cur.verts, cur.faces), engine.Color{})
 	fb.DrawText(1, 2, fmt.Sprintf("%.0f fps  %s", v.fps, mode), engine.Color{})
 	fb.DrawText(1, fb.Height()-3, "arrows orbit  +/- zoom  R spin  N next model  Esc quit", engine.Color{})
-	fb.DrawText(1, fb.Height()-2, "V wire/solid  M blocks  B edges  D two-sided  C color", engine.Color{})
+	fb.DrawText(1, fb.Height()-2, "V wire/solid  M blocks  B edges  D two-sided  C color  F smooth  L lamp", engine.Color{})
 }
 
 func main() {
-	models, err := loadModels(os.Args[1:])
+	models, err := browseModels(os.Args[1:])
 	if err != nil {
 		// Report before the terminal is touched, so the message stays readable.
 		fmt.Fprintln(os.Stderr, "viewer:", err)

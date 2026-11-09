@@ -6,6 +6,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -709,5 +710,440 @@ func TestZoomStaysWithinItsLimits(t *testing.T) {
 		if v.dist != tt.want {
 			t.Errorf("key %q: wanted the distance held at %v, got %v", tt.key, tt.want, v.dist)
 		}
+	}
+}
+
+// browseAll is the viewer as it starts with no arguments: the samples and the shapes.
+func browseAll(t *testing.T) *viewer {
+	t.Helper()
+	models, err := browseModels(nil)
+	if err != nil {
+		t.Fatalf("unable to load the models: %v", err)
+	}
+	v := newViewer(models)
+	v.spin = false
+	return v
+}
+
+func TestBrowsingShowsTheSamplesThenTheShapes(t *testing.T) {
+	models, err := browseModels(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	want := []struct {
+		name         string
+		verts, faces int
+		smooth       bool
+	}{
+		{"house.obj", 30, 44, false},
+		{"icosphere.obj", 42, 80, false},
+		{"torus.obj", 128, 256, false},
+		{"sphere", 266, 528, true},
+		{"cylinder", 98, 96, true},
+		{"cone", 73, 48, true},
+	}
+	if len(models) != len(want) {
+		t.Fatalf("wanted %d models, got %d", len(want), len(models))
+	}
+	for i, w := range want {
+		m := models[i]
+		if m.name != w.name || m.verts != w.verts || m.faces != w.faces || m.smooth != w.smooth {
+			t.Errorf("model %d: wanted %s with %d vertices, %d triangles and smooth %v, got %s with %d, %d and %v",
+				i, w.name, w.verts, w.faces, w.smooth, m.name, m.verts, m.faces, m.smooth)
+		}
+	}
+}
+
+// Models named on the command line are shown on their own, without the shapes.
+func TestNamedModelsAreShownWithoutTheShapes(t *testing.T) {
+	p := writeFile(t, "tri.obj", "v 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\n")
+
+	models, err := browseModels([]string{p})
+	if err != nil || len(models) != 1 || models[0].name != "tri.obj" {
+		t.Errorf("wanted just tri.obj, got %d models (err %v)", len(models), err)
+	}
+	if _, err := browseModels([]string{filepath.Join(t.TempDir(), "missing.obj")}); err == nil || !strings.Contains(err.Error(), "missing.obj") {
+		t.Errorf("wanted an error naming the missing file, got %v", err)
+	}
+}
+
+func TestShapesAreValidFittedAndHaveNormals(t *testing.T) {
+	for _, m := range shapeModels() {
+		t.Run(m.name, func(t *testing.T) {
+			if err := m.mesh.Validate(); err != nil {
+				t.Fatalf("wanted a valid mesh, got %v", err)
+			}
+			if len(m.mesh.Normals) != len(m.mesh.Vertices) || len(m.mesh.Normals) == 0 {
+				t.Errorf("wanted a normal for every vertex, got %d for %d", len(m.mesh.Normals), len(m.mesh.Vertices))
+			}
+			lo, hi := m.mesh.Bounds()
+			size, centre := hi.Sub(lo), lo.Add(hi).Scale(0.5)
+			if longest := math.Max(size.X, math.Max(size.Y, size.Z)); math.Abs(longest-modelSize) > 1e-9 || centre.Length() > 1e-9 {
+				t.Errorf("wanted the shape fitted to %v and centered, got longest side %v centered at %v", float64(modelSize), longest, centre)
+			}
+		})
+	}
+}
+
+// A model that came with normals starts smooth. A file that has them is read as such.
+func TestModelsWithNormalsStartSmooth(t *testing.T) {
+	flat := writeFile(t, "flat.obj", "v 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\n")
+	round := writeFile(t, "round.obj", "v 0 0 0\nv 1 0 0\nv 0 1 0\nvn 0 0 1\nf 1//1 2//1 3//1\n")
+
+	models, err := loadModels([]string{flat, round})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if models[0].smooth || !models[1].smooth {
+		t.Errorf("wanted a file without normals to start faceted and one with them smooth, got %v and %v", models[0].smooth, models[1].smooth)
+	}
+}
+
+func TestShadingKeyTogglesTheCurrentModelOncePerPressInEitherCase(t *testing.T) {
+	for _, key := range []engine.Key{'f', 'F'} {
+		t.Run(fmt.Sprintf("%c", key), func(t *testing.T) {
+			v := browseAll(t)
+			kb := engine.NewKeyboard()
+
+			kb.Press(key)
+			step(v, kb, 0.1)
+			if !v.models[0].smooth {
+				t.Fatalf("wanted the first press to smooth the house")
+			}
+			for range 5 {
+				step(v, kb, 0.1)
+			}
+			if !v.models[0].smooth {
+				t.Errorf("wanted holding the key to change nothing")
+			}
+			kb.Release(key)
+			kb.Press(key)
+			step(v, kb, 0.1)
+			if v.models[0].smooth {
+				t.Errorf("wanted a second press to make it faceted again")
+			}
+		})
+	}
+}
+
+// Each model keeps its own shading as you move between them.
+func TestShadingIsKeptForEachModel(t *testing.T) {
+	v := browseAll(t)
+	kb := engine.NewKeyboard()
+	tap := func(key engine.Key) {
+		kb.Press(key)
+		step(v, kb, 0.1)
+		kb.Release(key)
+		step(v, kb, 0.1)
+	}
+
+	tap('f') // smooth the house
+	tap('n') // the icosphere, which has not been touched
+	if v.models[v.current].smooth {
+		t.Errorf("wanted the icosphere still faceted")
+	}
+	for range len(v.models) - 1 { // all the way round to the house
+		tap('n')
+	}
+	if v.current != 0 || !v.models[0].smooth {
+		t.Errorf("wanted the house back, still smooth; at model %d smooth %v", v.current, v.models[0].smooth)
+	}
+	// The shapes started smooth, and F makes one faceted.
+	for v.models[v.current].name != "sphere" {
+		tap('n')
+	}
+	tap('f')
+	if v.models[v.current].smooth {
+		t.Errorf("wanted F to make the smooth sphere faceted")
+	}
+}
+
+// Smoothing a model that has no normals finds them once, and leaves the model as loaded.
+func TestSmoothingFindsNormalsOnceAndKeepsTheOriginal(t *testing.T) {
+	v := browseAll(t)
+	v.current = 1 // the icosphere
+	loaded := v.models[1].mesh
+
+	faceted := v.shown()
+	v.models[1].smooth = true
+	first, second := v.shown(), v.shown()
+
+	if faceted.Normals != nil {
+		t.Errorf("wanted a faceted model drawn without normals")
+	}
+	if len(first.Normals) != len(first.Vertices) || len(first.Normals) == 0 {
+		t.Fatalf("wanted a normal for each of %d vertices, got %d", len(first.Vertices), len(first.Normals))
+	}
+	if &first.Normals[0] != &second.Normals[0] {
+		t.Errorf("wanted the normals found once and kept, but they were found again")
+	}
+	if loaded.Normals != nil || v.models[1].mesh.Normals != nil {
+		t.Errorf("wanted the loaded model left without normals")
+	}
+	v.models[1].smooth = false
+	if v.shown().Normals != nil {
+		t.Errorf("wanted faceted again to draw without normals")
+	}
+}
+
+func TestShapesKeepTheirOwnNormalsWhenFaceted(t *testing.T) {
+	v := browseAll(t)
+	v.current = 3 // the sphere
+	own := v.models[3].mesh.Normals
+
+	v.models[3].smooth = false
+	if v.shown().Normals != nil {
+		t.Errorf("wanted a faceted sphere drawn without normals")
+	}
+	v.models[3].smooth = true
+	if got := v.shown().Normals; len(got) != len(own) || &got[0] != &own[0] {
+		t.Errorf("wanted a smooth sphere drawn with its own normals, not found ones")
+	}
+}
+
+// modelArea is the part of the frame where the model is drawn, as text: not the border
+// and not the lines of text on top and bottom, which name the shading and the light.
+func modelArea(fb *engine.FrameBuffer) string {
+	var sb strings.Builder
+	for y := 3; y < fb.Height()-4; y++ {
+		for x := 1; x < fb.Width()-1; x++ {
+			c := fb.At(x, y)
+			fmt.Fprintf(&sb, "%c%v%v", c.Character, c.Foreground, c.Background)
+		}
+		sb.WriteByte('\n')
+	}
+	return sb.String()
+}
+
+func shadesIn(fb *engine.FrameBuffer) int {
+	seen := map[rune]bool{}
+	for _, c := range modelCells(fb) {
+		seen[fb.At(c[0], c[1]).Character] = true
+	}
+	return len(seen)
+}
+
+// Smooth and faceted are different pictures, for every model, and smoothing the
+// house, whose faces are each one flat shade, adds shades.
+func TestSmoothAndFacetedLookDifferent(t *testing.T) {
+	v := browseAll(t)
+	for i := range v.models {
+		v.current = i
+		v.models[i].smooth = true
+		smooth := drawAll(t, v)
+		v.models[i].smooth = false
+		faceted := drawAll(t, v)
+
+		if modelArea(smooth) == modelArea(faceted) {
+			t.Errorf("%s: wanted smooth and faceted drawings to differ", v.models[i].name)
+		}
+		if v.models[i].name == "house.obj" && shadesIn(smooth) <= shadesIn(faceted) {
+			t.Errorf("house: wanted smoothing to add shades, got %d against %d", shadesIn(smooth), shadesIn(faceted))
+		}
+	}
+}
+
+func TestEveryModelDrawsSmoothOrFacetedInSunOrLampLight(t *testing.T) {
+	v := browseAll(t)
+	for i := range v.models {
+		for _, smooth := range []bool{false, true} {
+			for _, lamp := range []bool{false, true} {
+				for _, blocks := range []bool{false, true} {
+					name := fmt.Sprintf("%s smooth %v lamp %v half-blocks %v", v.models[i].name, smooth, lamp, blocks)
+					t.Run(name, func(t *testing.T) {
+						v.current, v.lamp, v.halfBlocks = i, lamp, blocks
+						v.models[i].smooth = smooth
+
+						fb := drawAll(t, v)
+
+						if cells := modelCells(fb); len(cells) < 40 {
+							t.Errorf("wanted the model on screen, got %d cells", len(cells))
+						}
+					})
+				}
+			}
+		}
+	}
+}
+
+func TestLampKeySwitchesTheLightOncePerPressInEitherCase(t *testing.T) {
+	for _, key := range []engine.Key{'l', 'L'} {
+		t.Run(fmt.Sprintf("%c", key), func(t *testing.T) {
+			v := browseAll(t)
+			kb := engine.NewKeyboard()
+
+			kb.Press(key)
+			step(v, kb, 0.1)
+			if !v.lamp {
+				t.Fatalf("wanted the first press to turn the lamp on")
+			}
+			for range 5 {
+				step(v, kb, 0.1)
+			}
+			if !v.lamp {
+				t.Errorf("wanted holding the key to change nothing")
+			}
+			kb.Release(key)
+			kb.Press(key)
+			step(v, kb, 0.1)
+			if v.lamp {
+				t.Errorf("wanted a second press to bring the sun back")
+			}
+		})
+	}
+}
+
+// The sun stays where it is while you orbit. The lamp is held by the viewer, so it moves
+// with the camera and stays the same way off from it.
+func TestTheLampFollowsTheCameraAndTheSunDoesNot(t *testing.T) {
+	v := browseAll(t)
+	pointOf := func(lights []mesh.Light) mesh.Point {
+		t.Helper()
+		for _, l := range lights {
+			if p, ok := l.(mesh.Point); ok {
+				return p
+			}
+		}
+		t.Fatalf("wanted a point light among %v", lights)
+		return mesh.Point{}
+	}
+
+	if !slices.Equal(v.lights(v.camera()), sun) {
+		t.Fatalf("wanted the sun's lights without the lamp")
+	}
+	v.lamp = true
+	cam1 := v.camera()
+	lamp1 := pointOf(v.lights(cam1))
+	ambient := false
+	for _, l := range v.lights(cam1) {
+		a, ok := l.(mesh.Ambient)
+		ambient = ambient || (ok && a.Level > 0)
+	}
+	if !ambient {
+		t.Errorf("wanted some ambient light with the lamp, so that the unlit side is not black")
+	}
+	v.yaw += 1.1
+	v.pitch -= 0.2
+	cam2 := v.camera()
+	lamp2 := pointOf(v.lights(cam2))
+
+	if lamp1.Position.Distance(lamp2.Position) < 1 {
+		t.Errorf("wanted the lamp to move with the camera, from %v to %v", lamp1.Position, lamp2.Position)
+	}
+	// Up and to the left of the camera by the same amounts, whichever way it faces.
+	for i, c := range []struct {
+		cam  mesh.Camera
+		lamp mesh.Point
+	}{{cam1, lamp1}, {cam2, lamp2}} {
+		off := c.lamp.Position.Sub(c.cam.Position)
+		if math.Abs(off.Y-lampUp) > 1e-9 || math.Abs(off.Dot(c.cam.Right())+lampAside) > 1e-9 || math.Abs(off.Dot(c.cam.Forward())) > 1e-9 {
+			t.Errorf("view %d: wanted the lamp %v up and %v left of the camera, got %v away", i, lampUp, lampAside, off)
+		}
+		if want := lampReach * v.dist; math.Abs(c.lamp.Range-want) > 1e-9 {
+			t.Errorf("view %d: wanted a reach of %v, got %v", i, want, c.lamp.Range)
+		}
+	}
+	// And it reaches in proportion to how far back the camera is, so zooming keeps it lit.
+	v.dist = 10
+	if far := pointOf(v.lights(v.camera())); far.Range <= lamp2.Range {
+		t.Errorf("wanted a longer reach when zoomed out, got %v after %v", far.Range, lamp2.Range)
+	}
+	v.lamp = false
+	if got := v.lights(v.camera()); !slices.Equal(got, sun) {
+		t.Errorf("wanted the sun back")
+	}
+}
+
+// With the lamp up and to the left of the camera, the lit side of a smooth sphere is its
+// upper left. The sun, from above and to one side, lights it from somewhere else.
+func TestTheLampLightsTheUpperLeftOfASphere(t *testing.T) {
+	v := browseAll(t)
+	v.current = 3 // the sphere
+	v.lamp = true
+	fb := drawAll(t, v)
+
+	cells := modelCells(fb)
+	best, ramp := -1, ".:-=+*#%@"
+	var bx, by, mx, my float64
+	var nBest int
+	for _, c := range cells {
+		mx, my = mx+float64(c[0]), my+float64(c[1])
+		level := strings.IndexRune(ramp, fb.At(c[0], c[1]).Character)
+		switch {
+		case level > best:
+			best, bx, by, nBest = level, float64(c[0]), float64(c[1]), 1
+		case level == best:
+			bx, by, nBest = bx+float64(c[0]), by+float64(c[1]), nBest+1
+		}
+	}
+	bx, by = bx/float64(nBest), by/float64(nBest)
+	mx, my = mx/float64(len(cells)), my/float64(len(cells))
+
+	if bx >= mx || by >= my {
+		t.Errorf("wanted the brightest cells (%.1f, %.1f) above and left of the sphere's middle (%.1f, %.1f)\n%s", bx, by, mx, my, fb.String())
+	}
+
+	v.lamp = false
+	if modelArea(drawAll(t, v)) == modelArea(fb) {
+		t.Errorf("wanted the sun and the lamp to light the sphere differently")
+	}
+}
+
+// The lamp lights the half-block pixels too.
+func TestTheLampLightsHalfBlockPixelsToo(t *testing.T) {
+	v := browseAll(t)
+	v.current, v.halfBlocks = 3, true // the sphere
+	sunlit := modelArea(drawAll(t, v))
+
+	v.lamp = true
+	lit := modelArea(drawAll(t, v))
+
+	if sunlit == lit {
+		t.Errorf("wanted the lamp to light the pixels differently from the sun")
+	}
+}
+
+func TestHUDNamesTheShadingAndTheLight(t *testing.T) {
+	v := browseAll(t)
+	line := func() string { return hudText(drawAll(t, v), 2) }
+
+	v.current = 1 // the icosphere, faceted to begin with
+	if got := line(); !strings.Contains(got, "characters, faceted, sun") {
+		t.Errorf("wanted faceted and sun on the second line, got %q", got)
+	}
+	v.models[1].smooth, v.lamp = true, true
+	if got := line(); !strings.Contains(got, "characters, smooth, lamp") {
+		t.Errorf("wanted smooth and lamp, got %q", got)
+	}
+	v.halfBlocks, v.doubleSided = true, true
+	if got := line(); !strings.Contains(got, "two-sided, smooth, lamp") {
+		t.Errorf("wanted the shading and light after the mode, got %q", got)
+	}
+	v.current = 3 // the sphere starts smooth
+	v.lamp = false
+	if got := line(); !strings.Contains(got, "smooth, sun") {
+		t.Errorf("wanted the sphere smooth and in the sun, got %q", got)
+	}
+
+	// A wireframe has neither.
+	v.wire = true
+	got := line()
+	for _, word := range []string{"smooth", "faceted", "sun", "lamp"} {
+		if strings.Contains(got, word) {
+			t.Errorf("wanted a wireframe to say nothing of %q, got %q", word, got)
+		}
+	}
+}
+
+func TestHelpMentionsTheShadingAndLightKeys(t *testing.T) {
+	fb := drawAll(t, browseAll(t))
+
+	got := hudText(fb, fb.Height()-2)
+
+	// At the end of the line, so the window shows it whole.
+	if !strings.HasSuffix(strings.TrimRight(got, " "), "F smooth  L lamp") {
+		t.Errorf("wanted the help to end with F and L, whole, got %q", got)
 	}
 }
