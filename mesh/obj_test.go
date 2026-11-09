@@ -722,28 +722,63 @@ func TestLoadOBJWireframeShowsPolygonsNotDiagonals(t *testing.T) {
 	}
 }
 
-func BenchmarkLoadOBJ(b *testing.B) {
-	// A grid of quads: 100k faces, roughly the size of a detailed model.
-	const side = 316
+// quadGridOBJ is a grid of side by side quads, 100k of them for side 316: roughly the
+// size of a detailed model. normals says how the faces refer to normals: "" for none,
+// "vertex" for one normal at each vertex (a smooth surface), "face" for one for each
+// quad, so that every vertex inside the grid is met with four different normals.
+func quadGridOBJ(side int, normals string) string {
 	var sb strings.Builder
 	for y := 0; y <= side; y++ {
 		for x := 0; x <= side; x++ {
 			fmt.Fprintf(&sb, "v %d %d %d\n", x, y, (x*y)%5)
 		}
 	}
+	switch normals {
+	case "vertex":
+		for y := 0; y <= side; y++ {
+			for x := 0; x <= side; x++ {
+				fmt.Fprintf(&sb, "vn 0 0 1\n")
+			}
+		}
+	case "face":
+		for y := 0; y < side; y++ {
+			for x := 0; x < side; x++ {
+				fmt.Fprintf(&sb, "vn %d 0 1\n", (x*y)%7)
+			}
+		}
+	}
 	for y := 0; y < side; y++ {
 		for x := 0; x < side; x++ {
 			a := y*(side+1) + x + 1
-			fmt.Fprintf(&sb, "f %d %d %d %d\n", a, a+1, a+side+2, a+side+1)
+			switch normals {
+			case "vertex":
+				fmt.Fprintf(&sb, "f %d//%d %d//%d %d//%d %d//%d\n", a, a, a+1, a+1, a+side+2, a+side+2, a+side+1, a+side+1)
+			case "face":
+				n := y*side + x + 1
+				fmt.Fprintf(&sb, "f %d//%d %d//%d %d//%d %d//%d\n", a, n, a+1, n, a+side+2, n, a+side+1, n)
+			default:
+				fmt.Fprintf(&sb, "f %d %d %d %d\n", a, a+1, a+side+2, a+side+1)
+			}
 		}
 	}
-	text := sb.String()
+	return sb.String()
+}
 
-	b.SetBytes(int64(len(text)))
-	b.ReportAllocs()
-	for b.Loop() {
-		if _, err := LoadOBJ(strings.NewReader(text)); err != nil {
-			b.Fatal(err)
-		}
+func BenchmarkLoadOBJ(b *testing.B) {
+	for _, tt := range []struct{ name, normals string }{
+		{"no normals", ""},
+		{"a normal at each vertex", "vertex"},
+		{"a normal for each face", "face"},
+	} {
+		text := quadGridOBJ(316, tt.normals)
+		b.Run(tt.name, func(b *testing.B) {
+			b.SetBytes(int64(len(text)))
+			b.ReportAllocs()
+			for b.Loop() {
+				if _, err := LoadOBJ(strings.NewReader(text)); err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
 	}
 }

@@ -316,6 +316,12 @@ func FuzzLoadOBJ(f *testing.F) {
 		// Quadratic before the continuation fix: about 5 s then, milliseconds now.
 		strings.Repeat("\\\n", 300000),
 		"f 1 2 3\n", "f 0 0 0\n", "v 0 0 0\nf 99999999999999999999 1 1\n", "f \\\n\\\n", "\x00\xff\x1b[",
+		// Normals: a cube with one for each side, shared and split places, mixed and unusable corners.
+		objCubeWithNormals,
+		"v 0 0 0\nv 1 0 0\nv 0 1 0\nvn 0 0 1\nvn 0 1 0\nf 1//1 2//1 3//2\nf 1//2 2//2 3//2\n",
+		"v 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\nvn 1 1 1\nf 1//1 2//1 3//1\nf 1//-1 2 3//9\n",
+		"v 0 0 0\nv 1 0 0\nv 0 1 0\nvn 0 0 0\nvn 1e308 -1e308 5e-324\nf 1//1 2//2 3/1/-2\n",
+		"vn nan 0 0\n", "vn 1 2\n", "vn 1 \\\n 2 3\nv 0 0 0\nf 1//1 1//1 1//1\n",
 	} {
 		f.Add(seed)
 	}
@@ -337,8 +343,8 @@ func FuzzLoadOBJ(f *testing.F) {
 		}
 
 		if err != nil {
-			if len(m.Vertices) != 0 || len(m.Faces) != 0 || len(m.Edges) != 0 {
-				t.Fatalf("wanted an empty mesh alongside an error, got %d vertices, %d faces, %d edges", len(m.Vertices), len(m.Faces), len(m.Edges))
+			if len(m.Vertices) != 0 || len(m.Faces) != 0 || len(m.Edges) != 0 || m.Normals != nil {
+				t.Fatalf("wanted an empty mesh alongside an error, got %d vertices, %d faces, %d edges, %d normals", len(m.Vertices), len(m.Faces), len(m.Edges), len(m.Normals))
 			}
 			if len(text) > 0 {
 				if _, limErr := LoadOBJLimit(strings.NewReader(text), int64(len(text))); limErr == nil || limErr.Error() != err.Error() {
@@ -363,6 +369,17 @@ func FuzzLoadOBJ(f *testing.F) {
 				}
 			}
 		}
+		if m.Normals != nil && len(m.Normals) != len(m.Vertices) {
+			t.Fatalf("wanted a normal for each of %d vertices, or none, got %d", len(m.Vertices), len(m.Normals))
+		}
+		for _, n := range m.Normals {
+			if !finite(n.X, n.Y, n.Z) {
+				t.Fatalf("wanted finite normals, got %v", n)
+			}
+		}
+		if err := m.Validate(); err != nil {
+			t.Fatalf("wanted a loaded model to be valid, got %v", err)
+		}
 		seen := map[[2]int]bool{}
 		for _, e := range m.Edges {
 			if e[0] < 0 || e[1] >= len(m.Vertices) || e[0] >= e[1] {
@@ -376,13 +393,13 @@ func FuzzLoadOBJ(f *testing.F) {
 
 		// Loading is a pure function of the text.
 		again, err := LoadOBJ(strings.NewReader(text))
-		if err != nil || !slices.Equal(again.Vertices, m.Vertices) || !slices.Equal(again.Faces, m.Faces) || !slices.Equal(again.Edges, m.Edges) {
+		if err != nil || !slices.Equal(again.Vertices, m.Vertices) || !slices.Equal(again.Faces, m.Faces) || !slices.Equal(again.Edges, m.Edges) || !slices.Equal(again.Normals, m.Normals) {
 			t.Fatalf("wanted loading twice to give the same mesh")
 		}
 
 		// The limit variant agrees with the unlimited one at the exact size, and one
 		// byte under it never succeeds.
-		if exact, exactErr := LoadOBJLimit(strings.NewReader(text), int64(len(text))); exactErr != nil || !slices.Equal(exact.Vertices, m.Vertices) || !slices.Equal(exact.Faces, m.Faces) || !slices.Equal(exact.Edges, m.Edges) {
+		if exact, exactErr := LoadOBJLimit(strings.NewReader(text), int64(len(text))); exactErr != nil || !slices.Equal(exact.Vertices, m.Vertices) || !slices.Equal(exact.Faces, m.Faces) || !slices.Equal(exact.Edges, m.Edges) || !slices.Equal(exact.Normals, m.Normals) {
 			t.Fatalf("wanted LoadOBJLimit at the exact size to match LoadOBJ, got err %v", exactErr)
 		}
 		if len(text) >= 2 {
@@ -597,5 +614,20 @@ func FuzzSmoothNormals(f *testing.F) {
 		if m.Normals != nil {
 			t.Fatalf("wanted the mesh left alone, it gained normals")
 		}
+	})
+}
+
+// FuzzLoadOBJNormals builds an OBJ file out of the bytes, with places, normals, and
+// faces whose corners have normals in every form and some that cannot be used, and
+// checks the loaded mesh against what the file says: every triangle's places and
+// normals, the edges, and that vertices are split no more than they must be.
+func FuzzLoadOBJNormals(f *testing.F) {
+	f.Add([]byte{})
+	f.Add([]byte{3, 2, 1, 4, 0, 0, 2, 0, 1, 0, 2, 0, 2, 0, 0, 0, 0, 3, 0, 0, 0, 1})
+	f.Add([]byte{5, 4, 6, 4, 0, 2, 4, 1, 3, 6, 1, 5, 2, 4, 4, 5, 5, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9})
+	f.Add([]byte{255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255})
+
+	f.Fuzz(func(t *testing.T, data []byte) {
+		checkOBJModel(t, data)
 	})
 }
