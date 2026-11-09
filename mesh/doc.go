@@ -3,11 +3,19 @@
 //
 // A [Mesh] holds vertices, the edges and triangular faces between them, where it
 // sits in the world (its [Transform]) and how it looks (its [Material]). [Cube],
-// [Sphere], [Cylinder], [Cone], [Plane], [Grid] and [LoadOBJ] make meshes;
-// [Mesh.Draw] draws the edges, and
-// [Mesh.DrawShaded] and [Mesh.DrawShadedPixels] draw the faces lit by any number of
-// lights, each a [Light] such as [Directional], [Ambient] or [Point], or one of your own, into
-// cells or into a half-block pixel Canvas.
+// [Sphere], [Cylinder], [Cone], [Plane], [Grid] and [LoadOBJ] make meshes. [Mesh.Draw]
+// draws the edges, and [Mesh.DrawShaded] and [Mesh.DrawShadedPixels] draw the faces
+// lit by any number of lights, each a [Light] such as [Directional], [Ambient] or
+// [Point], or one of your own, into cells or into a half-block pixel Canvas.
+//
+// A mesh with no [Mesh.Normals] is lit face by face, one brightness for each, so a
+// round shape shows its facets. Give it a normal for each vertex and every cell is lit
+// by itself, from the position and the normal blended across the face, so the shape
+// looks round and a [Point] light near a big flat face makes a pool of light on it.
+// [Sphere], [Cylinder], [Cone] and [Plane] come with normals, [LoadOBJ] reads them from
+// a file, and [Mesh.SmoothNormals] works them out from the faces. Where a surface has
+// a hard edge, as a cube does, give each side its own vertices so that each can face
+// its own way.
 //
 // Yaw and Pitch turn a model the way they turn a [Camera]: positive Yaw swings the
 // front toward +x and positive Pitch tips it up.

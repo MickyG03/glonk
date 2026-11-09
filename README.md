@@ -7,8 +7,8 @@ A terminal rendering engine for Go. Draw 2D, 3D, or both in the same frame, usin
 ## What it does
 
 - **2D:** cells with foreground and background colors (the 256-color palette, or exact RGB on terminals with true color) and text attributes (bold, dim, underline, reverse), lines, boxes, text, and sprites.
-- **3D:** wireframe or solid meshes through a perspective camera, with near-plane clipping. Solid meshes are flat-shaded by any number of lights (directional, ambient, or your own) into an ASCII brightness ramp, hide each other by depth, and skip faces turned away.
-- **Models:** load OBJ files from any `io.Reader` (a file, `//go:embed`, a download), center and scale them, and draw them wireframe or shaded.
+- **3D:** wireframe or solid meshes through a perspective camera, with near-plane clipping. Solid meshes are shaded by any number of lights (directional, ambient, point, or your own) into an ASCII brightness ramp, face by face or, with normals, smoothly across each face. They hide each other by depth and skip faces turned away.
+- **Shapes and models:** a cube, sphere, cylinder, cone, plane and grid, or OBJ files from any `io.Reader` (a file, `//go:embed`, a download), centered and scaled and drawn wireframe or shaded.
 - **Half blocks:** a pixel `Canvas` with two square-ish pixels per cell, drawn with `▀` and a background color, for twice the vertical detail and shading by color instead of by character.
 - **Mixed:** draw a 3D scene first, then a 2D HUD on top, into the same frame.
 - **Input:** held keys and one-shot presses, including arrows. Terminals with the [kitty keyboard protocol](https://sw.kovidgoyal.net/kitty/keyboard-protocol/) (Ghostty, kitty, WezTerm, foot, iTerm2, Alacritty) report real key releases, so you can hold several keys at once.
@@ -91,6 +91,26 @@ A mesh is placed by its `Transform` (`Position`, `Yaw`, `Pitch`, `Roll`, `Scale`
 - **Inside out or invisible?** Some exporters wind faces the other way. Set `Mesh.DoubleSided = true` to draw both sides.
 - **Untrusted files:** malformed input returns an error naming the line, never a panic, and the time taken grows in step with the input size. Memory use is roughly 25 times the input size, up to 35 for a file that gives most corners a normal of their own, so bound the input with `LoadOBJLimit` when you do not trust the source.
 
+## Shapes and smooth shading
+
+`mesh.Cube`, `Sphere`, `Cylinder`, `Cone`, `Plane` (a flat rectangle facing up) and `Grid` (lines for a floor) make meshes without a file. They stand on the y axis, centered on the origin, and are placed with `Transform` like any model.
+
+```go
+ball := mesh.Sphere(1.5, 24, 12) // radius, segments around, rings from pole to pole
+ball.Transform.Position = geometry.Vector3{Z: 4}
+lamp := mesh.Point{Position: geometry.Vector3{X: -2, Y: 2}, Range: 8}
+ball.DrawShaded(fb, cam, mesh.Ambient{Level: 0.1}, lamp)
+```
+
+A mesh with no `Normals` is lit face by face, one brightness for each, so a round shape shows its facets. With a normal for each vertex (`Mesh.Normals`, in model space, any length) every cell is lit on its own, from the position and the normal blended across the face, so the shape looks round, and a lamp near a big flat face makes a pool of light on it.
+
+- **Where normals come from:** `Sphere`, `Cylinder`, `Cone` and `Plane`; a model file that has them; or `Mesh.SmoothNormals()`, which returns a copy with each vertex's normal averaged over the faces that share it, weighted by angle so that how a surface is cut into triangles does not change how it is lit.
+- **Hard edges need their own vertices.** `SmoothNormals` averages across shared vertices only, so a cube made of 8 comes out looking like a ball. A cylinder's caps and a cone's base have vertices of their own for the same reason, and `LoadOBJ` splits a vertex that a file lights differently on different faces.
+- **Back to facets:** draw a copy with `Normals` set to nil. A zero normal means none here: that corner takes the face's own. Normals turn with the `Transform`, whatever its scale.
+- **Cost:** about 12 to 23% more than facets on a scene of spheres, and none for a mesh without normals. Drawing allocates nothing either way.
+- **Shape limits:** segments go from 3 to 512 and rings from 2 to 512, so a careless argument cannot ask for gigabytes, and a size that is negative or not a finite number counts as 0. `Point` lights: `Range` 0 means no fading, and a negative `Range` gives no light.
+- **Your own lights:** `Light.Brightness(point, normal)` is asked about every cell of a mesh with normals, with the place on the surface and the unit normal there, and once for each face of one without.
+
 ## Quickstart
 
 ```go
@@ -172,7 +192,7 @@ To test a whole run (start-up, key bytes in, frames out), give `Config.Input` an
 |---|---|
 | `engine` | The loop, `FrameBuffer`, pixel `Canvas`, drawing helpers, keyboard `Input` |
 | `geometry` | 2D and 3D vector math |
-| `mesh` | 3D meshes (wireframe and shaded), OBJ loading, lights, and the perspective `Camera` |
+| `mesh` | 3D meshes (wireframe and shaded), shapes, OBJ loading, lights, and the perspective `Camera` |
 | `sprite` | Sprites (a `Cell` at a position) drawn in layers |
 
 ## Compatibility and limits
@@ -183,7 +203,7 @@ Built to work in most terminals. The basics need only the alternate screen, curs
 - **Without key releases, only one key stays held at a time.** The OS repeats just the most recently pressed key, so holding W and then pressing E stops W and you cannot walk and turn together (Terminal.app, for one). Set `Config.LegacyKeys` to force this behavior if a terminal misbehaves with the protocol.
 - **Escape waits 50 ms, and Alt chords are ignored.** An Escape press and the start of an arrow key are the same byte, so the Escape key counts only after 50 ms with nothing following it. Alt+key arrives as Escape plus the key and is dropped rather than read as Escape.
 - **Ctrl-Z suspends, and some endings cannot be cleaned up.** Ctrl-Z restores the terminal, stops the program, and takes the terminal over again on `fg`; Windows has no suspend. `os.Exit`, `log.Fatal`, a panic in a goroutine you started, `kill -9` and `kill -QUIT` skip the cleanup and leave the terminal raw; type `reset` to repair it. After the first quit signal a second one kills a game that is stuck, unless your program catches those signals itself.
-- **Bad meshes and cameras draw nothing instead of failing.** Edges and faces that name a missing vertex are skipped (`Mesh.Validate` finds them), a `Camera` field left at 0 uses a default (a 90 degree FOV, a Near of 0.1, a `CellAspect` of 2), a nonsense FOV, Near or `CellAspect` sees nothing, a mesh whose `Transform` has a number that is not finite or a negative `Scale` is not drawn, and sprites at NaN or infinite positions are not drawn.
+- **Bad meshes and cameras draw nothing instead of failing.** Edges and faces that name a missing vertex are skipped, and normals that are not one per vertex or not finite numbers are not used (the mesh is shaded flat); `Mesh.Validate` finds both, a `Camera` field left at 0 uses a default (a 90 degree FOV, a Near of 0.1, a `CellAspect` of 2), a nonsense FOV, Near or `CellAspect` sees nothing, a mesh whose `Transform` has a number that is not finite or a negative `Scale` is not drawn, and sprites at NaN or infinite positions are not drawn.
 - **One character is one column.** A cell holds a single character one column wide. Wide characters (CJK, most emoji) are drawn as `?`, combining marks and joiners are skipped by `DrawText`, and control characters, escape sequences in text included, are drawn as `?` too, so nothing a file name or a game contains can send commands to the terminal. A NUL character is shown as a space, so `Cell{Background: engine.Palette(4)}` is a colored blank. Wide characters are not supported.
 - **True color is used where the terminal says it has it.** An `RGB` color is sent exactly when `COLORTERM` is `truecolor` or `24bit` (terminals that can show it set that themselves) and as the closest of palette colors 16 to 255 otherwise; `Attrs` adds bold, dim, underline and reverse. Inside tmux or over ssh `COLORTERM` often does not arrive: export `COLORTERM=truecolor`, or set `Config.Colors` to `engine.ColorsTrue`, if the terminal can show it (and to `engine.Colors256` to turn it off). A terminal that cannot but is told it can shows wrong colors. A `Palette` color is always sent as a palette color, so colors 0 to 15 follow the user's theme. `Shade` gives exact RGB, so shades are finer on a true color terminal. Apple's Terminal does not set `COLORTERM` and keeps the 256-color look.
 - **Cells are taken to be twice as tall as wide.** That is what makes a cube look like a cube in most fonts; set `Camera.CellAspect` for a font that differs.
