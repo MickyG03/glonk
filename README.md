@@ -8,7 +8,7 @@ A terminal rendering engine for Go. Draw 2D, 3D, or both in the same frame, usin
 
 - **2D:** cells with foreground and background colors (the 256-color palette, or exact RGB on terminals with true color) and text attributes (bold, dim, underline, reverse), lines, boxes, text, and sprites.
 - **3D:** wireframe or solid meshes through a perspective camera, with near-plane clipping. Solid meshes are shaded by any number of lights (directional, ambient, point, or your own) into an ASCII brightness ramp, face by face or, with normals, smoothly across each face. They hide each other by depth and skip faces turned away. A wireframe drawn with depth is hidden by nearer solids too.
-- **Shapes and models:** a cube, sphere, cylinder, cone, plane and grid, or OBJ files from any `io.Reader` (a file, `//go:embed`, a download), centered and scaled and drawn wireframe or shaded.
+- **Shapes and models:** a cube, sphere, cylinder, cone, plane and grid, or OBJ files from any `io.Reader` (a file, `//go:embed`, a download), centered and scaled and drawn wireframe or shaded, in the colors of their materials when loaded from an `fs.FS`.
 - **Half blocks:** a pixel `Canvas` with two square-ish pixels per cell, drawn with `▀` and a background color, for twice the vertical detail and shading by color instead of by character.
 - **Mixed:** draw a 3D scene first, then a 2D HUD on top, into the same frame.
 - **Input:** held keys and one-shot presses, including arrows. Terminals with the [kitty keyboard protocol](https://sw.kovidgoyal.net/kitty/keyboard-protocol/) (Ghostty, kitty, WezTerm, foot, iTerm2, Alacritty) report real key releases, so you can hold several keys at once.
@@ -29,7 +29,7 @@ Requires Go 1.26 or newer.
 make run                                      # bounce2d: a ball in a box that fills the window (Esc quits)
 make run EXAMPLE=./examples/cube3d            # cube3d: walk around a floor with six shaded cubes and a wireframe one
 make run EXAMPLE=./examples/viewer            # viewer: look at the bundled OBJ models and shapes
-make run EXAMPLE=./examples/viewer ARGS=my.obj  # viewer: look at your own model
+make run EXAMPLE=./examples/viewer ARGS=my.obj  # viewer: look at your own model (its .mtl beside it gives it colors)
 ```
 
 cube3d controls:
@@ -55,7 +55,7 @@ viewer controls:
 | V | wireframe or solid |
 | M, B | character shading or half-block pixels; exact or solid pixel edges |
 | D | draw both sides of every face (for models that look inside out) |
-| C | change color |
+| C | change color (a model with colors of its own, like the bundled house, goes from them through the six palette colors and back) |
 | F | smooth or faceted shading for this model (a model without normals is smoothed from its faces) |
 | L | light from the sun, or from a lamp held up and to the left of the camera |
 | Esc | quit |
@@ -81,12 +81,22 @@ ship.Material.Color = engine.Palette(208)
 ship.DrawShaded(fb, cam, lights...) // or ship.Draw for a wireframe
 ```
 
+To have the colors of a model's materials, load it with `LoadOBJFS(fsys, name, maxBytes)` from an `fs.FS` (`os.DirFS`, an `embed.FS`, a zip). It follows the OBJ's `mtllib` to the `.mtl` beside it and gives each face the `Kd` of its `usemtl` material in `Mesh.FaceColors`. A face with a color is drawn in it, still lit, and the others use `Material.Color`; the limit and errors are those of `LoadOBJLimit`.
+
+```go
+//go:embed ship.obj ship.mtl
+var shipFiles embed.FS
+
+ship, err := mesh.LoadOBJFS(shipFiles, "ship.obj", 8<<20)
+```
+
 A mesh is placed by its `Transform` (`Position`, `Yaw`, `Pitch`, `Roll`, `Scale`; angles in radians, and positive pitch tips the front up, as it does for the camera) and looks the way its `Material` says (`Color`, and a `Ramp` of brightness characters). `DrawShaded` takes any number of lights: `mesh.Ambient`, `mesh.Directional`, `mesh.Point` (a lamp that fades with distance), or a type of your own with a `Brightness` method.
 
 `LoadOBJ` reads any `io.Reader`, so a file, an embedded asset or a download all work. For input you do not control, use `LoadOBJLimit(r, maxBytes)`: it fails with `mesh.ErrOBJTooLarge` instead of reading without end (a plain `io.LimitReader` would quietly cut the model short).
 
 - **Understood:** vertices (`v`), normals (`vn`), faces (`f`, with or without texture and normal indices, any number of corners, negative indices) and lines (`l`). Faces with more than three corners are split into triangles for shading, and the wireframe shows the original polygons.
-- **Skipped:** materials and colors, texture coordinates, groups and curves. Everything in the file becomes one mesh, in the color of its `Material`. If the faces use normals the mesh is shaded smooth, with a vertex split into one per normal where the file lights it differently on different faces (the sides of a cube); if not, it is shaded flat.
+- **Skipped:** texture coordinates, groups and curves, and materials too in `LoadOBJ` and `LoadOBJLimit`. Everything in the file becomes one mesh, in the color of its `Material` unless `LoadOBJFS` gave faces colors of their own. If the faces use normals the mesh is shaded smooth, with a vertex split into one per normal where the file lights it differently on different faces (the sides of a cube); if not, it is shaded flat.
+- **Colors:** only `Kd`, the diffuse color (three numbers from 0 to 1, or one for a gray), is read, and used as RGB with no gamma conversion. Textures and everything else in a material are skipped, so a material that is only a texture has no color and its faces keep the `Material` color. Each `.mtl` is read up to 1 MiB (or `maxBytes`, if less), at most 8 per model, with 10,000 materials; a name must be a plain path inside the OBJ's folder (no `..`, no leading `/`, no backslash); `mtllib` must come before the `usemtl` that uses it. A `.mtl` that is missing, too large or broken never fails the load: the model comes out in its `Material` color. `os.DirFS` follows symbolic links in its folder, so give it a folder you trust.
 - **Orientation:** OBJ files are right-handed and look down -Z; glonk looks down +Z. `LoadOBJ` flips Z and reverses each face so a model keeps its outside and is not mirrored left to right. Its front faces a camera placed on the -Z side.
 - **Inside out or invisible?** Some exporters wind faces the other way. Set `Mesh.DoubleSided = true` to draw both sides.
 - **Untrusted files:** malformed input returns an error naming the line, never a panic, and the time taken grows in step with the input size. Memory use is roughly 25 times the input size, up to 35 for a file that gives most corners a normal of their own, so bound the input with `LoadOBJLimit` when you do not trust the source.
@@ -232,7 +242,7 @@ Built to work in most terminals. The basics need only the alternate screen, curs
 
 ## Planned
 
-Ideas, not promises: colors from model material files, drawing images on the canvas.
+Ideas, not promises: colors for each vertex of a model, drawing images on the canvas.
 
 ## Development
 

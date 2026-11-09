@@ -10,6 +10,7 @@ import (
 type Material struct {
 	// Color is the color of the surface where the light meets it fully, and the
 	// color the characters are drawn in. The zero Color is the terminal's default.
+	// Mesh.FaceColors replaces it for the faces that have a color of their own.
 	Color engine.Color
 
 	// Ramp is the characters that show brightness in DrawShaded, from the darkest to

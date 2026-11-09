@@ -3,7 +3,7 @@
 //
 // A [Mesh] holds vertices, the edges and triangular faces between them, where it
 // sits in the world (its [Transform]) and how it looks (its [Material]). [Cube],
-// [Sphere], [Cylinder], [Cone], [Plane], [Grid] and [LoadOBJ] make meshes. [Mesh.Draw]
+// [Sphere], [Cylinder], [Cone], [Plane], [Grid], [LoadOBJ] and [LoadOBJFS] make meshes. [Mesh.Draw]
 // draws the edges, and [Mesh.DrawShaded] and [Mesh.DrawShadedPixels] draw the faces
 // lit by any number of lights, each a [Light] such as [Directional], [Ambient] or
 // [Point], or one of your own, into cells or into a half-block pixel Canvas.
@@ -20,6 +20,11 @@
 // a file, and [Mesh.SmoothNormals] works them out from the faces. Where a surface has
 // a hard edge, as a cube does, give each side its own vertices so that each can face
 // its own way.
+//
+// A mesh is one color, [Material.Color], unless it has [Mesh.FaceColors]: a color for
+// each face, which replaces the material's for that face and is still lit. [LoadOBJFS]
+// fills it from the materials of a model, reading the MTL files beside the OBJ from
+// an [io/fs.FS]; [LoadOBJ] skips materials.
 //
 // Yaw and Pitch turn a model the way they turn a [Camera]: positive Yaw swings the
 // front toward +x and positive Pitch tips it up.

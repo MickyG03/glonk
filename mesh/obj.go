@@ -68,7 +68,8 @@ var ErrOBJTooLarge = errors.New("obj: input too large")
 // bytes; if the reader has more it returns an error wrapping ErrOBJTooLarge rather
 // than a half-loaded model, which wrapping the reader in io.LimitReader would
 // produce. maxBytes must be positive. As a guide, the memory used is roughly 35
-// times maxBytes in the worst case.
+// times maxBytes in the worst case. Like LoadOBJ it skips materials; LoadOBJFS reads
+// them.
 //
 // An over-long input always fails. Usually the error wraps ErrOBJTooLarge, but a
 // malformed statement found before the limit is reached is reported as itself.
