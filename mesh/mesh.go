@@ -168,11 +168,15 @@ func (m Mesh) drawEdges(fb *engine.FrameBuffer, cam Camera, cell engine.Cell, de
 		return
 	}
 
+	eye := cam.viewTransform()
+	proj := cam.projector(fb.Width(), fb.Height())
+	if m.offscreen(eye, proj, cam.Near) {
+		return
+	}
+
 	s := getScratch(len(m.Vertices))
 	defer s.release()
 	place := m.Transform.placement()
-	eye := cam.viewTransform()
-	proj := cam.projector(fb.Width(), fb.Height())
 	view := s.view
 	for i, v := range m.Vertices {
 		view[i] = eye.apply(place.apply(v))

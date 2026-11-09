@@ -166,11 +166,15 @@ func (m Mesh) eachShadedTriangle(cam Camera, lights []Light, w, h int, fn func(t
 		return
 	}
 
+	eye := cam.viewTransform()
+	proj := cam.projector(w, h)
+	if m.offscreen(eye, proj, cam.Near) {
+		return
+	}
+
 	s := getScratch(len(m.Vertices))
 	defer s.release()
 	place := m.Transform.placement()
-	eye := cam.viewTransform()
-	proj := cam.projector(w, h)
 	world, view := s.world, s.view
 	for i, v := range m.Vertices {
 		world[i] = place.apply(v)
