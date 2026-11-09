@@ -96,21 +96,36 @@ func (sb *sequenceBuilder) SetStyle(from, to style) {
 	}
 	if to.fg != from.fg {
 		param()
-		if n, ok := to.fg.paletteIndex(); ok {
-			sb.buf = append(sb.buf, "38;5;"...)
-			sb.buf = strconv.AppendUint(sb.buf, uint64(n), 10)
-		} else {
-			sb.buf = append(sb.buf, "39"...)
-		}
+		sb.appendColor("38", "39", to.fg)
 	}
 	if to.bg != from.bg {
 		param()
-		if n, ok := to.bg.paletteIndex(); ok {
-			sb.buf = append(sb.buf, "48;5;"...)
-			sb.buf = strconv.AppendUint(sb.buf, uint64(n), 10)
-		} else {
-			sb.buf = append(sb.buf, "49"...)
-		}
+		sb.appendColor("48", "49", to.bg)
 	}
 	sb.buf = append(sb.buf, 'm')
+}
+
+// appendColor writes the parameters that set the foreground (layer 38) or the
+// background (layer 48) to c, or back to the default (code 39 or 49). An RGB color is
+// written exactly when the builder is set to true color, and as the nearest palette
+// color otherwise.
+func (sb *sequenceBuilder) appendColor(layer, def string, c Color) {
+	if c.kind() == colorRGB && sb.trueColor {
+		r, g, b := c.rgb()
+		sb.buf = append(sb.buf, layer...)
+		sb.buf = append(sb.buf, ";2;"...)
+		sb.buf = strconv.AppendUint(sb.buf, uint64(r), 10)
+		sb.buf = append(sb.buf, ';')
+		sb.buf = strconv.AppendUint(sb.buf, uint64(g), 10)
+		sb.buf = append(sb.buf, ';')
+		sb.buf = strconv.AppendUint(sb.buf, uint64(b), 10)
+		return
+	}
+	if n, ok := c.paletteIndex(); ok {
+		sb.buf = append(sb.buf, layer...)
+		sb.buf = append(sb.buf, ";5;"...)
+		sb.buf = strconv.AppendUint(sb.buf, uint64(n), 10)
+		return
+	}
+	sb.buf = append(sb.buf, def...)
 }

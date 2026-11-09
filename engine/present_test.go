@@ -39,11 +39,20 @@ func sizedFrame(t testing.TB, w, h int) *FrameBuffer {
 // run mixes small changes, whole new frames, windows of other sizes, frames larger than
 // the window, junk written behind its back, and invalidation.
 func TestPresenterTerminalAlwaysShowsTheFrame(t *testing.T) {
+	for _, trueColor := range []bool{false, true} {
+		t.Run(fmt.Sprintf("true color %v", trueColor), func(t *testing.T) {
+			presenterRuns(t, trueColor)
+		})
+	}
+}
+
+func presenterRuns(t *testing.T, trueColor bool) {
 	rng := rand.New(rand.NewPCG(1, 2))
 	for run := range 600 {
 		termW, termH := 1+rng.IntN(20), 1+rng.IntN(8)
 		v := newVterm(t, termW, termH)
-		p := newPresenter(true)
+		v.trueColor = trueColor
+		p := newPresenter(true, trueColor)
 
 		fb := randomFrame(t, rng, 1+rng.IntN(termW+3), 1+rng.IntN(termH+3))
 		clipW, clipH := termW, termH
@@ -83,7 +92,7 @@ func TestPresenterTerminalAlwaysShowsTheFrame(t *testing.T) {
 func TestPresenterSendsNothingForAFrameThatDidNotChange(t *testing.T) {
 	rng := rand.New(rand.NewPCG(3, 4))
 	fb := randomFrame(t, rng, 30, 10)
-	p := newPresenter(true)
+	p := newPresenter(true, false)
 	var out countingWriter
 	if err := p.present(&out, fb, 30, 10); err != nil {
 		t.Fatal(err)
@@ -104,7 +113,7 @@ func TestPresenterSendsNothingForAFrameThatDidNotChange(t *testing.T) {
 func TestPresenterOneChangedCellCostsAFewBytes(t *testing.T) {
 	rng := rand.New(rand.NewPCG(5, 6))
 	fb := randomFrame(t, rng, 80, 24)
-	p := newPresenter(true)
+	p := newPresenter(true, false)
 	if err := p.present(&countingWriter{}, fb, 80, 24); err != nil {
 		t.Fatal(err)
 	}
@@ -125,7 +134,7 @@ func TestPresenterFirstFrameErasesTheDisplayAndSendsEverything(t *testing.T) {
 	fb := randomFrame(t, rng, 12, 5)
 	var out bytes.Buffer
 
-	if err := newPresenter(true).present(&out, fb, 12, 5); err != nil {
+	if err := newPresenter(true, false).present(&out, fb, 12, 5); err != nil {
 		t.Fatal(err)
 	}
 
@@ -143,7 +152,7 @@ func TestPresenterFirstFrameErasesTheDisplayAndSendsEverything(t *testing.T) {
 func TestPresenterInvalidateDrawsTheSameFrameAgainInFull(t *testing.T) {
 	rng := rand.New(rand.NewPCG(9, 10))
 	fb := randomFrame(t, rng, 12, 5)
-	p := newPresenter(true)
+	p := newPresenter(true, false)
 	v := newVterm(t, 12, 5)
 	if err := p.present(v, fb, 12, 5); err != nil {
 		t.Fatal(err)
@@ -197,7 +206,7 @@ func TestPresenterAFailedWriteMakesTheNextFrameWhole(t *testing.T) {
 	rng := rand.New(rand.NewPCG(11, 12))
 	fb := randomFrame(t, rng, 12, 5)
 	v := newVterm(t, 12, 5)
-	p := newPresenter(true)
+	p := newPresenter(true, false)
 	if err := p.present(v, fb, 12, 5); err != nil {
 		t.Fatal(err)
 	}
@@ -225,7 +234,7 @@ func TestFullPresenterSendsEveryFrameWholeAndNothingElse(t *testing.T) {
 	if err := fb.presentClipped(&want, 10, 4); err != nil {
 		t.Fatal(err)
 	}
-	p := newPresenter(false)
+	p := newPresenter(false, false)
 
 	for i := range 3 {
 		var got bytes.Buffer
@@ -247,7 +256,7 @@ func TestFullPresenterSendsEveryFrameWholeAndNothingElse(t *testing.T) {
 // A cursor jump does not change the colors, so a run of changes in one style sets it once.
 func TestPresenterCarriesTheStyleAcrossJumps(t *testing.T) {
 	fb := sizedFrame(t, 30, 6)
-	p := newPresenter(true)
+	p := newPresenter(true, false)
 	if err := p.present(&countingWriter{}, fb, 30, 6); err != nil {
 		t.Fatal(err)
 	}
@@ -288,7 +297,7 @@ func TestPresenterJoinsShortGapsAndJumpsOverLongOnes(t *testing.T) {
 			for x := range 30 {
 				fb.Set(x, 0, Cell{Character: '.'})
 			}
-			p := newPresenter(true)
+			p := newPresenter(true, false)
 			if err := p.present(&countingWriter{}, fb, 30, 1); err != nil {
 				t.Fatal(err)
 			}
@@ -328,7 +337,7 @@ func TestPresenterDoesNotWriteAGapInAnotherStyle(t *testing.T) {
 	for x := range 12 {
 		fb.Set(x, 0, Cell{Character: '.', Foreground: Palette(2)})
 	}
-	p := newPresenter(true)
+	p := newPresenter(true, false)
 	if err := p.present(&countingWriter{}, fb, 12, 1); err != nil {
 		t.Fatal(err)
 	}
@@ -351,7 +360,7 @@ func TestPresenterPlacesTheCellAfterTheLastColumnByPosition(t *testing.T) {
 	rng := rand.New(rand.NewPCG(15, 16))
 	fb := randomFrame(t, rng, 6, 3)
 	v := newVterm(t, 6, 3)
-	p := newPresenter(true)
+	p := newPresenter(true, false)
 	if err := p.present(v, fb, 6, 3); err != nil {
 		t.Fatal(err)
 	}
@@ -373,7 +382,7 @@ func TestPresenterPlacesTheCellAfterTheLastColumnByPosition(t *testing.T) {
 // of a copy, it would always find nothing changed.
 func TestPresenterKeepsACopyOfTheFrame(t *testing.T) {
 	fb := sizedFrame(t, 10, 2)
-	p := newPresenter(true)
+	p := newPresenter(true, false)
 	v := newVterm(t, 10, 2)
 	fb.Set(1, 1, Cell{Character: 'a'})
 	if err := p.present(v, fb, 10, 2); err != nil {
@@ -395,7 +404,7 @@ func TestPresenterShowsOnlyThePartOfALargeFrameThatFits(t *testing.T) {
 	rng := rand.New(rand.NewPCG(17, 18))
 	fb := randomFrame(t, rng, 12, 6)
 	v := newVterm(t, 7, 3)
-	p := newPresenter(true)
+	p := newPresenter(true, false)
 
 	if err := p.present(v, fb, 7, 3); err != nil {
 		t.Fatal(err)
@@ -416,12 +425,13 @@ func FuzzPresenterChanges(f *testing.F) {
 		for _, r := range runes {
 			b = binary.LittleEndian.AppendUint32(b, uint32(r))
 		}
-		f.Add(b, uint8(2), uint8(1), uint8(5))
+		f.Add(b, uint8(2), uint8(1), uint8(5), false)
+		f.Add(b, uint8(2), uint8(1), uint8(5), true)
 	}
 	seed('a', 'b', 0, 0x1b, '\n', 0x9b, '中', '😀', 0x301, 0xd800, -1, '─', '▀', '⣿')
 	seed('x', 'x', 'x', 'y', 'y', 'x', 'x', 'x', 'x', 'x', 'y', 'x', 'x', 'x', 'x', 'x')
 
-	f.Fuzz(func(t *testing.T, data []byte, clipW, clipH, mask uint8) {
+	f.Fuzz(func(t *testing.T, data []byte, clipW, clipH, mask uint8, trueColor bool) {
 		const w, h = 8, 2
 		fb := sizedFrame(t, w, h)
 		fill := func(offset int) {
@@ -432,11 +442,12 @@ func FuzzPresenterChanges(f *testing.F) {
 					r = rune(int32(binary.LittleEndian.Uint32(data[k:])))
 					fg, bg, attrs = data[k], data[(k+1)%len(data)], data[(k+2)%len(data)]
 				}
-				fb.Set(i%w, i/w, Cell{Character: r, Foreground: pix(fg), Background: Palette(bg), Attrs: Attr(attrs & 15)})
+				fb.Set(i%w, i/w, Cell{Character: r, Foreground: pix(fg), Background: RGB(bg, fg, attrs), Attrs: Attr(attrs & 15)})
 			}
 		}
 		v := newVterm(t, w, h)
-		p := newPresenter(true)
+		v.trueColor = trueColor
+		p := newPresenter(true, trueColor)
 		cw, ch := 1+int(clipW)%w, 1+int(clipH)%h
 
 		fill(0)
@@ -481,39 +492,44 @@ func TestPresenterNoticesEveryKindOfChange(t *testing.T) {
 		{"RGB for palette", Cell{Character: 'a', Foreground: RGB(255, 0, 0), Background: Palette(2), Attrs: Bold}},
 	}
 	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			fb := sizedFrame(t, 5, 2)
-			for i := range 10 {
-				fb.Set(i%5, i/5, base)
-			}
-			v := newVterm(t, 5, 2)
-			p := newPresenter(true)
-			if err := p.present(v, fb, 5, 2); err != nil {
-				t.Fatal(err)
-			}
-
-			fb.Set(2, 1, tt.to)
-			var out countingWriter
-			if err := p.present(io.MultiWriter(v, &out), fb, 5, 2); err != nil {
-				t.Fatal(err)
-			}
-
-			if out.bytes == 0 {
-				t.Errorf("wanted the change sent")
-			}
-			if d := v.screenDiff(fb, 5, 2); d != "" {
-				t.Error(d)
-			}
-		})
+		for _, trueColor := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s, true color %v", tt.name, trueColor), func(t *testing.T) {
+				changeIsSent(t, base, tt.to, trueColor)
+			})
+		}
 	}
 }
 
-// A frame that changes anything is one synchronized update in one write, with the
-// erase of a restart inside it; one that changes nothing writes nothing at all.
+func changeIsSent(t *testing.T, base, to Cell, trueColor bool) {
+	fb := sizedFrame(t, 5, 2)
+	for i := range 10 {
+		fb.Set(i%5, i/5, base)
+	}
+	v := newVterm(t, 5, 2)
+	v.trueColor = trueColor
+	p := newPresenter(true, trueColor)
+	if err := p.present(v, fb, 5, 2); err != nil {
+		t.Fatal(err)
+	}
+
+	fb.Set(2, 1, to)
+	var out countingWriter
+	if err := p.present(io.MultiWriter(v, &out), fb, 5, 2); err != nil {
+		t.Fatal(err)
+	}
+
+	if out.bytes == 0 {
+		t.Errorf("wanted the change sent")
+	}
+	if d := v.screenDiff(fb, 5, 2); d != "" {
+		t.Error(d)
+	}
+}
+
 func TestPresenterWrapsAFrameInOneSynchronizedUpdate(t *testing.T) {
 	rng := rand.New(rand.NewPCG(19, 20))
 	fb := randomFrame(t, rng, 20, 6)
-	p := newPresenter(true)
+	p := newPresenter(true, false)
 	var out bytes.Buffer
 	count := &countingWriter{}
 	w := io.MultiWriter(&out, count)
@@ -558,7 +574,7 @@ func TestFullPresenterNeverSynchronizes(t *testing.T) {
 	fb := randomFrame(t, rng, 10, 4)
 	var out bytes.Buffer
 
-	if err := newPresenter(false).present(&out, fb, 10, 4); err != nil {
+	if err := newPresenter(false, false).present(&out, fb, 10, 4); err != nil {
 		t.Fatal(err)
 	}
 

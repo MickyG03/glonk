@@ -22,6 +22,7 @@ import (
 // One presenter belongs to one run; it is not safe for use by several goroutines.
 type presenter struct {
 	changesOnly bool
+	trueColor   bool // send RGB colors exactly, not as the nearest palette color
 
 	// prev is the part of the last frame that was sent, row by row, prevW cells wide.
 	// It is a copy: the frame it came from is drawn into again straight away.
@@ -32,8 +33,8 @@ type presenter struct {
 	sb sequenceBuilder // kept between frames, so it stops allocating once it has grown
 }
 
-func newPresenter(changesOnly bool) *presenter {
-	return &presenter{changesOnly: changesOnly}
+func newPresenter(changesOnly, trueColor bool) *presenter {
+	return &presenter{changesOnly: changesOnly, trueColor: trueColor}
 }
 
 // invalidate says the terminal may no longer show the last frame, because the window
@@ -50,6 +51,7 @@ func (p *presenter) present(w io.Writer, fb *FrameBuffer, maxW, maxH int) error 
 	height := min(fb.height, max(maxH, 0))
 
 	p.sb.reset()
+	p.sb.trueColor = p.trueColor
 	if !p.changesOnly {
 		fb.appendFrame(&p.sb, width, height)
 		return p.sb.Flush(w)

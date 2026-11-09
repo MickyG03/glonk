@@ -433,3 +433,48 @@ func TestRunNeverCallsTheGameOnceItHasReturned(t *testing.T) {
 		t.Errorf("wanted nil and no calls after Run returned, got err=%v and %d more calls", err, calls.Load()-atReturn)
 	}
 }
+
+// Without a terminal what is written depends on Config and nothing else: not on the
+// machine's COLORTERM.
+func TestRunHeadlessColors(t *testing.T) {
+	orange := RGB(255, 128, 0)
+	game := scriptedGame{
+		update: func(float64, *Input) error { return nil },
+		draw:   func(fb *FrameBuffer) { fb.Set(0, 0, Cell{Character: 'x', Foreground: orange}) },
+	}
+	tests := []struct {
+		name      string
+		mode      ColorMode
+		colorterm string
+		want      string
+		notWant   string
+	}{
+		{"auto ignores COLORTERM", ColorsAuto, "truecolor", "\x1b[38;5;208m", "38;2"},
+		{"auto without COLORTERM", ColorsAuto, "", "\x1b[38;5;208m", "38;2"},
+		{"256 colors", Colors256, "truecolor", "\x1b[38;5;208m", "38;2"},
+		{"true color without COLORTERM", ColorsTrue, "", "\x1b[38;2;255;128;0m", "38;5"},
+		{"true color with COLORTERM", ColorsTrue, "truecolor", "\x1b[38;2;255;128;0m", "38;5"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("COLORTERM", tt.colorterm)
+			var out bytes.Buffer
+			count := 0
+			g := scriptedGame{update: func(float64, *Input) error {
+				if count++; count == 2 {
+					return ErrQuit
+				}
+				return nil
+			}, draw: game.draw}
+
+			err := runHeadless(t, g, Config{Colors: tt.mode, Input: strings.NewReader(""), Output: &out})
+
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !strings.Contains(out.String(), tt.want) || strings.Contains(out.String(), tt.notWant) {
+				t.Errorf("wanted %q and no %q, got %q", tt.want, tt.notWant, out.String())
+			}
+		})
+	}
+}

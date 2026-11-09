@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"fmt"
 	"math/rand/v2"
 	"strconv"
 	"strings"
@@ -47,7 +48,13 @@ func TestAttrHas(t *testing.T) {
 }
 
 func styleBytes(from, to style) string {
+	return styleBytesIn(from, to, false)
+}
+
+// styleBytesIn is styleBytes for a terminal that shows true color or not.
+func styleBytesIn(from, to style, trueColor bool) string {
 	sb := newSequenceBuilder()
+	sb.trueColor = trueColor
 	sb.SetStyle(from, to)
 	return sb.String()
 }
@@ -145,19 +152,34 @@ func applySGR(t testing.TB, s style, seq string) style {
 			case 49:
 				s.bg = Color{}
 			case 38, 48:
-				if i+2 >= len(params) || params[i+1] != "5" {
-					t.Fatalf("wanted 38;5;n or 48;5;n, got %v", params)
-				}
-				n, err := strconv.Atoi(params[i+2])
-				if err != nil || n < 0 || n > 255 {
-					t.Fatalf("wanted a palette index, got %q", params[i+2])
+				var c Color
+				switch {
+				case i+2 < len(params) && params[i+1] == "5":
+					n, err := strconv.Atoi(params[i+2])
+					if err != nil || n < 0 || n > 255 {
+						t.Fatalf("wanted a palette index, got %q", params[i+2])
+					}
+					c = Palette(uint8(n))
+					i += 2
+				case i+4 < len(params) && params[i+1] == "2":
+					var rgb [3]uint8
+					for k := range rgb {
+						v, err := strconv.Atoi(params[i+2+k])
+						if err != nil || v < 0 || v > 255 {
+							t.Fatalf("wanted a color channel from 0 to 255, got %q", params[i+2+k])
+						}
+						rgb[k] = uint8(v)
+					}
+					c = RGB(rgb[0], rgb[1], rgb[2])
+					i += 4
+				default:
+					t.Fatalf("wanted 38;5;n, 38;2;r;g;b or the same with 48, got %v", params)
 				}
 				if code == 38 {
-					s.fg = Palette(uint8(n))
+					s.fg = c
 				} else {
-					s.bg = Palette(uint8(n))
+					s.bg = c
 				}
-				i += 2
 			default:
 				t.Fatalf("wanted a known SGR code, got %d in %q", code, params)
 			}
@@ -166,10 +188,14 @@ func applySGR(t testing.TB, s style, seq string) style {
 	return s
 }
 
-// asWritten is s as the terminal ends up holding it: an RGB color is written as the
-// nearest palette color.
-func asWritten(s style) style {
+// asWritten is s as the terminal ends up holding it: an RGB color stays as it is on a
+// terminal that shows true color, and is written as the nearest palette color on one
+// that does not.
+func asWritten(s style, trueColor bool) style {
 	for _, c := range []*Color{&s.fg, &s.bg} {
+		if c.kind() == colorRGB && trueColor {
+			continue
+		}
 		if n, ok := c.paletteIndex(); ok {
 			*c = Palette(n)
 		}
@@ -193,16 +219,22 @@ func randomStyle(rng *rand.Rand) style {
 	return style{fg: randomColor(rng), bg: randomColor(rng), attrs: Attr(rng.IntN(16))}
 }
 
-// Whatever the two styles, playing what SetStyle wrote on the first leaves the second.
+// Whatever the two styles, playing what SetStyle wrote on the first leaves the second,
+// on a terminal with true color and on one without.
 func TestSetStyleLeavesTheTarget(t *testing.T) {
-	rng := rand.New(rand.NewPCG(3, 5))
-	for range 50000 {
-		from, to := randomStyle(rng), randomStyle(rng)
-		from, want := asWritten(from), asWritten(to)
+	for _, trueColor := range []bool{false, true} {
+		t.Run(fmt.Sprintf("true color %v", trueColor), func(t *testing.T) {
+			rng := rand.New(rand.NewPCG(3, 5))
+			for range 50000 {
+				from, to := randomStyle(rng), randomStyle(rng)
+				from, want := asWritten(from, trueColor), asWritten(to, trueColor)
 
-		if got := applySGR(t, from, styleBytes(from, to)); got != want {
-			t.Fatalf("wanted %+v to become %+v, got %+v from %q", from, want, got, styleBytes(from, to))
-		}
+				got := applySGR(t, from, styleBytesIn(from, to, trueColor))
+				if got != want {
+					t.Fatalf("wanted %+v to become %+v, got %+v from %q", from, want, got, styleBytesIn(from, to, trueColor))
+				}
+			}
+		})
 	}
 }
 
@@ -250,10 +282,60 @@ func FuzzSetStyle(f *testing.F) {
 	f.Fuzz(func(t *testing.T, k1, a1, b1, c1, at1, k2, a2, b2, c2, k3, at2, k4 uint8) {
 		from := style{fg: color(k1, a1, b1, c1), bg: color(k2, a2, b2, c2), attrs: Attr(at1 & 15)}
 		to := style{fg: color(k3, a1, b2, c1), bg: color(k4, a2, b1, c2), attrs: Attr(at2 & 15)}
-		from, want := asWritten(from), asWritten(to)
+		for _, trueColor := range []bool{false, true} {
+			f, want := asWritten(from, trueColor), asWritten(to, trueColor)
 
-		if got := applySGR(t, from, styleBytes(from, to)); got != want {
-			t.Fatalf("wanted %+v to become %+v, got %+v", from, want, got)
+			if got := applySGR(t, f, styleBytesIn(f, to, trueColor)); got != want {
+				t.Fatalf("true color %v: wanted %+v to become %+v, got %+v", trueColor, f, want, got)
+			}
 		}
 	})
+}
+
+func TestSetStyleWritesRGBAsTrueColorOrNearestPaletteColor(t *testing.T) {
+	orange := RGB(255, 128, 0) // nearest palette color: 208, which is (255, 135, 0)
+	tests := []struct {
+		name      string
+		from, to  style
+		trueColor bool
+		want      string
+	}{
+		{"foreground, true color", style{}, style{fg: orange}, true, "\x1b[38;2;255;128;0m"},
+		{"background, true color", style{}, style{bg: orange}, true, "\x1b[48;2;255;128;0m"},
+		{"both, true color", style{}, style{fg: orange, bg: RGB(0, 0, 1)}, true, "\x1b[38;2;255;128;0;48;2;0;0;1m"},
+		{"foreground, 256 colors", style{}, style{fg: orange}, false, "\x1b[38;5;208m"},
+		{"background, 256 colors", style{}, style{bg: orange}, false, "\x1b[48;5;208m"},
+		{"with an attribute, true color", style{}, style{fg: orange, attrs: Bold}, true, "\x1b[1;38;2;255;128;0m"},
+		{"restart keeps the RGB, true color", style{fg: orange, attrs: Bold}, style{fg: orange}, true, "\x1b[0;38;2;255;128;0m"},
+		{"back to the default, true color", style{fg: orange}, style{bg: Palette(4)}, true, "\x1b[39;48;5;4m"},
+		{"a palette color stays a palette color, true color", style{}, style{fg: Palette(208), bg: Palette(3)}, true, "\x1b[38;5;208;48;5;3m"},
+		{"a palette color stays a palette color, 256 colors", style{}, style{fg: Palette(208), bg: Palette(3)}, false, "\x1b[38;5;208;48;5;3m"},
+		{"black RGB is a color, not the default", style{}, style{fg: RGB(0, 0, 0)}, true, "\x1b[38;2;0;0;0m"},
+		{"two RGB colors that share a palette color are still two colors, true color", style{fg: RGB(255, 128, 0)}, style{fg: RGB(255, 129, 0)}, true, "\x1b[38;2;255;129;0m"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := styleBytesIn(tt.from, tt.to, tt.trueColor); got != tt.want {
+				t.Errorf("wanted %q, got %q", tt.want, got)
+			}
+		})
+	}
+}
+
+// A palette color follows the user's theme, so true color mode must not touch it.
+func TestSetStyleWritesPaletteColorsTheSameInBothModes(t *testing.T) {
+	rng := rand.New(rand.NewPCG(7, 8))
+	pick := func() Color {
+		if rng.IntN(3) == 0 {
+			return Color{}
+		}
+		return Palette(uint8(rng.IntN(256)))
+	}
+	for range 5000 {
+		from := style{fg: pick(), bg: pick(), attrs: Attr(rng.IntN(16))}
+		to := style{fg: pick(), bg: pick(), attrs: Attr(rng.IntN(16))}
+		if a, b := styleBytesIn(from, to, false), styleBytesIn(from, to, true); a != b {
+			t.Fatalf("from %+v to %+v: wanted the same bytes in both modes, got %q and %q", from, to, a, b)
+		}
+	}
 }

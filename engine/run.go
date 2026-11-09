@@ -45,6 +45,14 @@ type Config struct {
 	// it, and uses the timing-based key handling that every terminal supports.
 	LegacyKeys bool
 
+	// Colors says whether an RGB color is sent exactly or as the nearest palette
+	// color. The zero value, ColorsAuto, sends it exactly when the environment says the
+	// terminal can show 24-bit colors (COLORTERM=truecolor, which terminals that can
+	// set themselves), and rounded otherwise. Set ColorsTrue where the terminal can
+	// but the environment does not say so, inside tmux or over ssh, say. A Palette
+	// color is always sent as the palette color, so it follows the user's theme.
+	Colors ColorMode
+
 	// Input is where keys are read from; nil means os.Stdin.
 	//
 	// When Input and Output are both terminals, Run takes them over: raw mode, the
@@ -79,6 +87,9 @@ type Config struct {
 func checkConfig(cfg Config) error {
 	if cfg.FPS < 1 || cfg.FPS > maxFPS {
 		return fmt.Errorf("fps must be between 1 and %d, got %d", maxFPS, cfg.FPS)
+	}
+	if cfg.Colors > ColorsTrue {
+		return fmt.Errorf("colors must be ColorsAuto, Colors256 or ColorsTrue, got %d", cfg.Colors)
 	}
 	return nil
 }
@@ -291,7 +302,7 @@ func Run(ctx context.Context, game Game, cfg Config) (err error) {
 
 	// Only the cells that changed are sent to a terminal; to anything else every
 	// frame goes whole.
-	pres := newPresenter(!tty.headless)
+	pres := newPresenter(!tty.headless, cfg.Colors.useTrueColor(tty.headless, os.Getenv))
 
 	// suspend hands the terminal back, stops the process until the shell continues
 	// it, then takes the terminal over again.

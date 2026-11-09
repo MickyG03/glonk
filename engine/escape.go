@@ -40,6 +40,10 @@ const (
 // allocates only until it has grown to the size of a frame.
 type sequenceBuilder struct {
 	buf []byte
+
+	// trueColor makes SetStyle write an RGB color exactly. Off, it writes the nearest
+	// palette color.
+	trueColor bool
 }
 
 func newSequenceBuilder() *sequenceBuilder {

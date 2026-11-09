@@ -23,14 +23,15 @@ type vcell struct {
 // Autowrap is off, as glonk leaves it: a character written in the last column stays
 // there and the cursor does not move on.
 type vterm struct {
-	t       testing.TB
-	w, h    int
-	grid    []vcell
-	x, y    int
-	pen     style
-	pending []byte // the start of a sequence or character a Write left unfinished
-	inSync  bool   // between ESC[?2026h and ESC[?2026l
-	syncs   int    // how many synchronized updates have been completed
+	t         testing.TB
+	w, h      int
+	grid      []vcell
+	x, y      int
+	pen       style
+	pending   []byte // the start of a sequence or character a Write left unfinished
+	inSync    bool   // between ESC[?2026h and ESC[?2026l
+	trueColor bool   // an RGB color is shown exactly; otherwise as the nearest palette color
+	syncs     int    // how many synchronized updates have been completed
 }
 
 func newVterm(t testing.TB, w, h int) *vterm {
@@ -194,7 +195,7 @@ func (v *vterm) screenDiff(fb *FrameBuffer, maxW, maxH int) string {
 			want := vcell{r: ' '}
 			if x < regionW && y < regionH {
 				c := fb.frame[y*fb.width+x]
-				want = vcell{r: shownRune(c.Character), st: asWritten(c.style())}
+				want = vcell{r: shownRune(c.Character), st: asWritten(c.style(), v.trueColor)}
 			}
 			if got := v.at(x, y); got != want {
 				return fmt.Sprintf("at (%d, %d): wanted %q in %+v, got %q in %+v", x, y, want.r, want.st, got.r, got.st)

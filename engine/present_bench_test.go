@@ -14,11 +14,19 @@ var benchEmitters = []struct {
 	make func() func(w io.Writer, fb *FrameBuffer) error
 }{
 	{"full", func() func(io.Writer, *FrameBuffer) error {
-		p := newPresenter(false)
+		p := newPresenter(false, false)
 		return func(w io.Writer, fb *FrameBuffer) error { return p.present(w, fb, fb.width, fb.height) }
 	}},
 	{"changes", func() func(io.Writer, *FrameBuffer) error {
-		p := newPresenter(true)
+		p := newPresenter(true, false)
+		return func(w io.Writer, fb *FrameBuffer) error { return p.present(w, fb, fb.width, fb.height) }
+	}},
+	{"full 24-bit", func() func(io.Writer, *FrameBuffer) error {
+		p := newPresenter(false, true)
+		return func(w io.Writer, fb *FrameBuffer) error { return p.present(w, fb, fb.width, fb.height) }
+	}},
+	{"changes 24-bit", func() func(io.Writer, *FrameBuffer) error {
+		p := newPresenter(true, true)
 		return func(w io.Writer, fb *FrameBuffer) error { return p.present(w, fb, fb.width, fb.height) }
 	}},
 }
@@ -79,6 +87,25 @@ var benchScenes = []benchScene{
 		c.FillTriangle(px[0], py[0], 1, px[1], py[1], 1, px[2], py[2], 1, Palette(208))
 		c.Compose()
 	}},
+	{"shaded RGB triangle 80x24", 80, 24, func(fb *FrameBuffer, i int) {
+		c := fb.Canvas()
+		a := float64(i) * 0.08
+		var px, py [3]float64
+		for k := range 3 {
+			t := a + float64(k)*2*math.Pi/3
+			px[k], py[k] = 40+30*math.Cos(t), 24+20*math.Sin(t)
+		}
+		// A different brightness for every pixel row, like a lit surface.
+		for y := range c.Height() {
+			shade := Shade(RGB(255, 128, 0), float64(y)/float64(c.Height()))
+			for x := range c.Width() {
+				if pointInTriangle(float64(x)+0.5, float64(y)+0.5, px, py) {
+					c.Set(x, y, shade)
+				}
+			}
+		}
+		c.Compose()
+	}},
 	{"everything changes 80x24", 80, 24, func(fb *FrameBuffer, i int) {
 		rng := rand.New(rand.NewPCG(uint64(i), 3))
 		for y := range fb.Height() {
@@ -129,4 +156,13 @@ func BenchmarkFrames(b *testing.B) {
 			})
 		}
 	}
+}
+
+// pointInTriangle reports whether (x, y) is inside the triangle with corners (px[k], py[k]).
+func pointInTriangle(x, y float64, px, py [3]float64) bool {
+	sign := func(ax, ay, bx, by float64) float64 { return (x-bx)*(ay-by) - (ax-bx)*(y-by) }
+	d1, d2, d3 := sign(px[0], py[0], px[1], py[1]), sign(px[1], py[1], px[2], py[2]), sign(px[2], py[2], px[0], py[0])
+	neg := d1 < 0 || d2 < 0 || d3 < 0
+	pos := d1 > 0 || d2 > 0 || d3 > 0
+	return !(neg && pos)
 }
