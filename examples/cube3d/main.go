@@ -1,4 +1,4 @@
-// Command cube3d is a walk around a floor with six shaded cubes.
+// Command cube3d is a walk around a floor with six shaded cubes and a wireframe one.
 //
 //	go run ./examples/cube3d
 //
@@ -38,6 +38,7 @@ type cubeGame struct {
 	cam   mesh.Camera
 	floor mesh.Mesh
 	cubes []mesh.Mesh
+	ghost mesh.Mesh // a cube drawn as a wireframe, partly hidden by the solid ones in front of it
 	fps   float64
 
 	// halfBlocks draws the cubes as pixels, two per cell, shaded by color. Off, they
@@ -145,14 +146,19 @@ func (g *cubeGame) Draw(fb *engine.FrameBuffer) {
 		}
 	}
 
+	// The ghost is a wireframe drawn with depth, after the solids: a cube in front of it
+	// hides the part of its edges that it covers. Pixels from the half-block mode hide it
+	// too, because Compose gives the cells they fill their depth.
+	g.ghost.DrawDepth(fb, g.cam, engine.Cell{Character: '#', Foreground: g.ghost.Material.Color})
+
 	fb.DrawBox(0, 0, fb.Width(), fb.Height(), engine.Color{})
 	fb.DrawText(1, 1, fmt.Sprintf("%.0f fps  %s", g.fps, mode), engine.Color{})
 	fb.DrawText(1, fb.Height()-3, "WASD move  Q/E turn  arrows look", engine.Color{})
 	fb.DrawText(1, fb.Height()-2, "M mode  B edges  Esc quit", engine.Color{})
 }
 
-// newCubeGame returns the scene main runs: a floor and six cubes, seen from just
-// inside the south edge.
+// newCubeGame returns the scene main runs: a floor, six cubes and a wireframe ghost,
+// seen from just inside the south edge.
 func newCubeGame() *cubeGame {
 	floor := mesh.Grid(gridSize, gridDivisions)
 	floor.Transform.Position.Y = floorY
@@ -168,7 +174,8 @@ func newCubeGame() *cubeGame {
 			newCube(2, 10, -4, engine.Palette(39)),
 			newCube(1, -6, -8, engine.Palette(118)),
 		},
-		fps: 30,
+		ghost: newCube(2.6, 1.6, 8.6, engine.Palette(51)), // clear of every solid, partly behind the orange one from the start
+		fps:   30,
 	}
 }
 

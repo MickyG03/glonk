@@ -27,7 +27,7 @@ Requires Go 1.26 or newer.
 
 ```
 make run                                      # bounce2d: a ball in a box that fills the window (Esc quits)
-make run EXAMPLE=./examples/cube3d            # cube3d: walk around a floor with six shaded cubes
+make run EXAMPLE=./examples/cube3d            # cube3d: walk around a floor with six shaded cubes and a wireframe one
 make run EXAMPLE=./examples/viewer            # viewer: look at the bundled OBJ models and shapes
 make run EXAMPLE=./examples/viewer ARGS=my.obj  # viewer: look at your own model
 ```

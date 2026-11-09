@@ -360,3 +360,194 @@ func TestEdgeKeyDoesNothingInGlyphMode(t *testing.T) {
 		t.Errorf("wanted B ignored while drawing glyphs")
 	}
 }
+
+// ghostColor is the color nothing else in the scene is drawn in, so a cell in it is the ghost.
+var ghostColor = engine.Palette(51)
+
+// cellsOf is the set of cells inside the frame border and between the lines of text where
+// keep says the cell counts.
+func cellsOf(fb *engine.FrameBuffer, keep func(engine.Cell) bool) map[[2]int]bool {
+	out := map[[2]int]bool{}
+	for y := 3; y < fb.Height()-4; y++ {
+		for x := 1; x < fb.Width()-1; x++ {
+			if c := fb.At(x, y); c != engine.BlankCell && keep(c) {
+				out[[2]int{x, y}] = true
+			}
+		}
+	}
+	return out
+}
+
+func anyCell(engine.Cell) bool { return true }
+
+func isGhost(c engine.Cell) bool { return c.Foreground == ghostColor }
+
+// sceneAt is a game with the camera at a place, in glyph or half-block mode.
+func sceneAt(t *testing.T, x, z, yaw float64, halfBlocks bool) *cubeGame {
+	t.Helper()
+	t.Setenv("TERM_PROGRAM", "") // the pixel edge style depends on the terminal
+	g := newCubeGame()
+	g.cam.Position = geometry.Vector3{X: x, Z: z}
+	g.cam.Yaw = yaw
+	g.halfBlocks = halfBlocks
+	return g
+}
+
+func TestTheGhostStandsOnTheFloorAndIsDrawnInItsOwnColor(t *testing.T) {
+	g := newCubeGame()
+	lo, _ := g.ghost.Bounds()
+
+	if got := g.ghost.Transform.Position.Y + lo.Y; math.Abs(got-floorY) > 1e-9 {
+		t.Errorf("wanted the ghost standing on the floor at %v, got its base at %v", floorY, got)
+	}
+	if g.ghost.Material.Color != ghostColor || len(g.ghost.Edges) != 12 {
+		t.Errorf("wanted a cube in the ghost color, got %v with %d edges", g.ghost.Material.Color, len(g.ghost.Edges))
+	}
+	gl, gh := g.ghost.Bounds()
+	gp := g.ghost.Transform.Position
+	for _, c := range g.cubes {
+		if c.Material.Color == ghostColor {
+			t.Errorf("wanted no solid cube in the ghost's color")
+		}
+		// Standing clear of every solid, so that walking around it is not walking through one.
+		cl, ch := c.Bounds()
+		cp := c.Transform.Position
+		if gp.X+gl.X < cp.X+ch.X && gp.X+gh.X > cp.X+cl.X && gp.Z+gl.Z < cp.Z+ch.Z && gp.Z+gh.Z > cp.Z+cl.Z {
+			t.Errorf("wanted the ghost clear of the cube at %v, but their footprints overlap", cp)
+		}
+	}
+}
+
+// The ghost adds its own cells and changes nothing else: take it out and the scene is what
+// it was. In half-block mode too, where the cells it lands on are pixels.
+func TestTheGhostChangesOnlyItsOwnCells(t *testing.T) {
+	for _, halfBlocks := range []bool{false, true} {
+		for _, pose := range []struct{ x, z, yaw float64 }{{0, -4, 0}, {3, 2, 0.5}, {-2, 5, -0.4}, {0, 14, math.Pi}, {5, -3, -0.7}} {
+			g := sceneAt(t, pose.x, pose.z, pose.yaw, halfBlocks)
+			with, without, alone := newFrame(t, 80, 24), newFrame(t, 80, 24), newFrame(t, 80, 24)
+			g.Draw(with)
+			g.ghost.Draw(alone, g.cam, engine.Cell{Character: '#', Foreground: ghostColor})
+			ghostCells := cellsOf(alone, anyCell)
+			g.ghost = mesh.Mesh{}
+			g.Draw(without)
+
+			for y := range 24 {
+				for x := range 80 {
+					if with.At(x, y) != without.At(x, y) && !ghostCells[[2]int{x, y}] {
+						t.Fatalf("blocks %v, pose %v: cell (%d,%d) differs but is not one of the ghost's", halfBlocks, pose, x, y)
+					}
+				}
+			}
+		}
+	}
+}
+
+// From the start the orange cube is in front of the ghost's left side: the ghost is
+// drawn after the cubes, and the cube hides the part of its edges that it covers, while
+// the rest shows. The same in half-block mode, where the cube is pixels.
+func TestTheGhostIsHiddenBehindANearerCube(t *testing.T) {
+	for _, halfBlocks := range []bool{false, true} {
+		name := "glyphs"
+		if halfBlocks {
+			name = "half blocks"
+		}
+		t.Run(name, func(t *testing.T) {
+			g := sceneAt(t, 0, -4, 0, halfBlocks)
+			full, solids, ghostAlone, floorAlone := newFrame(t, 80, 24), newFrame(t, 80, 24), newFrame(t, 80, 24), newFrame(t, 80, 24)
+			g.Draw(full)
+
+			noGhost := *g
+			noGhost.ghost, noGhost.floor = mesh.Mesh{}, mesh.Mesh{}
+			noGhost.Draw(solids)
+			g.ghost.Draw(ghostAlone, g.cam, engine.Cell{Character: '#', Foreground: ghostColor})
+			g.floor.Draw(floorAlone, g.cam, engine.Cell{Character: '.'})
+			covered, edges, floor := cellsOf(solids, anyCell), cellsOf(ghostAlone, anyCell), cellsOf(floorAlone, anyCell)
+
+			hidden, shown := 0, 0
+			for c := range edges {
+				if floor[c] {
+					continue // a floor line may sit in the same cell
+				}
+				drawn := isGhost(full.At(c[0], c[1]))
+				switch {
+				case covered[c] && drawn:
+					t.Fatalf("cell %v: wanted the ghost hidden behind the cube, but it is drawn", c)
+				case !covered[c] && !drawn:
+					t.Fatalf("cell %v: wanted the ghost where nothing covers it, but it is missing", c)
+				case covered[c]:
+					hidden++
+				default:
+					shown++
+				}
+			}
+			if hidden < 3 || shown < 10 {
+				t.Errorf("wanted the ghost partly hidden and partly shown from the start, got %d hidden and %d shown", hidden, shown)
+			}
+		})
+	}
+}
+
+// A solid farther away than the ghost does not hide it, whichever way the solid is drawn:
+// as characters or, composed after the pixels are in, as half blocks.
+func TestTheGhostIsWholeWhereItIsNearerThanASolid(t *testing.T) {
+	for _, halfBlocks := range []bool{false, true} {
+		name := "glyphs"
+		if halfBlocks {
+			name = "half blocks"
+		}
+		t.Run(name, func(t *testing.T) {
+			g := sceneAt(t, 0, -4, 0, halfBlocks)
+			g.cubes = []mesh.Mesh{newCube(5, 1.6, 14, engine.Palette(208))} // a big cube behind the ghost
+			full, solid, alone, floorAlone := newFrame(t, 80, 24), newFrame(t, 80, 24), newFrame(t, 80, 24), newFrame(t, 80, 24)
+			g.Draw(full)
+			noGhost := *g
+			noGhost.ghost, noGhost.floor = mesh.Mesh{}, mesh.Mesh{}
+			noGhost.Draw(solid)
+			g.ghost.Draw(alone, g.cam, engine.Cell{Character: '#', Foreground: ghostColor})
+			g.floor.Draw(floorAlone, g.cam, engine.Cell{Character: '.'})
+			covered, edges, floor := cellsOf(solid, anyCell), cellsOf(alone, anyCell), cellsOf(floorAlone, anyCell)
+
+			over := 0
+			for c := range edges {
+				if floor[c] {
+					continue
+				}
+				if covered[c] {
+					over++
+				}
+				if !isGhost(full.At(c[0], c[1])) {
+					t.Fatalf("cell %v: wanted the ghost drawn in front of the cube behind it", c)
+				}
+			}
+			if over < 5 {
+				t.Errorf("wanted the ghost drawn over the cube in at least 5 cells, got %d", over)
+			}
+		})
+	}
+}
+
+// The floor is drawn first and ignores depth, so the cubes cover its lines where they
+// stand: no cell a solid cube covers shows the floor.
+func TestCubesCoverTheFloorLines(t *testing.T) {
+	floorColor := engine.Palette(240)
+	for _, halfBlocks := range []bool{false, true} {
+		for _, pose := range []struct{ x, z, yaw float64 }{{0, -4, 0}, {3, 2, 0.5}, {-2, 5, -0.4}, {0, 14, math.Pi}} {
+			g := sceneAt(t, pose.x, pose.z, pose.yaw, halfBlocks)
+			full, solids := newFrame(t, 80, 24), newFrame(t, 80, 24)
+			g.Draw(full)
+			noFloor := *g
+			noFloor.floor, noFloor.ghost = mesh.Mesh{}, mesh.Mesh{}
+			noFloor.Draw(solids)
+
+			covered := cellsOf(solids, anyCell)
+			for c := range covered {
+				if full.At(c[0], c[1]).Foreground == floorColor {
+					t.Fatalf("blocks %v, pose %v: wanted the cube to cover the floor at %v", halfBlocks, pose, c)
+				}
+			}
+			if len(covered) < 10 {
+				t.Fatalf("blocks %v, pose %v: wanted cubes in view, got %d cells", halfBlocks, pose, len(covered))
+			}
+		}
+	}
+}
