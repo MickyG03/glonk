@@ -79,7 +79,7 @@ ship.Material.Color = engine.Palette(208)
 ship.DrawShaded(fb, cam, lights...) // or ship.Draw for a wireframe
 ```
 
-A mesh is placed by its `Transform` (`Position`, `Yaw`, `Pitch`, `Roll`, `Scale`; angles in radians, and positive pitch tips the front up, as it does for the camera) and looks the way its `Material` says (`Color`, and a `Ramp` of brightness characters). `DrawShaded` takes any number of lights: `mesh.Ambient`, `mesh.Directional`, or a type of your own with a `Brightness` method.
+A mesh is placed by its `Transform` (`Position`, `Yaw`, `Pitch`, `Roll`, `Scale`; angles in radians, and positive pitch tips the front up, as it does for the camera) and looks the way its `Material` says (`Color`, and a `Ramp` of brightness characters). `DrawShaded` takes any number of lights: `mesh.Ambient`, `mesh.Directional`, `mesh.Point` (a lamp that fades with distance), or a type of your own with a `Brightness` method.
 
 `LoadOBJ` reads any `io.Reader`, so a file, an embedded asset or a download all work. For input you do not control, use `LoadOBJLimit(r, maxBytes)`: it fails with `mesh.ErrOBJTooLarge` instead of reading without end (a plain `io.LimitReader` would quietly cut the model short).
 

@@ -6,7 +6,7 @@
 // [Sphere], [Cylinder], [Cone], [Plane], [Grid] and [LoadOBJ] make meshes;
 // [Mesh.Draw] draws the edges, and
 // [Mesh.DrawShaded] and [Mesh.DrawShadedPixels] draw the faces lit by any number of
-// lights, each a [Light] such as [Directional] or [Ambient] or one of your own, into
+// lights, each a [Light] such as [Directional], [Ambient] or [Point], or one of your own, into
 // cells or into a half-block pixel Canvas.
 //
 // Yaw and Pitch turn a model the way they turn a [Camera]: positive Yaw swings the

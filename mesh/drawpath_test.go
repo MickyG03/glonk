@@ -77,7 +77,7 @@ func TestDrawingAllocatesNothing(t *testing.T) {
 	}
 	t.Setenv("TERM_PROGRAM", "") // Canvas.Seamless depends on the terminal running the tests
 	cam := Camera{Position: geometry.Vector3{Z: -2}, Near: 0.5}
-	lights := []Light{Ambient{Level: 0.2}, Directional{Direction: geometry.Vector3{X: 0.4, Y: -1, Z: 0.6}}}
+	lights := []Light{Ambient{Level: 0.2}, Directional{Direction: geometry.Vector3{X: 0.4, Y: -1, Z: 0.6}}, Point{Position: geometry.Vector3{X: -1, Y: 2, Z: -1}, Range: 20}}
 	fb := newShadeBuffer(t)
 	canvas := fb.Canvas()
 	m := drawPathMesh()

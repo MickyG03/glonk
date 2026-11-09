@@ -172,16 +172,19 @@ func ExampleMaterial() {
 	// └────────────────────────────┘
 }
 
-// lamp is a light of your own: it lights what is near it, and fades with distance.
-type lamp struct {
-	position geometry.Vector3
-	reach    float64
+// spot is a light of your own: a spotlight, which lights what is inside a cone from
+// where it is and nothing outside it.
+type spot struct {
+	position, direction geometry.Vector3 // where it is, and the unit vector it points along
+	cos                 float64          // cosine of the angle from the middle of the beam to its edge
 }
 
-func (l lamp) Brightness(point, normal geometry.Vector3) float64 {
-	toLamp := l.position.Sub(point)
-	facing := max(0, normal.Dot(toLamp.Normalize()))
-	return facing * max(0, 1-toLamp.Length()/l.reach)
+func (s spot) Brightness(point, normal geometry.Vector3) float64 {
+	toSurface := point.Sub(s.position).Normalize()
+	if toSurface.Dot(s.direction) < s.cos {
+		return 0 // outside the beam
+	}
+	return max(0, normal.Dot(toSurface.Neg()))
 }
 
 // Any type with a Brightness method is a Light. Lights add up without passing full
@@ -194,25 +197,60 @@ func ExampleLight() {
 
 	fb.DrawBox(0, 0, fb.Width(), fb.Height(), engine.Color{})
 
-	cube := mesh.Cube(2)
-	cube.Transform = mesh.Transform{Position: geometry.Vector3{Z: 3}, Yaw: 0.6}
-	cube.DrawShaded(fb, mesh.Camera{},
-		mesh.Ambient{Level: 0.1},
-		lamp{position: geometry.Vector3{X: -2, Y: 1, Z: 0}, reach: 6})
+	// A sphere has normals, so the beam picks out a round patch of it.
+	ball := mesh.Sphere(1.5, 24, 12)
+	ball.Transform.Position = geometry.Vector3{Z: 3}
+	beam := spot{
+		position:  geometry.Vector3{X: -3, Y: 2, Z: 0},
+		direction: geometry.Vector3{X: 3.6, Y: -2.2, Z: 3}.Normalize(), // at the sphere, a little off its middle
+		cos:       math.Cos(0.2),
+	}
+	ball.DrawShaded(fb, mesh.Camera{}, mesh.Ambient{Level: 0.1}, beam)
 
 	fmt.Println(fb)
 	// Output:
 	// ┌────────────────────────────┐
 	// │                            │
-	// │              *+            │
-	// │        ******++::          │
-	// │        *****+++:::         │
-	// │        ***+++++:::         │
-	// │        **++++++:::         │
-	// │        ++++++++::          │
-	// │              ++            │
+	// │            #:::            │
+	// │         @%%#*+::::         │
+	// │        @%%#**::::::        │
+	// │        %##:::::::::        │
+	// │        ::::::::::::        │
+	// │         ::::::::::         │
+	// │            ::::            │
 	// │                            │
 	// └────────────────────────────┘
+}
+
+// A Point light is a lamp: it lights what is near it, brightest straight below it, and
+// fades out at its Range. Because a Plane has normals, every cell is lit by itself.
+func ExamplePoint() {
+	fb, err := engine.NewFrameBuffer(40, 12)
+	if err != nil {
+		panic(err)
+	}
+	fb.DrawBox(0, 0, fb.Width(), fb.Height(), engine.Color{})
+
+	floor := mesh.Plane(10, 8)
+	floor.Transform.Position = geometry.Vector3{Z: 5}
+	cam := mesh.Camera{Position: geometry.Vector3{Y: 4}, Pitch: -0.8} // high up, looking down
+	lamp := mesh.Point{Position: geometry.Vector3{X: -1.5, Y: 1.2, Z: 5}, Range: 6}
+	floor.DrawShaded(fb, cam, mesh.Ambient{Level: 0.05}, lamp)
+
+	fmt.Println(fb)
+	// Output:
+	// ┌──────────────────────────────────────┐
+	// │                                      │
+	// │                                      │
+	// │                                      │
+	// │           :::--=---:::....           │
+	// │         ::--=+**+=--::::....         │
+	// │       :::::-------::::::......       │
+	// │      :::::::::::::::::::.......      │
+	// │    ..:::::::::::::::::...........    │
+	// │                                      │
+	// │                                      │
+	// └──────────────────────────────────────┘
 }
 
 func ExampleSphere() {

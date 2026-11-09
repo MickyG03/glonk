@@ -5,9 +5,9 @@ import (
 	"github.com/kyrokohan/glonk/geometry"
 )
 
-// Light lights the surfaces of a mesh. [Directional] and [Ambient] are the lights
-// the package provides; a type with a Brightness method is a Light too, which is how
-// a lamp that fades with distance or a spotlight is made.
+// Light lights the surfaces of a mesh. [Directional], [Ambient] and [Point] are the
+// lights the package provides; a type with a Brightness method is a Light too, which
+// is how a spotlight, or a lamp that fades its own way, is made.
 //
 // Several lights can light a mesh at once: DrawShaded and DrawShadedPixels take any
 // number. They add up without passing full brightness: each light fills part of what
@@ -60,6 +60,60 @@ type Ambient struct {
 // Brightness is Level.
 func (a Ambient) Brightness(_, _ geometry.Vector3) float64 {
 	return clamp01(a.Level)
+}
+
+// Point is light from one place that spreads every way and fades with distance, like
+// a lamp. A surface is brightest facing straight at the lamp, and dark when edge-on to
+// it or turned away, as with [Directional], and dimmer the farther it is.
+//
+// A Point is asked about the place on the surface being lit, so it lights a mesh
+// as well as the mesh lets it. With Normals every cell is lit by itself and a lamp
+// close to a big flat surface makes a pool of light on it ([Plane] has Normals). Without
+// them a face is lit once, from its middle, and is one shade from edge to edge.
+type Point struct {
+	// Position is where the lamp is, in world space.
+	Position geometry.Vector3
+
+	// Intensity is the brightness, from 0 to 1, of a surface right at the lamp and
+	// facing it squarely. 0 means 1; to switch a light off, leave it out.
+	Intensity float64
+
+	// Range is how far the light reaches. The light fades smoothly with distance and
+	// is gone at Range, so a lamp lights a pool around it. 0 means no fading: the
+	// light is as bright a long way off as it is nearby. A Range that is negative or
+	// not a number gives no light.
+	Range float64
+}
+
+// Brightness is Intensity, times how squarely the surface faces the lamp, times a
+// fade that is 1 at the lamp and falls to 0 at Range as (1 - distance/Range) squared.
+// A surface exactly at the lamp is lit fully, as there is no direction to be turned
+// away from.
+func (p Point) Brightness(point, normal geometry.Vector3) float64 {
+	if !(p.Range >= 0) { // negative, or NaN
+		return 0
+	}
+	intensity := p.Intensity
+	if intensity == 0 {
+		intensity = 1
+	}
+
+	toLamp := p.Position.Sub(point)
+	distance := toLamp.Length()
+	facing := 1.0
+	if distance != 0 {
+		facing = normal.Dot(toLamp) / distance
+	}
+
+	fade := 1.0
+	if p.Range != 0 {
+		fade = 1 - distance/p.Range
+		if !(fade > 0) {
+			return 0
+		}
+		fade *= fade
+	}
+	return clamp01(intensity) * clamp01(facing) * fade
 }
 
 // clamp01 limits v to 0 to 1. NaN gives 0.
