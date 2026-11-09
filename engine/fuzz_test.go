@@ -158,6 +158,67 @@ func finite(vs ...float64) bool {
 	return true
 }
 
+// FuzzDrawLineDepth checks DrawLineDepth against DrawLine on whatever ends the fuzzer
+// finds: the same cells whenever the depths are finite and positive, nothing at all when a
+// depth is not positive or is NaN, never a cell that DrawLine would not draw, and every
+// depth stored between the depths of the two ends.
+func FuzzDrawLineDepth(f *testing.F) {
+	nan, inf := math.NaN(), math.Inf(1)
+	f.Add(0, 0, 1.0, 8, 4, 3.0)
+	f.Add(8, 4, 3.0, 0, 0, 1.0)
+	f.Add(-1000, 2, 1.0, 20, 2, 5.0)
+	f.Add(3, 3, 2.0, 3, 3, 9.0)
+	f.Add(0, 0, 1.0, 8, 0, inf)
+	f.Add(0, 0, nan, 8, 4, 1.0)
+	f.Add(0, 0, 0.0, 8, 4, 1.0)
+	f.Add(0, 0, -1.0, 8, 4, 1.0)
+	f.Add(0, 0, 5e-324, 8, 4, math.MaxFloat64)
+	f.Add(math.MinInt, math.MaxInt, 1.0, math.MaxInt, math.MinInt, 2.0)
+	f.Add(1<<30, 0, 1.0, -(1 << 30), 3, 7.0)
+
+	f.Fuzz(func(t *testing.T, x0, y0 int, z0 float64, x1, y1 int, z1 float64) {
+		const w, h = 9, 5
+		mark := Cell{Character: '#'}
+
+		plain, err := NewFrameBuffer(w, h)
+		if err != nil {
+			t.Fatalf("unable to initialize frame buffer: %v", err)
+		}
+		deep, err := NewFrameBuffer(w, h)
+		if err != nil {
+			t.Fatalf("unable to initialize frame buffer: %v", err)
+		}
+		plain.DrawLine(x0, y0, x1, y1, mark)
+		deep.DrawLineDepth(x0, y0, z0, x1, y1, z1, mark)
+
+		if !(z0 > 0 && z1 > 0) {
+			for i := range deep.frame {
+				if deep.frame[i] != BlankCell || !math.IsInf(deep.depth[i], 1) {
+					t.Fatalf("wanted a bad depth to draw nothing, got a cell at %d", i)
+				}
+			}
+			return
+		}
+
+		lo, hi := min(z0, z1), max(z0, z1)
+		for i := range deep.frame {
+			drawn := deep.frame[i] == mark
+			if drawn && plain.frame[i] != mark {
+				t.Fatalf("wanted only cells DrawLine draws, got an extra one at %d", i)
+			}
+			if !drawn && plain.frame[i] == mark && !math.IsInf(hi, 1) {
+				t.Fatalf("wanted every cell DrawLine draws, cell %d is missing for depths %v and %v", i, z0, z1)
+			}
+			if drawn && !(deep.depth[i] >= lo && deep.depth[i] <= hi) {
+				t.Fatalf("wanted cell %d between the depths %v and %v, got %v", i, lo, hi, deep.depth[i])
+			}
+			if !drawn && !math.IsInf(deep.depth[i], 1) {
+				t.Fatalf("wanted the depth of an undrawn cell left alone, got %v at %d", deep.depth[i], i)
+			}
+		}
+	})
+}
+
 // FuzzFillTriangleFunc checks FillTriangleFunc against FillTriangle on whatever corners
 // the fuzzer finds: the same cells and depths, nothing asked for a bad depth, and for
 // corners of a sane size weights that are finite and sum to 1.

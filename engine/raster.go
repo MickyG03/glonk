@@ -23,8 +23,53 @@ const lineLimit = 1 << 29
 // no more than one that stays on screen, and the cells drawn are exactly the ones
 // the whole line would draw there. Coordinates beyond +-2^29 are clamped to it.
 func (fb *FrameBuffer) DrawLine(x0, y0, x1, y1 int, cell Cell) {
-	walkLine(fb.width, fb.height, x0, y0, x1, y1, func(x, y int) {
+	walkLineAt(fb.width, fb.height, x0, y0, x1, y1, func(x, y, _, _ int) {
 		fb.Set(x, y, cell)
+	})
+}
+
+// DrawLineDepth draws the same line as DrawLine, but each cell is stored with SetDepth,
+// so a nearer surface hides it and it hides a farther one. z0 and z1 are the distances
+// from the camera of the two ends, as for FillTriangle, and must be positive. A line
+// is drawn where it is nearer than what is there, and where it ties, what is there
+// stays.
+//
+// The depth of a cell is perspective-correct: 1/z, not z, changes at an even pace along
+// the line, so a line that runs away from the camera has its cells' depth bunched up
+// toward the near end. It is worked out along the cells of the whole line, so the part
+// inside the buffer has the depth it would have if the line were all drawn, and the
+// end cells have exactly z0 and z1. A line that is a single point takes the nearer end.
+//
+// A depth that is not positive, or is NaN, at either end draws nothing. An infinite
+// depth is infinitely far: nothing is nearer than it, so those cells are not drawn.
+func (fb *FrameBuffer) DrawLineDepth(x0, y0 int, z0 float64, x1, y1 int, z1 float64, cell Cell) {
+	if !(z0 > 0 && z1 > 0) {
+		return
+	}
+	near, far := min(z0, z1), max(z0, z1)
+	inv0, inv1 := 1/z0, 1/z1
+
+	walkLineAt(fb.width, fb.height, x0, y0, x1, y1, func(x, y, i, n int) {
+		var z float64
+		switch {
+		case n == 0:
+			z = near
+		case i == 0:
+			z = z0
+		case i == n:
+			z = z1
+		default:
+			t := float64(i) / float64(n)
+			z = 1 / ((1-t)*inv0 + t*inv1)
+			// Depths at the limits of a float can overflow or underflow the sum; the
+			// answer is always between the ends.
+			if !(z >= near) {
+				z = near
+			} else if z > far {
+				z = far
+			}
+		}
+		fb.SetDepth(x, y, z, cell)
 	})
 }
 
@@ -49,6 +94,14 @@ func minorOffset(i, db, n int) int {
 // Bresenham line has a closed form: after i steps along the major axis it has moved
 // round(i * minorDelta / majorDelta), halves rounding away from the start.
 func walkLine(w, h, x0, y0, x1, y1 int, plot func(x, y int)) {
+	walkLineAt(w, h, x0, y0, x1, y1, func(x, y, _, _ int) { plot(x, y) })
+}
+
+// walkLineAt is walkLine that also says where on the line each cell is: it was step i
+// of n along the longer axis, counting from the first end at step 0 to the last end at
+// step n, where n is the length of the whole line and not only of the part inside the
+// grid. A line that is one point is n = 0.
+func walkLineAt(w, h, x0, y0, x1, y1 int, plot func(x, y, i, n int)) {
 	x0, y0 = min(max(x0, -lineLimit), lineLimit), min(max(y0, -lineLimit), lineLimit)
 	x1, y1 = min(max(x1, -lineLimit), lineLimit), min(max(y1, -lineLimit), lineLimit)
 
@@ -96,9 +149,9 @@ func walkLine(w, h, x0, y0, x1, y1 int, plot func(x, y int)) {
 	for i := lo; i <= hi; i++ {
 		a, b := a0+sa*i, b0+sb*off(i)
 		if steep {
-			plot(b, a)
+			plot(b, a, i, n)
 		} else {
-			plot(a, b)
+			plot(a, b, i, n)
 		}
 	}
 }
