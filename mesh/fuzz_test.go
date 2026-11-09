@@ -23,7 +23,7 @@ func FuzzClipTriangleNear(f *testing.F) {
 	f.Fuzz(func(t *testing.T, ax, ay, az, bx, by, bz, cx, cy, cz, near float64) {
 		a, b, c := geometry.Vector3{X: ax, Y: ay, Z: az}, geometry.Vector3{X: bx, Y: by, Z: bz}, geometry.Vector3{X: cx, Y: cy, Z: cz}
 
-		out := clipTriangleNear(a, b, c, near) // must never panic, whatever the inputs
+		out := clipTriangleNearList(a, b, c, near) // must never panic, whatever the inputs
 
 		// The geometric promises only make sense for sane numbers.
 		const huge = 1e100

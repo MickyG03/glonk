@@ -6,53 +6,82 @@ import (
 	"github.com/kyrokohan/glonk/geometry"
 )
 
-// clipTriangleNear cuts the view-space triangle a, b, c against the plane z = near
-// and returns the part in front of it as zero, one or two triangles. Winding is
-// preserved, and every returned vertex has Z >= near exactly.
-func clipTriangleNear(a, b, c geometry.Vector3, near float64) [][3]geometry.Vector3 {
-	in := func(v geometry.Vector3) bool { return v.Z >= near }
+// clipVert is a corner of a triangle being clipped: where it is in view space and,
+// for smooth shading, where it is in the world and which way the surface faces there.
+type clipVert struct {
+	view, world, normal geometry.Vector3
+}
+
+// crossNear returns the point where the edge from out to in crosses z = near, with the
+// world position and normal carried along when withAttrs is set. out must be behind
+// the plane and in on or in front of it.
+func crossNear(out, in clipVert, near float64, withAttrs bool) clipVert {
+	v := clipVert{view: clipNear(out.view, in.view, near)}
+	if withAttrs {
+		t := (near - out.view.Z) / (in.view.Z - out.view.Z)
+		v.world = out.world.Lerp(in.world, t)
+		v.normal = out.normal.Lerp(in.normal, t)
+	}
+	return v
+}
+
+// clipTriangleNear cuts the view-space triangle a, b, c against the plane z = near and
+// writes the part in front of it into out as zero, one or two triangles, returning
+// how many. Winding is preserved, and every written vertex has Z >= near exactly. It
+// allocates nothing.
+func clipTriangleNear(a, b, c clipVert, near float64, withAttrs bool, out *[2][3]clipVert) int {
+	in := func(v clipVert) bool { return v.view.Z >= near }
 
 	// Common cases first: the triangle is wholly in front or wholly behind.
 	switch {
 	case in(a) && in(b) && in(c):
-		return [][3]geometry.Vector3{{a, b, c}}
+		out[0] = [3]clipVert{a, b, c}
+		return 1
 	case !in(a) && !in(b) && !in(c):
-		return nil
+		return 0
 	}
 
 	// Sutherland-Hodgman against one plane: walk the edges, keep the vertices in
-	// front, and add the crossing point wherever an edge changes sides.
-	tri := [3]geometry.Vector3{a, b, c}
-	var poly []geometry.Vector3
+	// front, and add the crossing point wherever an edge changes sides. Two corners in
+	// front and two crossings is the most that can come out.
+	tri := [3]clipVert{a, b, c}
+	var poly [4]clipVert
+	n := 0
 	for i, cur := range tri {
 		next := tri[(i+1)%3]
 
 		if in(cur) {
-			poly = append(poly, cur)
+			poly[n] = cur
+			n++
 		}
 		switch {
 		case in(cur) && !in(next):
-			poly = append(poly, clipNear(next, cur, near))
+			poly[n] = crossNear(next, cur, near, withAttrs)
+			n++
 		case !in(cur) && in(next):
-			poly = append(poly, clipNear(cur, next, near))
+			poly[n] = crossNear(cur, next, near, withAttrs)
+			n++
 		}
 	}
 
 	// A vertex lying exactly on the plane yields its own crossing point as well;
 	// drop the repeats, wrap-around included.
-	var clean []geometry.Vector3
-	for i, v := range poly {
-		if v != poly[(i+len(poly)-1)%len(poly)] {
-			clean = append(clean, v)
+	var clean [4]clipVert
+	m := 0
+	for i := range n {
+		if poly[i].view != poly[(i+n-1)%n].view {
+			clean[m] = poly[i]
+			m++
 		}
 	}
 
 	// Fan the polygon (three or four corners) into triangles.
-	var out [][3]geometry.Vector3
-	for i := 1; i+1 < len(clean); i++ {
-		out = append(out, [3]geometry.Vector3{clean[0], clean[i], clean[i+1]})
+	count := 0
+	for i := 1; i+1 < m; i++ {
+		out[count] = [3]clipVert{clean[0], clean[i], clean[i+1]}
+		count++
 	}
-	return out
+	return count
 }
 
 // clipSegment cuts the segment from (x0, y0) to (x1, y1) to the rectangle with

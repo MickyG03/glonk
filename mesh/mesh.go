@@ -126,10 +126,14 @@ func (m Mesh) Draw(fb *engine.FrameBuffer, cam Camera, cell engine.Cell) {
 		return
 	}
 
+	s := getScratch(len(m.Vertices))
+	defer s.release()
 	place := m.Transform.placement()
-	view := make([]geometry.Vector3, len(m.Vertices))
+	eye := cam.viewTransform()
+	proj := cam.projector(fb.Width(), fb.Height())
+	view := s.view
 	for i, v := range m.Vertices {
-		view[i] = cam.toView(place.apply(v))
+		view[i] = eye.apply(place.apply(v))
 	}
 
 	for _, e := range m.Edges {
@@ -150,8 +154,8 @@ func (m Mesh) Draw(fb *engine.FrameBuffer, cam Camera, cell engine.Cell) {
 			b = clipNear(b, a, cam.Near)
 		}
 
-		ax, ay := cam.projectView(a, fb.Width(), fb.Height())
-		bx, by := cam.projectView(b, fb.Width(), fb.Height())
+		ax, ay := proj.project(a)
+		bx, by := proj.project(b)
 		drawEdge(fb, ax, ay, bx, by, cell)
 	}
 }

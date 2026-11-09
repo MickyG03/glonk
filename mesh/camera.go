@@ -112,20 +112,15 @@ func (c Camera) Look() geometry.Vector3 {
 
 // toView moves a world point into view space: camera at the origin, looking down +z.
 // It undoes the camera's turn first and then its tilt, the reverse of how the
-// camera was posed (turn about the vertical axis, then tilt about its own).
+// camera was posed (turn about the vertical axis, then tilt about its own). Drawing
+// many points does the trigonometry once, with viewTransform.
 func (c Camera) toView(p geometry.Vector3) geometry.Vector3 {
-	return p.Sub(c.Position).RotateY(-c.Yaw).RotateX(c.Pitch)
+	return c.viewTransform().apply(p)
 }
 
 // projectView maps a view-space point to fractional cell coordinates.
-// The caller must ensure v.Z >= Near; the result is meaningless otherwise.
+// The caller must ensure v.Z >= Near; the result is meaningless otherwise. Drawing
+// many points does the trigonometry once, with projector.
 func (c Camera) projectView(v geometry.Vector3, w, h int) (x, y float64) {
-	f := 1 / math.Tan(c.FOV/2)
-	ndcX := f * v.X / v.Z
-	ndcY := f * v.Y / v.Z
-
-	sx := float64(w)/2 + ndcX*float64(h)/2*c.CellAspect
-	sy := float64(h)/2 - ndcY*float64(h)/2
-
-	return sx, sy
+	return c.projector(w, h).project(v)
 }

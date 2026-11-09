@@ -39,7 +39,7 @@ func TestClipTriangleNear(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := clipTriangleNear(tt.a, tt.b, tt.c, near)
+			got := clipTriangleNearList(tt.a, tt.b, tt.c, near)
 
 			if len(got) != tt.wantTris {
 				t.Fatalf("wanted %d triangles, got %d: %v", tt.wantTris, len(got), got)
@@ -80,7 +80,7 @@ func TestClipTriangleNearVertexOnPlaneSplit(t *testing.T) {
 	b := geometry.Vector3{X: 2, Z: 3}
 	c := geometry.Vector3{Y: 2, Z: -1}
 
-	got := clipTriangleNear(a, b, c, near)
+	got := clipTriangleNearList(a, b, c, near)
 
 	if len(got) != 1 {
 		t.Fatalf("wanted 1 triangle, got %d: %v", len(got), got)
@@ -251,4 +251,16 @@ func TestDrawEdgeOrdinaryEdgesAreExact(t *testing.T) {
 			}
 		}
 	}
+}
+
+// clipTriangleNearList is clipTriangleNear for tests: view-space corners in, the
+// triangles that come out as a list.
+func clipTriangleNearList(a, b, c geometry.Vector3, near float64) [][3]geometry.Vector3 {
+	var out [2][3]clipVert
+	n := clipTriangleNear(clipVert{view: a}, clipVert{view: b}, clipVert{view: c}, near, false, &out)
+	var tris [][3]geometry.Vector3
+	for _, t := range out[:n] {
+		tris = append(tris, [3]geometry.Vector3{t[0].view, t[1].view, t[2].view})
+	}
+	return tris
 }

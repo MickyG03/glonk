@@ -105,14 +105,18 @@ func (m Mesh) eachShadedTriangle(cam Camera, lights []Light, w, h int, fn func(c
 		return
 	}
 
+	s := getScratch(len(m.Vertices))
+	defer s.release()
 	place := m.Transform.placement()
-	world := make([]geometry.Vector3, len(m.Vertices))
-	view := make([]geometry.Vector3, len(m.Vertices))
+	eye := cam.viewTransform()
+	proj := cam.projector(w, h)
+	world, view := s.world, s.view
 	for i, v := range m.Vertices {
 		world[i] = place.apply(v)
-		view[i] = cam.toView(world[i])
+		view[i] = eye.apply(world[i])
 	}
 
+	var tris [2][3]clipVert
 	for _, f := range m.Faces {
 		if !validIndex(f[0], len(view)) || !validIndex(f[1], len(view)) || !validIndex(f[2], len(view)) {
 			continue
@@ -133,11 +137,12 @@ func (m Mesh) eachShadedTriangle(cam Camera, lights []Light, w, h int, fn func(c
 		center := w0.Add(w1).Add(w2).Scale(1.0 / 3)
 		intensity := brightness(lights, center, normal)
 
-		for _, t := range clipTriangleNear(v0, v1, v2, cam.Near) {
+		n := clipTriangleNear(clipVert{view: v0}, clipVert{view: v1}, clipVert{view: v2}, cam.Near, false, &tris)
+		for _, t := range tris[:n] {
 			var corners [3]screenPoint
 			for i, v := range t {
-				x, y := cam.projectView(v, w, h)
-				corners[i] = screenPoint{x, y, v.Z}
+				x, y := proj.project(v.view)
+				corners[i] = screenPoint{x, y, v.view.Z}
 			}
 			fn(corners, intensity)
 		}
@@ -152,7 +157,9 @@ func (m Mesh) eachShadedTriangle(cam Camera, lights []Light, w, h int, fn func(c
 //
 // Brightness is shown by the character: a ramp from dim to bright, Material.Ramp.
 func (m Mesh) DrawShaded(fb *engine.FrameBuffer, cam Camera, lights ...Light) {
-	ramp := m.Material.ramp()
+	rs := getScratch(0)
+	defer rs.release()
+	ramp := rs.rampFor(m.Material)
 	m.eachShadedTriangle(cam, lights, fb.Width(), fb.Height(), func(c [3]screenPoint, intensity float64) {
 		cell := engine.Cell{Character: shadeChar(ramp, intensity), Foreground: m.Material.Color}
 		fb.FillTriangle(c[0].x, c[0].y, c[0].z, c[1].x, c[1].y, c[1].z, c[2].x, c[2].y, c[2].z, cell)
