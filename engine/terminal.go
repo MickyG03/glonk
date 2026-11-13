@@ -15,7 +15,7 @@ const keyboardFlags = 1 | 2 | 8
 
 type terminal struct {
 	fd       int
-	sizeFd   int // where Size asks: the output on Windows, which rejects the input handle
+	sizeFd   int // where Size asks
 	state    *term.State
 	out      io.Writer
 	keyboard bool // whether we pushed protocol flags that Teardown must pop
